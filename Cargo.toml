@@ -1,0 +1,100 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ndic-core",
+    "crates/ndic-htj2k",
+    "crates/ndic-codestream",
+    "crates/ndic-lift",
+    "crates/ndic-zfp",
+    "crates/ndic-zarr",
+    "crates/ndic-cli",
+    "bindings/python/nd-image-codecs",
+    "bench/rs/ndic-bench-core",
+    "bench/rs/ndic-bench-cli",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.91"
+license = "MIT"
+authors = ["Fideus Labs LLC"]
+repository = "https://github.com/fideus-labs/nd-image-codecs"
+homepage = "https://github.com/fideus-labs/nd-image-codecs"
+readme = "README.md"
+
+[workspace.dependencies]
+# --- Internal crates -------------------------------------------------
+ndic-core = { path = "crates/ndic-core", version = "0.0.0" }
+ndic-htj2k = { path = "crates/ndic-htj2k", version = "0.0.0" }
+ndic-codestream = { path = "crates/ndic-codestream", version = "0.0.0" }
+ndic-lift = { path = "crates/ndic-lift", version = "0.0.0" }
+ndic-zfp = { path = "crates/ndic-zfp", version = "0.0.0" }
+ndic-zarr = { path = "crates/ndic-zarr", version = "0.0.0" }
+ndic-bench-core = { path = "bench/rs/ndic-bench-core", version = "0.0.0" }
+
+# --- Error handling / diagnostics ------------------------------------
+thiserror = "2"
+anyhow = "1"
+
+# --- Serialization ---------------------------------------------------
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# --- CLI -------------------------------------------------------------
+clap = { version = "4", features = ["derive"] }
+
+# --- Parallelism / SIMD ----------------------------------------------
+rayon = "1"
+bytemuck = { version = "1", features = ["derive"] }
+wide = "0.7"          # portable SIMD helper for scalar-fallback lanes
+
+# --- Zarr codec ecosystem (Rust) -------------------------------------
+# default-features off: the C-backed codecs (blosc/zstd) don't build on wasm32,
+# and the codec crate only needs the plugin/codec traits.
+zarrs = { version = "0.23", default-features = false }
+inventory = "0.3"     # link-time codec + benchmark registration
+
+# --- Bindings --------------------------------------------------------
+pyo3 = { version = "0.24", features = ["abi3-py311"] }
+numpy = "0.24"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+
+# --- Logging ---------------------------------------------------------
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# --- Dev / test ------------------------------------------------------
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1"
+approx = "0.5"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# Release profile tuned for the block-coder hot loops: OpenJPH leans on
+# aggressive inlining and LTO; we mirror that so parity benchmarks are
+# apples-to-apples.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+# A dedicated profile for `cargo bench` / the burnbench layer so the
+# benchmark binary matches release codegen without inheriting
+# `panic = "abort"` (Criterion needs unwinding).
+[profile.bench]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

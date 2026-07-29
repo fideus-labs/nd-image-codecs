@@ -1,0 +1,23 @@
+[package]
+name = "ndic-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Zarr v3 codec series for N-D scientific images: nd-delta, nd-lift-ht (HTJ2K), and nd-zfp"
+publish = false
+
+[lib]
+name = "_nd_image_codecs"
+crate-type = ["cdylib"]
+
+[dependencies]
+ndic-core = { workspace = true }
+ndic-zarr = { workspace = true }
+pyo3 = { workspace = true }
+numpy = { workspace = true }
+
+[lints]
+workspace = true

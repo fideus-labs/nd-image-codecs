@@ -1,0 +1,44 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "nd-image-codecs"
+version = "0.0.0"
+description = "Composable Zarr v3 codecs (nd-delta, nd-lift-ht, nd-zfp) for ND scientific images — cross-axis lifting, HTJ2K coefficient planes, and ZFP, with an axis-aware codec-series builder."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Fideus Labs LLC" }]
+keywords = ["htj2k", "jpeg2000", "zfp", "zarr", "numcodecs", "microscopy", "compression", "ome-ngff"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = ["numcodecs>=0.13", "numpy>=1.26"]
+
+[project.optional-dependencies]
+zarr = ["zarr>=3.0"]
+test = ["pytest", "imagecodecs", "zarr>=3.0"]
+
+# Zarr v3 codec entry points: let `zarr-python` discover each codec by name
+# without an explicit import. See
+# https://zarr.readthedocs.io/en/stable/user-guide/extending.html
+[project.entry-points."zarr.codecs"]
+"nd_lift" = "nd_image_codecs:NdLift"
+"htj2k" = "nd_image_codecs:Htj2k"
+"nd_zfp" = "nd_image_codecs:NdZfp"
+
+[project.urls]
+Repository = "https://github.com/fideus-labs/nd-image-codecs"
+Documentation = "https://github.com/fideus-labs/nd-image-codecs/tree/main/docs"
+
+[tool.maturin]
+module-name = "nd_image_codecs._nd_image_codecs"
+python-source = "python"
+features = ["pyo3/abi3-py311"]

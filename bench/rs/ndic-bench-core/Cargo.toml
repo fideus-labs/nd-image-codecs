@@ -1,0 +1,19 @@
+[package]
+name = "ndic-bench-core"
+description = "Shared benchmark types for nd-image-codecs: BenchEntry registry, JSON record schema, baseline I/O, and regression diffing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+inventory.workspace = true
+
+[lints]
+workspace = true

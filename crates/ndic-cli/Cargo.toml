@@ -1,0 +1,27 @@
+[package]
+name = "ndic-cli"
+description = "The ndic command-line tool: compress, expand, inspect, index, and generate Zarr v3 codec series for nd-image-codecs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[[bin]]
+name = "ndic"
+path = "src/main.rs"
+
+[dependencies]
+ndic-core.workspace = true
+ndic-codestream.workspace = true
+ndic-zarr.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

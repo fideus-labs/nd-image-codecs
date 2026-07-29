@@ -1,0 +1,23 @@
+[package]
+name = "ndic-lift"
+description = "Explicit ND lifting/delta decorrelation transforms — the `nd_lift` Zarr v3 array-to-array codec."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = ["std"]
+std = ["ndic-core/std"]
+
+[dependencies]
+ndic-core.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

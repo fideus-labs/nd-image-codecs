@@ -1,0 +1,23 @@
+[package]
+name = "ndic-zfp"
+description = "Pure-Rust ZFP block compression (2D/3D/4D) reproducing the reference C implementation — the `nd_zfp` Zarr v3 array-to-bytes codec."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = ["std"]
+std = ["ndic-core/std"]
+
+[dependencies]
+ndic-core.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+# Workspace-wide cargo configuration for nd-image-codecs.
+#
+# Native builds default to the host target. The WASM/WASI targets are
+# provisioned by `rust-toolchain.toml` and driven explicitly through
+# `pixi run build-wasm` / `pixi run build-wasi`.
+
+[build]
+# Keep incremental artifacts in the workspace `target/` so the bench
+# layer and CI cache a single tree.
+
+[target.wasm32-unknown-unknown]
+# wasm-bindgen browser target; SIMD enabled for the HT block coder hot
+# loops (mirrors OpenJPH's `-msimd128` WASM build).
+rustflags = ["-C", "target-feature=+simd128"]
+
+[alias]
+xtask = "run --package nd-image-codecs-xtask --"

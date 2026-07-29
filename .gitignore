@@ -1,0 +1,42 @@
+/target
+Cargo.lock.orig
+
+# rustc internal-compiler-error crash dumps (written to CWD on an ICE).
+rustc-ice-*.txt
+
+.pixi/
+pixi.lock
+
+# Python
+__pycache__/
+*.egg-info/
+*.pyc
+dist/
+*.whl
+.venv/
+
+# TypeScript / Node
+node_modules/
+bindings/typescript/dist/
+bindings/typescript/pkg/
+*.wasm
+
+# Benchmark working artifacts. Per-run JSON records and the browser
+# viewer's static-site bundle land under `target/benchmarks/` (which
+# is also covered by the top-level `/target` rule above, but the
+# explicit entry here keeps the bench/CI intent obvious). The named
+# baselines that the `bench-pr-gate.yml` workflow diffs against live
+# under `bench/baselines/` and *are* committed.
+target/benchmarks/
+bench/viewer/dist/
+bench/viewer/node_modules/
+
+# Test / conformance data caches (downloaded, not vendored)
+test-data/cache/
+*.jph.tmp
+*.j2c.tmp
+
+# Editor / agent scratch
+.serena/
+.claude/*
+!.claude/skills/

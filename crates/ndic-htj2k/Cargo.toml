@@ -1,0 +1,31 @@
+[package]
+name = "ndic-htj2k"
+description = "High-Throughput JPEG 2000 (ISO/IEC 15444-15) FBCOT block coder and decoder — the fast HT cleanup/SigProp/MagRef passes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+ndic-core.workspace = true
+bytemuck.workspace = true
+
+[features]
+default = ["std", "simd"]
+std = ["ndic-core/std"]
+# Portable + target-specific SIMD lanes for the MagSgn/MEL/VLC hot loops.
+simd = []
+
+[dev-dependencies]
+proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "block_coder"
+harness = false
+
+[lints]
+workspace = true

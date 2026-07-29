@@ -1,0 +1,89 @@
+# Suite manifest: which workloads run where, with what sampling.
+# Consumed by ndic-bench-cli (Phase 1) and CI workflows.
+
+[suite]
+default_samples = 30
+warmup_samples = 3
+
+# Codec-configuration matrix (labels must match builtin_configs in the CLI).
+[[config]]
+label = "nd-delta-zstd"
+family = "nd-delta"
+simd = false
+irreversible = false
+lift_levels = 0
+
+[[config]]
+label = "scalar-53-ht"
+family = "nd-lift-ht"
+simd = false
+irreversible = false
+lift_levels = 0
+
+[[config]]
+label = "simd-53-ht"
+family = "nd-lift-ht"
+simd = true
+irreversible = false
+lift_levels = 0
+
+[[config]]
+label = "simd-97-ht"
+family = "nd-lift-ht"
+simd = true
+irreversible = true
+lift_levels = 0
+
+[[config]]
+label = "simd-53-lift-z2"
+family = "nd-lift-ht"
+simd = true
+irreversible = false
+lift_levels = 2
+
+[[config]]
+label = "zfp-rate8"
+family = "nd-zfp"
+simd = true
+irreversible = true
+lift_levels = 0
+
+# Reference lanes: pinned external implementations, identical fixtures.
+[[ref_lane]]
+label = "ref-openjph"
+kind = "cli"
+encode = "ojph_compress"
+expand = "ojph_expand"
+version = "0.24.0"          # pin; update deliberately
+enabled = false              # enabled in Phase 5
+
+[[ref_lane]]
+label = "ref-imagecodecs"
+kind = "python"
+module = "imagecodecs"
+version = "2025.1.1"
+enabled = false
+
+[[ref_lane]]
+label = "ref-zfp"
+kind = "ffi"
+crate = "zfp-sys"
+version = "1.0"             # tracks the reference C library
+enabled = false              # enabled in Phase 5
+
+# CI contexts: which (workload-tier × config) combinations run when.
+[contexts.pr-gate]
+tiers = ["micro", "meso"]
+configs = ["nd-delta-zstd", "simd-53-ht", "simd-53-lift-z2"]
+fail_on_regression = true
+baseline = "main"
+
+[contexts.nightly]
+tiers = ["micro", "meso", "macro"]
+configs = ["nd-delta-zstd", "scalar-53-ht", "simd-53-ht", "simd-97-ht", "simd-53-lift-z2", "zfp-rate8"]
+ref_lanes = true
+
+[contexts.on-demand]
+tiers = ["micro", "meso", "macro"]
+configs = "all"
+ref_lanes = true

@@ -1,0 +1,26 @@
+[package]
+name = "ndic-codestream"
+description = "JPEG 2000 / HTJ2K / JP3D-MCT codestream reader and writer: marker segments, packets, tile-parts, TLM/PLT indexing, and the .jph box format."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+ndic-core.workspace = true
+ndic-htj2k.workspace = true
+ndic-lift.workspace = true
+thiserror.workspace = true
+
+[features]
+default = ["std"]
+std = ["ndic-core/std"]
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

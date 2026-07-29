@@ -1,0 +1,27 @@
+[package]
+name = "ndic-bench-cli"
+description = "The ndic-bench driver: discovers registered benchmarks, runs them across the codec-config matrix, writes JSON records, and diffs baselines."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+publish = false
+
+[[bin]]
+name = "ndic-bench"
+path = "src/main.rs"
+
+[dependencies]
+ndic-bench-core = { path = "../ndic-bench-core" }
+ndic-core.workspace = true
+ndic-htj2k.workspace = true
+ndic-lift.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+inventory.workspace = true
+
+[lints]
+workspace = true

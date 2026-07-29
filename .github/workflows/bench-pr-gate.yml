@@ -1,0 +1,35 @@
+name: Bench PR Gate
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "bench/**"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run pr-gate benchmarks against the main baseline
+        run: |
+          cargo run -p ndic-bench-cli --release -- run \
+            --config simd-53-z0 --config simd-53-z2 \
+            --baseline main \
+            --fail-on-regression \
+            --format markdown | tee bench-report.md
+
+      - name: Sticky PR comment with the report
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: bench-report
+          path: bench-report.md
