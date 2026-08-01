@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "nd-image-codecs"
-version = "0.0.0"
+version = "0.0.1"
 description = "Composable Zarr v3 codecs (nd-delta, nd-lift-ht, nd-zfp) for ND scientific images — cross-axis lifting, HTJ2K coefficient planes, and ZFP, with an axis-aware codec-series builder."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,4 +41,4 @@ Documentation = "https://github.com/fideus-labs/nd-image-codecs/tree/main/docs"
 [tool.maturin]
 module-name = "nd_image_codecs._nd_image_codecs"
 python-source = "python"
-features = ["pyo3/abi3-py311"]
+features = ["pyo3/abi3-py311", "pyo3/extension-module"]

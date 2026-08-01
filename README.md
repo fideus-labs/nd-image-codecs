@@ -156,7 +156,7 @@ See [docs/development/commands.md](docs/development/commands.md) for the full li
 ## 📚 Documentation
 
 - [Architecture](docs/architecture/index.md) — the codec series builder, the `nd_lift` transform, the HTJ2K plane codec, the ZFP port, codestream syntax, and range access
-- [Development](docs/development/) — commands, style, commits, benchmarking, test data
+- [Development](docs/development/) — commands, style, commits, benchmarking, test data, [publishing](docs/development/publishing.md)
 - [Roadmap](docs/development/roadmap/index.md) — six implementation phases with detailed guidance and references
 - [Usage](docs/usage/index.md) — CLI, Rust, Python, TypeScript, and Zarr/OME-Zarr guides
 

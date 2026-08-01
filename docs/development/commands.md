@@ -56,3 +56,19 @@ See [benchmarking.md](./benchmarking.md) for record layout, baselines, and the g
 | --- | --- |
 | `cargo run -p ndic-cli -- inspect fixtures/tiny.jph` | Print codestream structure |
 | `cargo run -p ndic-cli -- index fixtures/tiny.jph --target thumbnail` | Print the byte-range plan |
+
+### Release
+
+| Command | Purpose |
+| --- | --- |
+| `cargo publish --workspace --dry-run` | Rehearse the crates.io release (skips `publish = false` members) |
+| `cargo publish --workspace` | Publish all seven crates in dependency order |
+| `maturin sdist -m bindings/python/nd-image-codecs/Cargo.toml -o dist` | Build the PyPI source distribution |
+| `maturin build --release -m bindings/python/nd-image-codecs/Cargo.toml -o dist` | Build the abi3 wheel for this platform |
+| `twine check dist/*` | Validate the PyPI artifacts before upload |
+| `twine upload dist/*` | Upload to PyPI |
+| `cd bindings/typescript && npm publish --access public` | Publish `@fideus-labs/nd-image-codecs` |
+| `cd bindings/javascript && npm publish` | Publish the unscoped `nd-image-codecs` name placeholder |
+
+See [publishing.md](./publishing.md) for the full manual release procedure,
+prerequisites, version-bump locations, and verification steps.

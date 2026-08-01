@@ -1,6 +1,6 @@
 {
   "name": "@fideus-labs/nd-image-codecs",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Composable Zarr v3 codecs (nd-delta, nd-lift-ht, nd-zfp) for ND scientific images \u2014 cross-axis lifting, HTJ2K coefficient planes, and ZFP, with an axis-aware codec-series builder (WebAssembly).",
   "license": "MIT",
   "author": "Fideus Labs LLC",
@@ -19,7 +19,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build:wasm": "wasm-pack build ../../crates/ndic-zarr --target web --out-dir ../../bindings/typescript/src/wasm -- --features wasm",

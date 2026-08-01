@@ -846,7 +846,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-bench-cli"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "clap",
  "inventory",
@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-bench-core"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "inventory",
  "serde",
@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-cli"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -882,7 +882,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-codestream"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "ndic-core",
  "ndic-htj2k",
@@ -893,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-core"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "approx",
  "bytemuck",
@@ -903,7 +903,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-htj2k"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -913,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-lift"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "ndic-core",
  "proptest",
@@ -921,7 +921,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-py"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "ndic-core",
  "ndic-zarr",
@@ -931,7 +931,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-zarr"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "js-sys",
  "ndic-codestream",
@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "ndic-zfp"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "ndic-core",
  "proptest",

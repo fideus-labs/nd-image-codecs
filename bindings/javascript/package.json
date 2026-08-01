@@ -1,0 +1,27 @@
+{
+  "name": "nd-image-codecs",
+  "version": "0.0.1",
+  "description": "Name placeholder for nd-image-codecs — composable Zarr v3 codecs for ND scientific images. The published package is @fideus-labs/nd-image-codecs.",
+  "license": "MIT",
+  "author": "Fideus Labs LLC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fideus-labs/nd-image-codecs.git",
+    "directory": "bindings/javascript"
+  },
+  "homepage": "https://github.com/fideus-labs/nd-image-codecs",
+  "keywords": [
+    "htj2k",
+    "jpeg2000",
+    "zfp",
+    "zarr",
+    "numcodecs",
+    "zarrita",
+    "wasm",
+    "compression",
+    "ome-ngff"
+  ],
+  "files": [
+    "README.md"
+  ]
+}
