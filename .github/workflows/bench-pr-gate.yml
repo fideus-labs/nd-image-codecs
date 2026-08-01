@@ -12,6 +12,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# The sticky-comment step needs to write PR comments; everything else is
+# read-only. (Fork PRs still get a read-only token — the comment step is
+# best-effort there.)
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   bench:
     runs-on: ubuntu-24.04
