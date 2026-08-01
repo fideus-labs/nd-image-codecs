@@ -33,18 +33,30 @@ the binary. Adding a benchmark requires **no** central-list edit.
 
 ### BenchConfig (the matrix)
 
-Built-in configs: `nd-delta-zstd`, `scalar-53-ht`, `simd-53-ht`, `simd-97-ht`, `simd-53-lift-z2`, `zfp-rate8`. Later phases
-adds reference lanes (`ref-openjph`, `ref-imagecodecs`) that shell out to pinned
+Built-in configs: `blosc-zstd` (the plain-compressor reference lane),
+`nd-delta-zstd`, `nd-delta-lz4`, `scalar-53-ht`, `simd-53-ht`, `simd-97-ht`, `simd-53-lift-z2`, `zfp-rate8`. Later phases
+add reference lanes (`ref-openjph`, `ref-imagecodecs`) that shell out to pinned
 external implementations on identical fixtures and emit the same record schema.
 `bench/benchmarks.toml` maps configs and workload tiers (micro/meso/macro) to CI
 contexts (pr-gate / nightly / on-demand).
 
+### Python-side lanes (`bench/py/`)
+
+The Phase 1 nd-delta family is composed entirely of existing Zarr codecs, so
+its lanes (`run_nd_delta.py`) exercise the real consumer path — pipelines
+authored by `nd_image_codecs.codec_series`, executed by `zarr-python` — on the
+deterministic synthetic microscopy fixture (`synthetic.py`). They emit the
+same `BenchRecord` schema into the same records tree, so `ndic-bench compare`
+diffs and gates them exactly like Rust workloads.
+
 ### BenchRecord (the schema)
 
 One JSON file per `(benchmark, config)`: name, config label, git hash, sample count,
-median/min/max ns, and raw per-sample ns. Raw samples are kept so the comparer can
+median/min/max ns, and raw per-sample ns; codec workloads add
+`bytes_in`/`bytes_out` so compression ratio is tracked alongside throughput.
+Raw samples are kept so the comparer can
 compute noise envelopes without re-running, and so the viewer can plot distributions.
-Phase 6 extends records with `bytes_out`/`psnr` for rate–distortion gating.
+Phase 6 extends records with `psnr` for rate–distortion gating.
 
 ### Baselines
 
@@ -54,16 +66,20 @@ toolchain, git hash, date). Baselines change only through the reviewed
 
 ### The gate
 
-For each record pair (current, baseline):
+For each record pair (current, baseline), two regression kinds
+(`--gate time|ratio|both`, default `both`):
 
 ```
-regressed = median_cur ≥ median_base × (1 + 0.10)
-         && (median_cur − median_base) > σ(baseline raw samples)
+time_regressed  = median_cur ≥ median_base × (1 + 0.10)
+               && (median_cur − median_base) > σ(baseline raw samples)
+ratio_regressed = bytes_out_cur ≥ bytes_out_base × (1 + 0.02)
 ```
 
-Both conditions — the percentage catches real slowdowns, the σ envelope suppresses
-noisy micro-benchmarks. `--fail-on-regression` turns any regressed pair into exit
-code 1; the PR gate posts the markdown report as a sticky comment.
+Both time conditions — the percentage catches real slowdowns, the σ envelope suppresses
+noisy micro-benchmarks. The ratio gate is deterministic, so it holds across
+machine classes; the PR gate runs `--gate ratio` because CI runners differ from
+the baseline capture machine. `--fail-on-regression` turns any regressed pair
+into exit code 1; the PR gate posts the markdown report as a sticky comment.
 
 ### Reports
 

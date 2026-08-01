@@ -5,6 +5,7 @@ on:
     paths:
       - "crates/**"
       - "bench/**"
+      - "bindings/python/**"
       - "Cargo.toml"
       - "rust-toolchain.toml"
 
@@ -18,12 +19,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Run pr-gate benchmarks against the main baseline
+      - name: Install Python bench dependencies
+        run: pip install "zarr>=3" numpy numcodecs
+
+      - name: Run the nd-delta lanes
+        run: python3 bench/py/run_nd_delta.py --samples 10
+
+      # Rust-side workloads register via inventory as codec phases land;
+      # this writes their records into the same tree.
+      - name: Run Rust benchmarks
+        run: cargo run -p ndic-bench-cli --release -- run --quiet
+
+      # The committed baseline's σ noise envelope is only valid on the runner
+      # class it was captured on, so the PR gate fails only on the
+      # deterministic compressed-size (ratio) gate; timing is reported.
+      - name: Compare against the main baseline
+        shell: bash
         run: |
-          cargo run -p ndic-bench-cli --release -- run \
-            --config simd-53-z0 --config simd-53-z2 \
-            --baseline main \
+          cargo run -p ndic-bench-cli --release -- compare bench/baselines/main \
+            --gate ratio \
             --fail-on-regression \
             --format markdown | tee bench-report.md
 

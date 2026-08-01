@@ -7,7 +7,21 @@ warmup_samples = 3
 
 # Codec-configuration matrix (labels must match builtin_configs in the CLI).
 [[config]]
+label = "blosc-zstd"          # plain bytes → blosc(shuffle, zstd): the reference lane
+family = "baseline"
+simd = false
+irreversible = false
+lift_levels = 0
+
+[[config]]
 label = "nd-delta-zstd"
+family = "nd-delta"
+simd = false
+irreversible = false
+lift_levels = 0
+
+[[config]]
+label = "nd-delta-lz4"
 family = "nd-delta"
 simd = false
 irreversible = false
@@ -74,13 +88,16 @@ enabled = false              # enabled in Phase 5
 # CI contexts: which (workload-tier × config) combinations run when.
 [contexts.pr-gate]
 tiers = ["micro", "meso"]
-configs = ["nd-delta-zstd", "simd-53-ht", "simd-53-lift-z2"]
+configs = ["blosc-zstd", "nd-delta-zstd", "nd-delta-lz4", "simd-53-ht", "simd-53-lift-z2"]
 fail_on_regression = true
 baseline = "main"
+# Cross-machine timing is not comparable to the committed baseline's σ
+# envelope, so the PR gate fails only on the deterministic ratio gate.
+gate = "ratio"
 
 [contexts.nightly]
 tiers = ["micro", "meso", "macro"]
-configs = ["nd-delta-zstd", "scalar-53-ht", "simd-53-ht", "simd-97-ht", "simd-53-lift-z2", "zfp-rate8"]
+configs = ["blosc-zstd", "nd-delta-zstd", "nd-delta-lz4", "scalar-53-ht", "simd-53-ht", "simd-97-ht", "simd-53-lift-z2", "zfp-rate8"]
 ref_lanes = true
 
 [contexts.on-demand]
