@@ -874,6 +874,7 @@ dependencies = [
  "clap",
  "ndic-codestream",
  "ndic-core",
+ "ndic-lift",
  "ndic-zarr",
  "serde_json",
  "tracing",
