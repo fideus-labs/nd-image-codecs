@@ -208,6 +208,16 @@ fn run(
     let selected: Vec<_> = if config.is_empty() {
         configs
     } else {
+        // A typo'd label would otherwise select nothing and let the gate
+        // pass without measuring anything — fail fast instead.
+        let known: Vec<&str> = configs.iter().map(|c| c.label.as_str()).collect();
+        if let Some(bad) = config.iter().find(|c| !known.contains(&c.as_str())) {
+            eprintln!(
+                "ndic-bench: unknown config {bad:?} (known: {})",
+                known.join(", ")
+            );
+            return ExitCode::from(2);
+        }
         configs
             .into_iter()
             .filter(|c| config.contains(&c.label))

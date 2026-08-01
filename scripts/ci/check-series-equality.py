@@ -134,7 +134,7 @@ def main() -> int:
     ndic = build_ndic()
     ts_all = ts_series(cases)
     failures = 0
-    for case, ts in zip(cases, ts_all):
+    for case, ts in zip(cases, ts_all, strict=True):
         expected = ERROR if case.get("error") else case["expected"]
         results = {
             "rust": rust_series(ndic, case),
