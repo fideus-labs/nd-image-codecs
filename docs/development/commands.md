@@ -33,10 +33,12 @@ All commands run from the repository root.
 
 | Command | Purpose |
 | --- | --- |
-| `cargo run -p ndic-bench-cli --release -- list` | List registered benchmarks |
+| `python3 bench/py/run_nd_delta.py` | The Phase 1 nd-delta lanes via `zarr-python` (needs `zarr>=3`) |
+| `cargo run -p ndic-bench-cli --release -- list` | List registered Rust benchmarks |
 | `cargo run -p ndic-bench-cli --release -- run` | Full matrix run, JSON records under `target/benchmarks/` |
-| `cargo run -p ndic-bench-cli --release -- run --filter htj2k --config simd-53-z0` | Subset run |
-| `cargo run -p ndic-bench-cli --release -- run --baseline main --fail-on-regression` | The PR gate, locally |
+| `cargo run -p ndic-bench-cli --release -- run --filter htj2k --config simd-53-ht` | Subset run |
+| `cargo run -p ndic-bench-cli --release -- run --baseline main --fail-on-regression` | Run + gate against the committed baseline |
+| `cargo run -p ndic-bench-cli --release -- compare main --gate ratio --fail-on-regression` | The PR gate, locally |
 | `cargo run -p ndic-bench-cli --release -- compare bench/baselines/main` | Diff latest run against the committed baseline |
 
 See [benchmarking.md](./benchmarking.md) for record layout, baselines, and the gate.
@@ -46,9 +48,11 @@ See [benchmarking.md](./benchmarking.md) for record layout, baselines, and the g
 | Command | Purpose |
 | --- | --- |
 | `cd bindings/python/nd-image-codecs && maturin develop --release` | Build + install the Python package into the active venv |
-| `cd bindings/python/nd-image-codecs && pytest` | Python binding tests |
+| `cd bindings/python/nd-image-codecs && pytest` | Python tests (pure-Python builder + nd-delta round-trip; needs `pytest zarr numpy`) |
 | `cd bindings/typescript && npm run build:wasm && npm run build` | WASM + TypeScript build |
-| `cd bindings/typescript && npm test` | TS tests (vitest) |
+| `cd bindings/typescript && npm test` | TS tests (vitest, incl. the fixture matrix) |
+| `python3 scripts/ci/check-series-equality.py` | Cross-language `codec_series` equality over the fixture matrix |
+| `python3 scripts/gen-series-fixtures.py` | Regenerate `fixtures/codec-series/matrix.json` (only on deliberate builder changes) |
 
 ### CLI smoke
 

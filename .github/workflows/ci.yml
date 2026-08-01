@@ -69,6 +69,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: pipx install maturin
       - run: maturin build --release -m bindings/python/nd-image-codecs/Cargo.toml
+      - run: pip install pytest "zarr>=3" numpy numcodecs
+      - run: python -m pytest bindings/python/nd-image-codecs/tests -q
+
+  typescript:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+        working-directory: bindings/typescript
+      - run: npm run build
+        working-directory: bindings/typescript
+      - run: npm test
+        working-directory: bindings/typescript
 
   series-equality:
     runs-on: ubuntu-24.04

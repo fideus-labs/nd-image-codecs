@@ -5,7 +5,7 @@
 //! series generation, codestream introspection, byte-range planning, and
 //! thumbnail extraction.
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 /// nd-image-codecs command-line interface.
 #[derive(Parser)]
@@ -48,6 +48,51 @@ struct SeriesArgs {
     /// Codec family: `nd-delta`, `nd-lift-ht`, or `nd-zfp`.
     #[arg(long, default_value = "nd-lift-ht")]
     family: String,
+    /// Decorrelate exactly these dimension indices (replaces the defaults),
+    /// e.g. `--decorrelate 1` for a correlated channel axis.
+    #[arg(long, value_delimiter = ',', conflicts_with_all = ["add_decorrelate", "remove_decorrelate"])]
+    decorrelate: Option<Vec<usize>>,
+    /// Dimension indices to decorrelate in addition to the defaults.
+    #[arg(long, value_delimiter = ',')]
+    add_decorrelate: Vec<usize>,
+    /// Dimension indices to exclude from the default decorrelation set.
+    #[arg(long, value_delimiter = ',')]
+    remove_decorrelate: Vec<usize>,
+    /// Transform kind for decorrelation axes (nd-lift-ht).
+    #[arg(long, value_enum, default_value = "lift53")]
+    lift: LiftArg,
+    /// In-plane resolution levels for the htj2k plane codec.
+    #[arg(long, default_value_t = 5)]
+    xy_levels: u8,
+    /// Lossy coding (default is reversible / lossless).
+    #[arg(long)]
+    lossy: bool,
+    /// Blosc backend for the nd-delta family.
+    #[arg(long, value_enum, default_value = "zstd")]
+    delta_backend: DeltaBackendArg,
+    /// ZFP bits-per-value for nd-zfp (omit for reversible mode).
+    #[arg(long)]
+    zfp_rate: Option<f64>,
+}
+
+/// `--lift` values.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LiftArg {
+    /// First-order differencing.
+    Delta,
+    /// Reversible Haar lifting.
+    Haar,
+    /// Reversible 5/3-style lifting.
+    Lift53,
+}
+
+/// `--delta-backend` values.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum DeltaBackendArg {
+    /// Blosc-Zstd (best ratio).
+    Zstd,
+    /// Blosc-LZ4 (fastest).
+    Lz4,
 }
 
 fn main() {
@@ -71,7 +116,8 @@ fn main() {
 }
 
 fn run_series(args: &SeriesArgs) -> Result<String, Box<dyn std::error::Error>> {
-    use ndic_zarr::series::{Axis, Family, SeriesSpec, codec_series};
+    use ndic_lift::LiftKind;
+    use ndic_zarr::series::{Axis, Decorrelate, DeltaBackend, Family, SeriesSpec, codec_series};
     let axes: Vec<Axis> = args
         .axes
         .split(',')
@@ -89,7 +135,140 @@ fn run_series(args: &SeriesArgs) -> Result<String, Box<dyn std::error::Error>> {
         "nd-zfp" => Family::NdZfp,
         other => return Err(format!("unknown family {other:?}").into()),
     };
-    let spec = SeriesSpec::new(axes, chunks, &args.dtype, family);
+    let mut spec = SeriesSpec::new(axes, chunks, &args.dtype, family);
+    spec.decorrelate = match &args.decorrelate {
+        Some(exact) => Decorrelate::Exact(exact.clone()),
+        None if !args.add_decorrelate.is_empty() || !args.remove_decorrelate.is_empty() => {
+            Decorrelate::Adjust {
+                add: args.add_decorrelate.clone(),
+                remove: args.remove_decorrelate.clone(),
+            }
+        }
+        None => Decorrelate::Defaults,
+    };
+    spec.lift = match args.lift {
+        LiftArg::Delta => LiftKind::Delta,
+        LiftArg::Haar => LiftKind::Haar,
+        LiftArg::Lift53 => LiftKind::Lift53,
+    };
+    spec.xy_levels = args.xy_levels;
+    spec.reversible = !args.lossy;
+    spec.delta_backend = match args.delta_backend {
+        DeltaBackendArg::Zstd => DeltaBackend::Zstd,
+        DeltaBackendArg::Lz4 => DeltaBackend::Lz4,
+    };
+    spec.zfp_rate = args.zfp_rate;
     let codecs = codec_series(&spec)?;
     Ok(serde_json::to_string_pretty(&codecs)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn series(argv: &[&str]) -> Result<serde_json::Value, String> {
+        let cli =
+            Cli::try_parse_from([&["ndic", "series"], argv].concat()).map_err(|e| e.to_string())?;
+        let Command::Series(parsed) = cli.command else {
+            unreachable!("series subcommand");
+        };
+        let json = run_series(&parsed).map_err(|e| e.to_string())?;
+        Ok(serde_json::from_str(&json).expect("valid JSON output"))
+    }
+
+    #[test]
+    fn emits_all_three_families() {
+        for (family, tail) in [
+            ("nd-delta", "blosc"),
+            ("nd-lift-ht", "htj2k"),
+            ("nd-zfp", "nd_zfp"),
+        ] {
+            let codecs = series(&["--chunks", "1,1,32,256,256", "--family", family]).unwrap();
+            let names: Vec<_> = codecs
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c["name"].as_str().unwrap().to_owned())
+                .collect();
+            assert_eq!(
+                names.last().map(String::as_str),
+                Some(tail),
+                "{family}: {names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn decorrelate_override_and_lift_kind() {
+        let codecs = series(&[
+            "--chunks",
+            "1,4,32,256,256",
+            "--decorrelate",
+            "1",
+            "--lift",
+            "haar",
+        ])
+        .unwrap();
+        let tf = &codecs[0]["configuration"]["transforms"][0];
+        assert_eq!(tf["axis"], "c");
+        assert_eq!(tf["kind"], "haar");
+    }
+
+    #[test]
+    fn adjust_flags_and_lossy_float() {
+        let codecs = series(&[
+            "--axes",
+            "z,y,x",
+            "--chunks",
+            "32,256,256",
+            "--dtype",
+            "float32",
+            "--lossy",
+            "--xy-levels",
+            "3",
+            "--remove-decorrelate",
+            "0",
+        ])
+        .unwrap();
+        assert_eq!(codecs[0]["name"], "htj2k");
+        assert_eq!(codecs[0]["configuration"]["xy_levels"], 3);
+        assert_eq!(codecs[0]["configuration"]["reversible"], false);
+    }
+
+    #[test]
+    fn delta_backend_and_zfp_rate() {
+        let codecs = series(&[
+            "--chunks",
+            "1,1,32,256,256",
+            "--family",
+            "nd-delta",
+            "--delta-backend",
+            "lz4",
+        ])
+        .unwrap();
+        let blosc = codecs.as_array().unwrap().last().unwrap().clone();
+        assert_eq!(blosc["configuration"]["cname"], "lz4");
+
+        let codecs = series(&[
+            "--axes",
+            "z,y,x",
+            "--chunks",
+            "32,256,256",
+            "--dtype",
+            "float32",
+            "--family",
+            "nd-zfp",
+            "--zfp-rate",
+            "8",
+        ])
+        .unwrap();
+        assert_eq!(codecs[0]["configuration"]["mode"], "fixed_rate");
+        assert_eq!(codecs[0]["configuration"]["rate"], 8.0);
+    }
+
+    #[test]
+    fn invalid_input_is_an_error() {
+        assert!(series(&["--chunks", "32,256,256", "--axes", "z,y,w"]).is_err());
+        assert!(series(&["--chunks", "1,1", "--family", "no-such-family"]).is_err());
+    }
 }

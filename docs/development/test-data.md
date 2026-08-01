@@ -43,9 +43,12 @@ decorrelation-gain measurements (`scripts/fetch-bench-data.sh`):
   `nd_lift` gain measurement;
 - float-valued simulation/scientific fields for the nd-zfp lanes.
 
-Exact URLs, licenses, and SHA-256 pins live in `scripts/bench-data.lock.toml` (created
-with Phase 1's first fetch script). Cached under `~/.cache/nd-image-codecs/` — CI restores this
-cache rather than re-downloading.
+Exact URLs, licenses, and SHA-256 pins live in `scripts/bench-data.lock.toml`
+(created with the Phase 5 fetch script). Cached under `~/.cache/nd-image-codecs/` — CI
+restores this cache rather than re-downloading. Until then, the Phase 1 bench
+lanes run on the deterministic synthetic microscopy generator committed at
+`bench/py/synthetic.py` (seeded Gaussian blobs + Poisson noise), so records are
+reproducible without any download.
 
 ### Round-trip invariants (enforced by proptest)
 
