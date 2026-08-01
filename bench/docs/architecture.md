@@ -72,7 +72,7 @@ For each record pair (current, baseline), two regression kinds
 ```
 time_regressed  = median_cur ≥ median_base × (1 + 0.10)
                && (median_cur − median_base) > σ(baseline raw samples)
-ratio_regressed = bytes_out_cur ≥ bytes_out_base × (1 + 0.02)
+ratio_regressed = (bytes_out_cur / bytes_in_cur) ≥ (bytes_out_base / bytes_in_base) × (1 + 0.02)
 ```
 
 Both time conditions — the percentage catches real slowdowns, the σ envelope suppresses

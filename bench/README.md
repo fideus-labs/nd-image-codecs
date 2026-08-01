@@ -41,9 +41,11 @@ Two regression kinds, selected with `--gate time|ratio|both` (default `both`):
 - **time** — median ≥ 10 % over baseline **and** beyond the baseline's σ noise
   envelope (`REGRESSION_PCT_THRESHOLD` in `ndic-bench-core`). Only meaningful
   against a baseline captured on the same machine class.
-- **ratio** — compressed size (`bytes_out`) ≥ 2 % over baseline
-  (`RATIO_REGRESSION_PCT_THRESHOLD`). Deterministic, so the PR gate uses
-  `--gate ratio` even though CI runners differ from the baseline machine.
+- **ratio** — compression ratio (`bytes_out / bytes_in`) ≥ 2 % worse than
+  baseline (`RATIO_REGRESSION_PCT_THRESHOLD`); normalizing by `bytes_in`
+  keeps the gate meaningful across fixture-size changes. Deterministic, so
+  the PR gate uses `--gate ratio` even though CI runners differ from the
+  baseline machine.
 
 Exit codes: `0` clean, `1` regression with `--fail-on-regression`, `2` benchmark
 failure.

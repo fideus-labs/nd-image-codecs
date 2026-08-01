@@ -245,9 +245,11 @@ impl Baseline {
 /// baseline median **and** the increase exceeds the baseline's σ envelope.
 pub const REGRESSION_PCT_THRESHOLD: f64 = 0.10;
 
-/// A compressed-size regression is flagged when `bytes_out` grows by ≥ this
-/// fraction over the baseline. Sizes are deterministic, so no noise envelope
-/// applies — this gate is meaningful even across machine classes.
+/// A compression regression is flagged when the ratio (`bytes_out /
+/// bytes_in`) worsens by ≥ this fraction over the baseline. Normalizing by
+/// `bytes_in` keeps the gate meaningful when the fixture size changes, and
+/// sizes are deterministic, so no noise envelope applies — this gate holds
+/// even across machine classes.
 pub const RATIO_REGRESSION_PCT_THRESHOLD: f64 = 0.02;
 
 /// Median of raw per-sample durations (0 for an empty slice).
@@ -302,7 +304,8 @@ pub struct DiffRow {
     pub baseline_ratio: Option<f64>,
     /// Median ≥ 10 % over baseline **and** beyond the baseline's σ envelope.
     pub time_regressed: bool,
-    /// `bytes_out` grew ≥ 2 % over the baseline.
+    /// Compression ratio (`bytes_out / bytes_in`) worsened ≥ 2 % over the
+    /// baseline.
     pub ratio_regressed: bool,
 }
 
@@ -327,9 +330,11 @@ pub fn diff(current: &[BenchRecord], baseline: &[BenchRecord]) -> Vec<DiffRow> {
                     && cur.median_ns as f64 >= b.median_ns as f64 * (1.0 + REGRESSION_PCT_THRESHOLD)
                     && (cur.median_ns as f64 - b.median_ns as f64) > sigma(&b.raw_ns)
             });
-            let ratio_regressed = base.is_some_and(|b| match (cur.bytes_out, b.bytes_out) {
-                (Some(cur_out), Some(base_out)) if base_out > 0 => {
-                    cur_out as f64 >= base_out as f64 * (1.0 + RATIO_REGRESSION_PCT_THRESHOLD)
+            // Compare ratios, not absolute bytes_out, so a fixture-size
+            // change between baseline and candidate doesn't misfire.
+            let ratio_regressed = base.is_some_and(|b| match (cur.ratio(), b.ratio()) {
+                (Some(cur_ratio), Some(base_ratio)) if base_ratio > 0.0 => {
+                    cur_ratio >= base_ratio * (1.0 + RATIO_REGRESSION_PCT_THRESHOLD)
                 }
                 _ => false,
             });
@@ -462,6 +467,19 @@ mod tests {
         assert!(!one(&close, &base).ratio_regressed);
         let no_bytes = record("cfg", "m/n", vec![100], None);
         assert!(!one(&no_bytes, &base).ratio_regressed);
+    }
+
+    #[test]
+    fn ratio_gate_normalizes_for_fixture_size_changes() {
+        let base = record("cfg", "m/n", vec![100], Some((1000, 200)));
+        // Fixture doubled, ratio unchanged → bytes_out doubling is not a
+        // regression.
+        let doubled = record("cfg", "m/n", vec![100], Some((2000, 400)));
+        assert!(!one(&doubled, &base).ratio_regressed);
+        // Fixture halved but ratio worsened (0.206 vs 0.200) → regression
+        // even though absolute bytes_out shrank.
+        let worse = record("cfg", "m/n", vec![100], Some((500, 103)));
+        assert!(one(&worse, &base).ratio_regressed);
     }
 
     #[test]

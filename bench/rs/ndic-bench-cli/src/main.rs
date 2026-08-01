@@ -58,7 +58,7 @@ pub enum Format {
 enum Gate {
     /// Median time ≥ 10 % over baseline and beyond its σ envelope.
     Time,
-    /// Compressed size ≥ 2 % over baseline (deterministic).
+    /// Compression ratio ≥ 2 % worse than baseline (deterministic).
     Ratio,
     /// Either kind.
     Both,

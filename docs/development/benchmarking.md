@@ -77,9 +77,10 @@ Both conditions must hold — this suppresses false alarms from noisy micro-benc
 while still catching real slowdowns. The σ envelope is only meaningful against a
 baseline captured on the same machine class.
 
-**Ratio** — `bytes_out` grew ≥ **2 %** over the baseline
-(`RATIO_REGRESSION_PCT_THRESHOLD = 0.02`). Compressed sizes are deterministic,
-so this gate holds across machine classes.
+**Ratio** — the compression ratio (`bytes_out / bytes_in`) worsened ≥ **2 %**
+over the baseline (`RATIO_REGRESSION_PCT_THRESHOLD = 0.02`). Normalizing by
+`bytes_in` keeps the gate meaningful when a fixture changes size, and
+compressed sizes are deterministic, so this gate holds across machine classes.
 
 `bench-pr-gate.yml` runs the nd-delta lanes and any registered Rust workloads on
 every PR and compares against `bench/baselines/main/` with
