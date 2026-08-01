@@ -49,9 +49,16 @@ codec**: the **nd-delta** family (built entirely from existing Zarr codecs), the
 
 ## Acceptance criteria
 
-- [ ] `codec_series` produces identical JSON in Rust, Python, and TypeScript for
-      the whole fixture matrix, enforced in CI.
-- [ ] An nd-delta pipeline authored by the builder round-trips real OME-Zarr data
-      via `zarr-python`.
-- [ ] `ndic series` CLI emits valid pipelines for all three families.
-- [ ] Benchmark harness records committed baselines for the nd-delta lanes.
+- [x] `codec_series` produces identical JSON in Rust, Python, and TypeScript for
+      the whole fixture matrix, enforced in CI
+      (`fixtures/codec-series/matrix.json` + `scripts/ci/check-series-equality.py`,
+      the `series-equality` job, and per-language matrix tests).
+- [x] An nd-delta pipeline authored by the builder round-trips real OME-Zarr data
+      via `zarr-python`
+      (`bindings/python/nd-image-codecs/tests/test_nd_delta_roundtrip.py`).
+- [x] `ndic series` CLI emits valid pipelines for all three families
+      (full option set: decorrelation overrides, lift kind, xy levels, lossy,
+      delta backend, ZFP rate; unit-tested).
+- [x] Benchmark harness records committed baselines for the nd-delta lanes
+      (`bench/py/run_nd_delta.py` → `bench/baselines/main/`, gated by
+      `ndic-bench compare` in `bench-pr-gate.yml`).
