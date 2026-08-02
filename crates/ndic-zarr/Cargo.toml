@@ -12,7 +12,7 @@ homepage.workspace = true
 [features]
 default = []
 # Registers the codecs into the zarrs plugin registry (native use).
-zarrs = ["dep:zarrs"]
+zarrs = ["dep:zarrs", "dep:inventory", "dep:bytemuck", "ndic-lift/serde"]
 # WASM build for the TypeScript / numcodecs.js binding.
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]
 
@@ -26,8 +26,17 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 zarrs = { workspace = true, optional = true }
+inventory = { workspace = true, optional = true }
+bytemuck = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The round-trip tests compose nd_lift with stock zarrs codecs
+# (`transpose → nd_lift → bytes → blosc`); dev-only so the default and wasm
+# builds stay lean. The test files are additionally gated on the crate's
+# `zarrs` feature.
+zarrs = { workspace = true, features = ["blosc", "transpose"] }
 
 [lints]
 workspace = true

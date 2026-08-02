@@ -15,8 +15,11 @@
 //! `docs/architecture/codec-series.md`.
 //!
 //! Codecs register into the `zarrs` plugin registry via `inventory` when the
-//! `zarrs` feature is enabled (roadmap Phases 2–5).
+//! `zarrs` feature is enabled (roadmap Phases 2–5); `nd_lift` (Phase 2) is
+//! implemented in the feature-gated `lift_codec` module.
 
+#[cfg(feature = "zarrs")]
+pub mod lift_codec;
 pub mod series;
 
 /// The registered Zarr v3 array-to-bytes codec identifier for the HTJ2K

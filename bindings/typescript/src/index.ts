@@ -25,22 +25,71 @@ export type ZarrCodec = { name: string; configuration?: Record<string, unknown> 
 // ---------------------------------------------------------------------------
 // Registered codec classes (scaffolds; see roadmap)
 // ---------------------------------------------------------------------------
-export interface NdLiftConfig {
-  name: "nd_lift";
-  configuration?: { version?: string; transforms?: Record<string, unknown>[] };
+/** One `nd_lift` decorrelation step (the schema the Rust codec accepts). */
+export interface NdLiftTransform {
+  /** Axis name (e.g. `"z"`, `"t"`); informational. */
+  axis: string;
+  /** Axis index into the post-transpose chunk shape. */
+  dimension: number;
+  /** Transform kind. */
+  kind: "delta" | "haar" | "lift53";
+  /** Dyadic decomposition levels (ignored for `delta`; >= 1 for lifting kinds). */
+  levels: number;
+  /** Group length along the axis (0 = the whole chunk extent). */
+  group: number;
 }
 
+/** The `nd_lift` configuration version this package implements. */
+export const ND_LIFT_VERSION = "0.1";
+
+export interface NdLiftConfig {
+  name: "nd_lift";
+  configuration?: { version?: string; transforms?: NdLiftTransform[] };
+}
+
+/**
+ * Config class for the `nd_lift` Zarr v3 array-to-array codec. Serializes
+ * exactly the configurations the Rust codec accepts and applies the same
+ * validation (version gate, `levels >= 1` for lifting kinds). The WASM
+ * encode/decode core lands with the nd-lift-ht integration (roadmap Phase 4).
+ */
 export class NdLift {
   static codecName = "nd_lift" as const;
-  constructor(public readonly config: NdLiftConfig) {}
+
+  constructor(public readonly config: NdLiftConfig) {
+    const { version = ND_LIFT_VERSION, transforms = [] } = config.configuration ?? {};
+    const [major, minor] = String(version).split(".");
+    if (major !== "0" || minor !== "1") {
+      throw new Error(
+        `nd_lift configuration version ${JSON.stringify(version)} is not supported by this ` +
+          `build (implements ${ND_LIFT_VERSION}); refusing rather than mis-decoding`,
+      );
+    }
+    for (const t of transforms) {
+      if (!["delta", "haar", "lift53"].includes(t.kind)) {
+        throw new Error(`nd_lift transform kind ${JSON.stringify(t.kind)} is unknown`);
+      }
+      if (t.kind !== "delta" && (t.levels ?? 0) < 1) {
+        throw new Error(`nd_lift transform kind ${JSON.stringify(t.kind)} needs levels >= 1`);
+      }
+    }
+  }
+
   static fromConfig(config: NdLiftConfig): NdLift {
     return new NdLift(config);
   }
+
+  /** The Zarr v3 codec metadata object (the schema the Rust codec parses). */
+  toDict(): { name: "nd_lift"; configuration: { version: string; transforms: NdLiftTransform[] } } {
+    const { version = ND_LIFT_VERSION, transforms = [] } = this.config.configuration ?? {};
+    return { name: "nd_lift", configuration: { version, transforms } };
+  }
+
   async encode(_data: Uint8Array): Promise<Uint8Array> {
-    throw new Error("nd_lift encode: implemented in roadmap Phase 2");
+    throw new Error("nd_lift encode: the WASM core lands with roadmap Phase 4 (nd-lift-ht)");
   }
   async decode(_data: Uint8Array): Promise<Uint8Array> {
-    throw new Error("nd_lift decode: implemented in roadmap Phase 2");
+    throw new Error("nd_lift decode: the WASM core lands with roadmap Phase 4 (nd-lift-ht)");
   }
 }
 

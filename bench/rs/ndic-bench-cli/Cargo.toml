@@ -18,7 +18,8 @@ path = "src/main.rs"
 ndic-bench-core = { path = "../ndic-bench-core" }
 ndic-core.workspace = true
 ndic-htj2k.workspace = true
-ndic-lift.workspace = true
+# `bench` compiles in the crate's inventory-registered transform workloads.
+ndic-lift = { workspace = true, features = ["bench"] }
 clap.workspace = true
 serde_json.workspace = true
 inventory.workspace = true

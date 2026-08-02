@@ -30,7 +30,7 @@ test = ["pytest", "imagecodecs", "zarr>=3.0"]
 # without an explicit import. See
 # https://zarr.readthedocs.io/en/stable/user-guide/extending.html
 [project.entry-points."zarr.codecs"]
-"nd_lift" = "nd_image_codecs:NdLift"
+"nd_lift" = "nd_image_codecs.zarr_codec:NdLiftCodec"
 "htj2k" = "nd_image_codecs:Htj2k"
 "nd_zfp" = "nd_image_codecs:NdZfp"
 

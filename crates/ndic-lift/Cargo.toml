@@ -12,12 +12,25 @@ homepage.workspace = true
 [features]
 default = ["std"]
 std = ["ndic-core/std"]
+# Serde derives for the codec configuration types (implies std).
+serde = ["dep:serde", "std"]
+# Registers the transform workloads with the ndic-bench registry (implies std).
+bench = ["dep:ndic-bench-core", "dep:inventory", "std"]
 
 [dependencies]
 ndic-core.workspace = true
+serde = { workspace = true, optional = true }
+ndic-bench-core = { workspace = true, optional = true }
+inventory = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
+serde_json.workspace = true
+
+# Regenerates fixtures/nd-lift/vectors.json (deliberate semantics changes only).
+[[example]]
+name = "gen_vectors"
+required-features = ["serde"]
 
 [lints]
 workspace = true

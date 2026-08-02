@@ -27,6 +27,22 @@ simd = false
 irreversible = false
 lift_levels = 0
 
+# Phase 2 validation lanes: transpose → nd_lift → bytes → blosc(zstd), so the
+# nd_lift decorrelation gain is measurable before the htj2k plane codec lands.
+[[config]]
+label = "nd-lift-delta-zstd"
+family = "nd-lift"
+simd = false
+irreversible = false
+lift_levels = 0            # 0 ⇒ the delta kind
+
+[[config]]
+label = "nd-lift-53-zstd"
+family = "nd-lift"
+simd = false
+irreversible = false
+lift_levels = 2            # two 5/3 levels along z (and t when grouped)
+
 [[config]]
 label = "scalar-53-ht"
 family = "nd-lift-ht"
@@ -88,7 +104,7 @@ enabled = false              # enabled in Phase 5
 # CI contexts: which (workload-tier × config) combinations run when.
 [contexts.pr-gate]
 tiers = ["micro", "meso"]
-configs = ["blosc-zstd", "nd-delta-zstd", "nd-delta-lz4", "simd-53-ht", "simd-53-lift-z2"]
+configs = ["blosc-zstd", "nd-delta-zstd", "nd-delta-lz4", "nd-lift-delta-zstd", "nd-lift-53-zstd", "simd-53-ht", "simd-53-lift-z2"]
 fail_on_regression = true
 baseline = "main"
 # Cross-machine timing is not comparable to the committed baseline's σ
@@ -97,7 +113,7 @@ gate = "ratio"
 
 [contexts.nightly]
 tiers = ["micro", "meso", "macro"]
-configs = ["blosc-zstd", "nd-delta-zstd", "nd-delta-lz4", "scalar-53-ht", "simd-53-ht", "simd-97-ht", "simd-53-lift-z2", "zfp-rate8"]
+configs = ["blosc-zstd", "nd-delta-zstd", "nd-delta-lz4", "nd-lift-delta-zstd", "nd-lift-53-zstd", "scalar-53-ht", "simd-53-ht", "simd-97-ht", "simd-53-lift-z2", "zfp-rate8"]
 ref_lanes = true
 
 [contexts.on-demand]

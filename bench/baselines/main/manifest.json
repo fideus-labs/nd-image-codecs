@@ -1,6 +1,6 @@
 {
   "name": "main",
-  "git_hash": "9a4501c",
+  "git_hash": "c53e7b2",
   "machine": "wsl2-aarch64-12core-dev",
   "toolchain": "rustc 1.91.0 / Python 3.14.4 / zarr 3.3.0 / numcodecs 0.16.5",
   "captured": "2026-08-01"

@@ -47,9 +47,20 @@ so its decorrelation gains are measurable in isolation.
 
 ## Acceptance criteria
 
-- [ ] `delta`/`haar`/`lift53` round-trip exactly for all supported integer dtypes.
-- [ ] `nd_lift` registers as a `zarrs` array-to-array codec and composes with
-      stock `blosc`.
-- [ ] A `transpose → nd_lift → blosc` series beats nd-delta on correlated
-      volumetric fixtures in the bench suite.
-- [ ] Python/TS `NdLift` config classes serialize configs the Rust codec accepts.
+- [x] `delta`/`haar`/`lift53` round-trip exactly for all supported integer dtypes
+      (`ndic-lift` proptests + analytic/edge-case unit tests; the frozen
+      conformance vectors in `fixtures/nd-lift/vectors.json` pin the `0.1`
+      semantics for both the Rust crate and the NumPy reference).
+- [x] `nd_lift` registers as a `zarrs` array-to-array codec and composes with
+      stock `blosc` (`ndic-zarr` `zarrs` feature; `tests/lift_zarrs.rs`
+      round-trips every integer dtype through
+      `transpose → nd_lift → bytes → blosc`).
+- [x] A `transpose → nd_lift → blosc` series beats nd-delta on correlated
+      volumetric fixtures in the bench suite (`bench/py/run_nd_lift.py` on the
+      `tczyx_corr_16mib` fixture: ratio 0.377 for `nd-lift-53-zstd` and 0.401
+      for `nd-lift-delta-zstd` vs 0.417 for `nd-delta-zstd`; held by the
+      `bench/baselines/main/` ratio gate).
+- [x] Python/TS `NdLift` config classes serialize configs the Rust codec accepts
+      (Rust-side `accepts_every_series_builder_configuration` over the shared
+      fixture matrix, plus the Python `test_nd_lift.py` and TS
+      `nd-lift.test.ts` serialization tests).

@@ -17,10 +17,12 @@ committed baselines with a statistical regression gate. Full design:
   `list`; `--filter`, `--config`, `--format ascii|json|both|markdown|csv`,
   `--baseline`, `--fail-on-regression`, `--gate time|ratio|both`, `--quiet`.
 - **`bench/py/`** — Python-side lanes that exercise codecs through
-  `zarr-python` (`run_nd_delta.py` for the Phase 1 nd-delta family) plus the
-  deterministic synthetic-fixture generator (`synthetic.py`). They emit the
-  same `BenchRecord` JSON into the same records tree, so `ndic-bench compare`
-  gates them like any Rust workload.
+  `zarr-python` (`run_nd_delta.py` for the Phase 1 nd-delta family;
+  `run_nd_lift.py` for the Phase 2 `transpose → nd_lift → bytes → blosc`
+  validation series on the correlated z-stack fixture; shared machinery in
+  `lanes.py`) plus the deterministic synthetic-fixture generators
+  (`synthetic.py`). They emit the same `BenchRecord` JSON into the same
+  records tree, so `ndic-bench compare` gates them like any Rust workload.
 - **`bench/benchmarks.toml`** — the declarative suite manifest: which benchmarks run in
   which CI contexts, per-config sample counts, fixture sizes.
 - **`bench/baselines/<name>/`** — committed baseline records (e.g. `main/`) with a
@@ -37,6 +39,8 @@ Every workload is swept across the **codec-configuration** matrix:
 | `blosc-zstd` | baseline | (blosc) | — | — |
 | `nd-delta-zstd` | nd-delta | (blosc) | — | — |
 | `nd-delta-lz4` | nd-delta | (blosc) | — | — |
+| `nd-lift-delta-zstd` | nd-lift | (blosc) | — | delta (t, z) |
+| `nd-lift-53-zstd` | nd-lift | (blosc) | 5/3 | 2 (t, z) |
 | `scalar-53-ht` | nd-lift-ht | off | 5/3 | 0 |
 | `simd-53-ht` | nd-lift-ht | on | 5/3 | 0 |
 | `simd-97-ht` | nd-lift-ht | on | 9/7 | 0 |
@@ -58,6 +62,7 @@ committed baseline is an explicit, reviewed act:
 
 ```sh
 python3 bench/py/run_nd_delta.py
+python3 bench/py/run_nd_lift.py
 cargo run -p ndic-bench-cli --release -- run
 cp -r target/benchmarks/<hash>/* bench/baselines/main/   # + update manifest.json
 ```
@@ -82,8 +87,8 @@ over the baseline (`RATIO_REGRESSION_PCT_THRESHOLD = 0.02`). Normalizing by
 `bytes_in` keeps the gate meaningful when a fixture changes size, and
 compressed sizes are deterministic, so this gate holds across machine classes.
 
-`bench-pr-gate.yml` runs the nd-delta lanes and any registered Rust workloads on
-every PR and compares against `bench/baselines/main/` with
+`bench-pr-gate.yml` runs the nd-delta and nd-lift lanes and any registered
+Rust workloads on every PR and compares against `bench/baselines/main/` with
 `--gate ratio --fail-on-regression` (CI runners differ from the baseline
 machine, so only the deterministic gate fails the build), posting a sticky PR
 comment with the markdown report. Exit codes: `0` clean, `1` regression (with

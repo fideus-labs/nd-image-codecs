@@ -11,12 +11,14 @@ Zarr v3 codecs assembled by :func:`codec_series` from an array's axis metadata:
 - **nd-zfp** — ``transpose → nd_zfp``; ZFP blocks with a brick index for GPU
   volume rendering, random access, and predictable memory.
 
-The codec classes (:class:`NdLift`, :class:`Htj2k`, :class:`NdZfp`) are
-scaffolds until their respective roadmap phases land; see
-``docs/development/roadmap/``. :func:`codec_series` is fully implemented in pure
-Python and is cross-checked against the Rust and TypeScript builders in CI, so
-it is usable today to author array metadata and to validate pipelines against
-``imagecodecs`` via ``zarr-python``.
+:class:`NdLift` is implemented (roadmap Phase 2): its transform math lives in
+:mod:`nd_image_codecs._lift` (the NumPy port of the Rust ``ndic-lift`` crate,
+pinned bit-identical by the committed conformance vectors) and
+:mod:`nd_image_codecs.zarr_codec` registers it as a ``zarr-python`` v3
+array-to-array codec. :class:`Htj2k` and :class:`NdZfp` are scaffolds until
+their roadmap phases land; see ``docs/development/roadmap/``.
+:func:`codec_series` is fully implemented in pure Python and is cross-checked
+against the Rust and TypeScript builders in CI.
 
 No component of nd-image-codecs uses JPEG 2000 Part 2 (MCT) syntax; cross-axis
 decorrelation is expressed explicitly as the ``nd_lift`` array-to-array codec.
@@ -48,14 +50,22 @@ except ImportError:  # pragma: no cover - native module not built yet
 class NdLift:
     """Zarr v3 array-to-array cross-axis lifting codec (``nd_lift``).
 
-    Scaffold: roadmap Phase 2.
+    This config class serializes exactly the configurations the Rust codec
+    accepts (version ``0.1``: ``delta``/``haar``/``lift53`` transforms with
+    ``dimension``, ``levels``, and ``group``). :meth:`encode`/:meth:`decode`
+    run the NumPy reference transform; for ``zarr-python`` pipelines use
+    :mod:`nd_image_codecs.zarr_codec`, which registers the same math as a
+    zarr v3 codec.
     """
 
     name = "nd_lift"
 
     def __init__(self, *, transforms: list[dict[str, Any]] | None = None, version: str = "0.1") -> None:
+        from . import _lift
+
         self.transforms = transforms or []
         self.version = version
+        _lift.check_version(version)
 
     def to_dict(self) -> dict[str, Any]:
         """Return the Zarr v3 codec metadata object."""
@@ -65,6 +75,18 @@ class NdLift:
     def from_config(cls, config: dict[str, Any]) -> NdLift:
         """Construct from a Zarr v3 ``configuration`` object."""
         return cls(transforms=config.get("transforms", []), version=config.get("version", "0.1"))
+
+    def encode(self, chunk: Any) -> Any:
+        """Forward-transform an ndarray chunk into its widened coefficient plane."""
+        from . import _lift
+
+        return _lift.forward(chunk, self.transforms, self.version)
+
+    def decode(self, coeffs: Any, dtype: Any) -> Any:
+        """Inverse-transform a coefficient plane back to ``dtype`` samples."""
+        from . import _lift
+
+        return _lift.inverse(coeffs, self.transforms, dtype, self.version)
 
 
 class Htj2k:

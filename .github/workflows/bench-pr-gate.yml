@@ -36,6 +36,9 @@ jobs:
       - name: Run the nd-delta lanes
         run: python3 bench/py/run_nd_delta.py --samples 10
 
+      - name: Run the nd-lift lanes
+        run: python3 bench/py/run_nd_lift.py --samples 10
+
       # Rust-side workloads register via inventory as codec phases land;
       # this writes their records into the same tree.
       - name: Run Rust benchmarks

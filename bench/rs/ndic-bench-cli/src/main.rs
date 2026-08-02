@@ -141,6 +141,8 @@ fn builtin_configs() -> Vec<BenchConfig> {
         cfg("blosc-zstd", "baseline", false, false, 0),
         cfg("nd-delta-zstd", "nd-delta", false, false, 0),
         cfg("nd-delta-lz4", "nd-delta", false, false, 0),
+        cfg("nd-lift-delta-zstd", "nd-lift", false, false, 0),
+        cfg("nd-lift-53-zstd", "nd-lift", false, false, 2),
         cfg("scalar-53-ht", "nd-lift-ht", false, false, 0),
         cfg("simd-53-ht", "nd-lift-ht", true, false, 0),
         cfg("simd-97-ht", "nd-lift-ht", true, true, 0),
@@ -236,6 +238,11 @@ fn run(
                 eprintln!("running {}/{} [{}]", entry.module, entry.name, cfg.label);
             }
             let output = (entry.run)(cfg);
+            if output.raw_ns.is_empty() {
+                // The entry opted out of this config (e.g. a transform
+                // workload on a non-transform lane) — no record.
+                continue;
+            }
             let name = format!("{}/{}", entry.module, entry.name);
             let record = BenchRecord::from_output(&name, &cfg.label, &hash, &output);
             if let Err(e) = record.save(&root) {
