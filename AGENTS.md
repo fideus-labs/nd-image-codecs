@@ -93,10 +93,16 @@ consult the roadmap before implementing anything.
   auto-filled title is also usually too long to read well mid-sentence.
 - Every page under `docs/` carries YAML frontmatter with a `title` and a
   one-sentence `description` (plus `short_title` when the title is too long for
-  a sidebar entry), and a single `#`-level heading hierarchy beneath it — MyST
-  lifts the title into the page heading, so a page should not repeat it. Titles
-  are plain text: mystmd renders frontmatter as a literal string, so backticks
-  would show up verbatim in the sidebar.
+  a sidebar entry), then one `#` heading repeating that title, then `##`
+  sections below it. Keep the `#`: frontmatter is not a heading, so for anyone
+  reading the file on GitHub or in a plain markdown viewer it is the page's only
+  title. mystmd consumes that leading `#` and titles the page from the
+  frontmatter instead, so the rendered page still carries exactly one `<h1>` —
+  the repetition exists in the source and never in the output, and removing the
+  heading to "deduplicate" it only costs the in-repo reader. Frontmatter titles
+  are plain text: mystmd renders them as a literal string, so backticks would
+  show up verbatim in the sidebar, while the `#` heading is ordinary markdown
+  and may use them.
 - Fenced code blocks under `docs/` must carry a language the site's highlighter
   (highlight.js, via `book-theme`) actually knows, matched by exact name — it
   does not resolve aliases. Use `bash` for shell commands (**not** `sh`, `zsh`,
