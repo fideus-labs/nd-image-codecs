@@ -26,6 +26,12 @@ Open the page that matches the task in front of you.
 | [](./commits.md) | Commit message format: Conventional Commits with crate scopes (`feat(lift): …`, `fix(codestream): …`) |
 | [](./style/rust.md) | Rust style rules — clippy `all` + `pedantic`, the `ndic_core::Result<T>` error contract, and layout conventions |
 
+## Decisions
+
+| Document | What it covers |
+| --- | --- |
+| [](./decisions/adr-001-documentation-toolchain.md) | Why the documentation site is mystmd rooted at `docs/`, deployed to Read the Docs through `build.commands`, and gated on a strict build — plus the two things it deliberately does not do |
+
 ## What to build next
 
 | Section | What's inside | Open |

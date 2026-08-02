@@ -1,17 +1,22 @@
 ---
 title: Usage
-description: Task-oriented guides for using nd-image-codecs from Zarr, the ndic CLI, Rust, Python, and TypeScript. Every code block is executed by CI against the current API.
+description: Task-oriented guides for using nd-image-codecs from Zarr, the ndic CLI, Rust, Python, and TypeScript, with code blocks that CI will execute against the current API once Phase 6 lands.
 ---
 
 # Usage
 
-> **Status:** Skeleton — guides fill in as their features land (see the
-> [roadmap](../development/roadmap/index.md); usage docs are completed and
-> example-verified in
-> [Phase 6](../development/roadmap/phase-6-validation-and-docs.md)).
+:::{caution} Status: Skeleton
+Guides fill in as their features land (see the
+[roadmap](../development/roadmap/index.md); usage docs are completed and
+example-verified in
+[Phase 6](../development/roadmap/phase-6-validation-and-docs.md)).
+:::
 
-Task-oriented guides. Every code block in these pages is executed by CI against the
-current API — if it's written here, it runs.
+Task-oriented guides. Code blocks on these pages are **static today** — nothing
+executes them or checks them against the current API. Putting every snippet under
+a docs CI job is
+[Phase 6](../development/roadmap/phase-6-validation-and-docs.md) work; until it
+lands, read a snippet as the intended API rather than as a tested example.
 
 | Guide | Audience | You'll learn |
 | --- | --- | --- |

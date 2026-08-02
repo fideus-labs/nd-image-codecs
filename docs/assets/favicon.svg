@@ -1,0 +1,19 @@
+<!-- Favicon source. The full logo (nd-image-codecs-logo.svg) is drawn as thin
+     strokes on transparent, which collapses into a smudge at 16x16 and vanishes
+     against a dark browser tab; this variant keeps the stacked-slice idea but
+     puts it in white on a filled tile so it survives the size. Rendered to
+     favicon.ico at 16/32/48 — see that file's note in myst.yml. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="34" fill="url(#g)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="11" stroke-linejoin="round">
+    <path d="M34 106 L80 84 L126 106 L80 128 Z" opacity="0.6"/>
+    <path d="M34 78 L80 56 L126 78 L80 100 Z" opacity="0.8"/>
+    <path d="M34 50 L80 28 L126 50 L80 72 Z"/>
+  </g>
+</svg>

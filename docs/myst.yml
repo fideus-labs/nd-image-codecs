@@ -10,8 +10,19 @@ project:
   description: >-
     Composable Zarr v3 codecs for ND scientific images — cross-axis lifting,
     HTJ2K coefficient planes, and ZFP, with an axis-aware codec-series builder.
+  # Also the source of the per-page "Edit This Page" link. mystmd resolves
+  # those against the *git* root rather than this project root, so they come
+  # out as .../edit/main/docs/<page>.md — the `docs/` prefix is already there
+  # and `edit_url` does not need to be set by hand. Verified at three depths;
+  # see ./development/decisions/adr-001-documentation-toolchain.md.
   github: https://github.com/fideus-labs/nd-image-codecs
   license: MIT
+  # Open Graph card. Every page inherits this unless it sets its own
+  # `thumbnail`. It must be a raster: Slack, GitHub, X, and LinkedIn all
+  # decline to render an SVG og:image, so the 160x160 logo cannot serve here.
+  # ./assets/nd-image-codecs-social.svg is the editable source; see the header
+  # comment there for how to regenerate the PNG.
+  thumbnail: assets/nd-image-codecs-social.png
   authors:
     - name: Fideus Labs LLC
       url: https://github.com/fideus-labs
@@ -62,6 +73,7 @@ project:
         - file: development/read-the-docs.md
         - file: development/commits.md
         - file: development/style/rust.md
+        - file: development/decisions/adr-001-documentation-toolchain.md
     - title: Roadmap
       children:
         - file: development/roadmap/index.md
@@ -74,9 +86,37 @@ project:
 
 site:
   template: book-theme
+  # Header navigation: the four section landing pages. The sidebar already
+  # lists every page, so this is a shortcut to the top of each section, not a
+  # second table of contents.
+  nav:
+    - title: Architecture
+      url: /architecture
+    - title: Usage
+      url: /usage
+    - title: Development
+      url: /development
+    - title: Roadmap
+      url: /development/roadmap
   options:
+    # Mirror the `docs/` folder structure into URLs. Without this, mystmd
+    # flattens every page to its basename and deduplicates with a counter, so
+    # the four section indexes become /index-1 … /index-4 and
+    # development/style/rust.md becomes /rust-1. Those are unusable as `nav`
+    # targets and meaningless in a shared link or a search result.
+    folders: true
     logo: assets/nd-image-codecs-logo.svg
-    favicon: assets/nd-image-codecs-logo.svg
+    # The light-mode gradient (blue-600 → violet-600) measures ~3.4:1 against
+    # the theme's dark header, and its 0.45-opacity back slice ~1.6:1 — legible
+    # only as a smudge. The dark variant lifts both.
+    logo_dark: assets/nd-image-codecs-logo-dark.svg
+    logo_text: nd-image-codecs
+    logo_alt: nd-image-codecs
+    # mystmd copies this file to /favicon.ico verbatim — it does not convert
+    # it — so pointing at an SVG ships an SVG named .ico, which Chromium
+    # refuses to decode. This is a real ICO holding 16/32/48 PNG entries,
+    # rendered from ./assets/favicon.svg.
+    favicon: assets/favicon.ico
   actions:
     - title: GitHub
       url: https://github.com/fideus-labs/nd-image-codecs

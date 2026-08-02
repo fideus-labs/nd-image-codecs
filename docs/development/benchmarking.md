@@ -59,7 +59,7 @@ median/min/max plus raw per-sample nanoseconds, and — for codec workloads —
 `bytes_in`/`bytes_out` so ratio is tracked alongside throughput. Refreshing a
 committed baseline is an explicit, reviewed act:
 
-```sh
+```bash
 python3 bench/py/run_nd_delta.py
 cargo run -p ndic-bench-cli --release -- run
 cp -r target/benchmarks/<hash>/* bench/baselines/main/   # + update manifest.json
@@ -112,6 +112,6 @@ Guidelines:
 - Benchmark the smallest meaningful unit (one pass over one code-block; one plane
   transform), plus one end-to-end encode/decode per crate.
 - Fixture data comes from `bench`-generated synthetic planes and the shared corpus in
-  [test-data.md](./test-data.md) — never generate randomness inside the timed region.
+  [](./test-data.md) — never generate randomness inside the timed region.
 - Any PR touching a hot path (block coder, transforms, packet assembly) must include or
   update a benchmark; reviewers hold the line.

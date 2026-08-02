@@ -6,10 +6,12 @@ description: 'Using nd-image-codecs from TypeScript and the browser: the codecSe
 
 # TypeScript / Browser
 
-> **Status:** Skeleton — the package scaffolding and the `codecSeries` builder
-> exist; the WASM cores land per the [roadmap](../development/roadmap/index.md).
+:::{caution} Status: Skeleton
+The package scaffolding and the `codecSeries` builder
+exist; the WASM cores land per the [roadmap](../development/roadmap/index.md).
+:::
 
-```sh
+```bash
 npm install @fideus-labs/nd-image-codecs
 ```
 
@@ -68,7 +70,7 @@ already ships (`transpose`, `blosc`, …).
 Combine the `htj2k` codec with Range requests against `.jph` files or Zarr
 chunks — the byte plans from `ndic index` are plain JSON your app (or a service
 worker) can execute with `fetch(url, { headers: { Range: "bytes=…" } })`. See
-[thumbnails-and-streaming.md](./thumbnails-and-streaming.md).
+[](./thumbnails-and-streaming.md).
 
 ## Bundler notes
 

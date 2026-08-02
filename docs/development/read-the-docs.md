@@ -32,12 +32,21 @@ mkdocs, no automatic environment creation. Four commands run:
 ```yaml
 commands:
   - cd docs && npm ci
-  - cd docs && export BASE_URL="/${READTHEDOCS_LANGUAGE}/${READTHEDOCS_VERSION}" && npx myst build --html --strict
+  - cd docs && export BASE_URL="/${READTHEDOCS_LANGUAGE}/${READTHEDOCS_VERSION}" && npm run check
   - mkdir -p "$READTHEDOCS_OUTPUT/html"
   - cp -r docs/_build/html/. "$READTHEDOCS_OUTPUT/html/"
 ```
 
-Two things about that are load-bearing:
+Three things about that are load-bearing:
+
+**The build is `npm run check`, not an inline `myst build`.** That script in
+`docs/package.json` is the single canonical strict-build command, and the `docs`
+job in [`.github/workflows/ci.yml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/.github/workflows/ci.yml)
+runs the very same script on every pull request — so a green `docs` check means
+this deployment will build. Change the build by editing that script; inlining a
+different invocation in either place lets the two silently diverge. `BASE_URL` is
+the only thing Read the Docs adds on top, because CI serves nothing and needs no
+path prefix.
 
 **Each entry runs in its own shell, starting from the checkout root.** A bare
 `cd docs` on its own line does not carry over to the next entry — it changes the
@@ -63,13 +72,13 @@ the deploy, not publish a degraded site.
 Rehearse the exact RTD build locally before touching the web UI. Each command
 runs in its own shell from the repository root, exactly as RTD runs them:
 
-```sh
+```bash
 OUT=$(mktemp -d)
 rm -rf docs/_build
 
 sh -c 'cd docs && npm ci'
 sh -c "cd docs && READTHEDOCS_LANGUAGE=en READTHEDOCS_VERSION=latest \
-  BASE_URL=\"/en/latest\" npx myst build --html --strict"
+  BASE_URL=\"/en/latest\" npm run check"
 sh -c "mkdir -p '$OUT/html'"
 sh -c "cp -r docs/_build/html/. '$OUT/html/'"
 
@@ -79,7 +88,7 @@ test -f "$OUT/html/index.html" && echo OK
 Then serve it the way RTD does — under the version prefix, not at the root — and
 confirm nothing 404s:
 
-```sh
+```bash
 SERVE=$(mktemp -d); mkdir -p "$SERVE/en"
 cp -r "$OUT/html" "$SERVE/en/latest"
 (cd "$SERVE" && python3 -m http.server 8000)
@@ -110,7 +119,7 @@ report build status back onto pull requests.
 **Dashboard → Import a Project**, pick `fideus-labs/nd-image-codecs` from the
 list, and confirm the slug reads exactly:
 
-```
+```text
 nd-image-codecs
 ```
 
@@ -157,7 +166,7 @@ project"**, and click **Update**.
 Once enabled, every pull request gets a build and a commit status check. Previews
 are published to:
 
-```
+```text
 https://nd-image-codecs--<pr>.readthedocs.build/en/<pr>/
 ```
 

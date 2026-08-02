@@ -4,9 +4,9 @@ short_title: Codec Series
 description: A codec series is a complete Zarr v3 codec pipeline assembled from an array's axis metadata; the codec_series builder is the one component that is fully implemented today.
 ---
 
-> Crate: [`ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) (`series` module) · mirrored in
-> the Python and TypeScript bindings · Roadmap:
-> [Phase 1](../development/roadmap/phase-1-baselines-and-series.md)
+**Crate:** [`ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) (`series` module) · mirrored in
+the Python and TypeScript bindings · **Roadmap:**
+[Phase 1](../development/roadmap/phase-1-baselines-and-series.md)
 
 A **codec series** is a complete Zarr v3 codec pipeline — a `transpose`
 followed by decorrelation and a plane/block codec — that nd-image-codecs

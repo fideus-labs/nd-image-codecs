@@ -4,8 +4,8 @@ short_title: nd_lift Transform
 description: nd_lift is a registered Zarr v3 array-to-array codec that captures correlation along the z, time, and channel axes of a scientific volume without JPEG 2000 Part 2.
 ---
 
-> Crate: [`ndic-lift`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-lift) · Roadmap:
-> [Phase 2](../development/roadmap/phase-2-nd-lift.md) · Codec version: `0.1`
+**Crate:** [`ndic-lift`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-lift) · **Roadmap:**
+[Phase 2](../development/roadmap/phase-2-nd-lift.md) · **Codec version:** `0.1`
 
 `nd_lift` is the codec that lets nd-image-codecs capture correlation along the
 non-spatial axes (z, time, channel) of a scientific volume **without JPEG 2000
@@ -23,7 +23,7 @@ achieves the same *effect* — decorrelate z/t/c before 2D coding — as a
 standalone, fully specified Zarr codec built from long-published lifting and
 differencing primitives. The 2D codec downstream then only ever sees Part 1 /
 Part 15 syntax. This is the project's central IP posture (see
-[goals.md](./goals.md)).
+[](./goals.md)).
 
 ## Configuration
 

@@ -5,7 +5,7 @@ description: nd-image-codecs uses Conventional Commits with crate scopes, so eve
 
 [Conventional Commits](https://www.conventionalcommits.org/) with crate scopes:
 
-```
+```text
 feat(htj2k): implement cleanup-pass MEL coder
 fix(codestream): reject PLT lengths past tile-part end
 test(lift): property-test 5/3 round-trip on i16 volumes

@@ -55,6 +55,7 @@ consult the roadmap before implementing anything.
 | Test data & conformance corpus | [./docs/development/test-data.md](./docs/development/test-data.md) |
 | Build or preview the documentation site | [./docs/development/commands.md](./docs/development/commands.md) |
 | Deploy the documentation site (Read the Docs) | [./docs/development/read-the-docs.md](./docs/development/read-the-docs.md), [./.readthedocs.yaml](./.readthedocs.yaml) |
+| Why the documentation toolchain is what it is | [./docs/development/decisions/adr-001-documentation-toolchain.md](./docs/development/decisions/adr-001-documentation-toolchain.md) |
 
 ## Conventions
 
@@ -93,6 +94,13 @@ consult the roadmap before implementing anything.
   lifts the title into the page heading, so a page should not repeat it. Titles
   are plain text: mystmd renders frontmatter as a literal string, so backticks
   would show up verbatim in the sidebar and in auto-filled link text.
+- Fenced code blocks under `docs/` must carry a language the site's highlighter
+  (highlight.js, via `book-theme`) actually knows, matched by exact name — it
+  does not resolve aliases. Use `bash` for shell commands (**not** `sh`, `zsh`,
+  or `console`, all of which silently fall back to unhighlighted `text`),
+  `shell` for a `$`-prompt transcript, `rust` (not `rust,ignore`), `python`,
+  `typescript`, `json`, `toml`, `yaml` — and `text` deliberately, for ASCII
+  diagrams and literal strings that are not code.
 - Run `cd docs && npm run check` (strict build, fails on any warning) before
   pushing documentation changes.
 

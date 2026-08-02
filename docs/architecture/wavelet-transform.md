@@ -3,12 +3,14 @@ title: In-Plane Wavelet Transform
 description: The two JPEG 2000 Part 1 wavelet kernels — reversible 5/3 and irreversible 9/7 — applied to each trailing 2D (y, x) plane before HT block coding.
 ---
 
-> Crate: [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) (2D DWT) · Roadmap:
-> [Phase 3](../development/roadmap/phase-3-htj2k-core.md)
->
-> The **cross-axis** (z/t/c) transform is a separate, explicit codec — see
-> [nd-transform.md](./nd-transform.md). This page covers only the in-plane 2D
-> wavelet inside the `htj2k` plane codec.
+**Crate:** [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) (2D DWT) · **Roadmap:**
+[Phase 3](../development/roadmap/phase-3-htj2k-core.md)
+
+:::{note} Scope
+The **cross-axis** (z/t/c) transform is a separate, explicit codec — see
+[](./nd-transform.md). This page covers only the in-plane 2D
+wavelet inside the `htj2k` plane codec.
+:::
 
 Two kernels from JPEG 2000 Part 1 ([ITU-T T.800](https://www.itu.int/rec/T-REC-T.800)),
 applied to each trailing 2D `(y, x)` plane before HT block coding:
@@ -31,7 +33,7 @@ lanes:
 
 Boundary handling uses **symmetric (mirror) extension** per T.800 Annex F. (The
 `nd_lift` cross-axis codec uses the same boundary rule along z/t; see
-[nd-transform.md](./nd-transform.md).)
+[](./nd-transform.md).)
 
 ## Geometry
 
@@ -60,4 +62,4 @@ checked by proptest with extreme-value inputs.
 - Round-trip identity on 5/3 for random planes (proptest).
 - 9/7 float-vs-fixed-point divergence bounded and asserted.
 - Cross-check against OpenJPH output on shared inputs (differential lane in the
-  bench suite, see [benchmarking](../development/benchmarking.md)).
+  bench suite, see [](../development/benchmarking.md)).

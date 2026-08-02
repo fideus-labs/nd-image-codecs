@@ -4,8 +4,8 @@ short_title: nd_zfp Codec
 description: nd_zfp is a clean-room Rust port of LLNL ZFP for 2D, 3D, and 4D blocks, registered as a Zarr v3 array-to-bytes codec for GPU volume rendering and random brick access.
 ---
 
-> Crate: [`ndic-zfp`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zfp) · Roadmap:
-> [Phase 5](../development/roadmap/phase-5-nd-zfp.md)
+**Crate:** [`ndic-zfp`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zfp) · **Roadmap:**
+[Phase 5](../development/roadmap/phase-5-nd-zfp.md)
 
 `nd_zfp` is a clean-room Rust port of [LLNL ZFP](https://github.com/LLNL/zfp)
 for **2D, 3D, and 4D** blocks, registered as a Zarr v3 **array-to-bytes** codec.
@@ -73,7 +73,7 @@ verified two ways:
 4. **Brick index** — an outer table mapping each `4^d` brick to its byte range;
    trivial and index-free in fixed-rate mode, explicit in the variable-size
    modes — enabling `RangeIndex`-style random access (see
-   [range-access.md](./range-access.md)).
+   [](./range-access.md)).
 
 ## Configuration
 

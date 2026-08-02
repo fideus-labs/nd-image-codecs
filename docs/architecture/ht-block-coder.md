@@ -3,8 +3,8 @@ title: HT Block Coder (FBCOT)
 description: The FBCOT block coder of ISO/IEC 15444-15 replaces Part 1's EBCOT Tier-1 MQ arithmetic coder, trading roughly 5-10 % compression efficiency for an order-of-magnitude speedup.
 ---
 
-> Crate: [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) · Roadmap:
-> [Phase 3](../development/roadmap/phase-3-htj2k-core.md)
+**Crate:** [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) · **Roadmap:**
+[Phase 3](../development/roadmap/phase-3-htj2k-core.md)
 
 nd-image-codecs implements the **FBCOT** (Fast Block Coding with Optimized Truncation) algorithm
 of ISO/IEC 15444-15 / [ITU-T T.814](https://www.itu.int/rec/T-REC-T.814). FBCOT replaces
@@ -67,11 +67,11 @@ selected at runtime by CPU detection (`ojph_arch.cpp`). nd-image-codecs mirrors 
   leaves this on the table.
 - Bit-plane count per block bounds: HT supports up to **38 bit-planes** conceptually but
   typical microscopy / volume targets are ≤ 16-bit integers plus wavelet gain; `MAGB` in the `CAP` marker
-  carries the bound (see [codestream.md](./codestream.md)).
+  carries the bound (see [](./codestream.md)).
 
 ## What we don't build
 
-- No MQ **encoder** (legacy J2K-1 output is a non-goal; see [goals.md](./goals.md)).
+- No MQ **encoder** (legacy J2K-1 output is a non-goal; see [](./goals.md)).
 - No iterative PCRD-opt over many coding passes: rate control starts quantizer-driven
   like OpenJPH, with HT-Set truncation as the later refinement mechanism.
 
@@ -81,5 +81,5 @@ selected at runtime by CPU detection (`ojph_arch.cpp`). nd-image-codecs mirrors 
   identity on the 5/3 path.
 - Conformance decode against the OpenJPH test corpus
   ([aous72/jp2k_test_codestreams](https://github.com/aous72/jp2k_test_codestreams)) — see
-  [test-data.md](../development/test-data.md).
+  [](../development/test-data.md).
 - Differential fuzzing scalar-vs-SIMD lanes (must be bit-identical).

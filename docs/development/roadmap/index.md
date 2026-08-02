@@ -6,9 +6,10 @@ description: nd-image-codecs is built in six strictly ordered phases; each phase
 
 # Implementation Roadmap
 
-> **Version:** 0.1
-> **Status:** Draft — phases are strictly ordered; each phase's acceptance criteria gate
-> the next.
+:::{note} Document status
+**Version:** 0.1 · **Status:** Draft — phases are strictly ordered; each phase's
+acceptance criteria gate the next.
+:::
 
 nd-image-codecs is built in six phases. Each phase document gives concrete implementation
 guidance: what to build, in what order, against which spec clauses and reference

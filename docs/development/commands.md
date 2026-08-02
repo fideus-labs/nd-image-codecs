@@ -44,7 +44,7 @@ All commands run from the repository root.
 | `cargo run -p ndic-bench-cli --release -- compare main --gate ratio --fail-on-regression` | The PR gate, locally |
 | `cargo run -p ndic-bench-cli --release -- compare bench/baselines/main` | Diff latest run against the committed baseline |
 
-See [benchmarking.md](./benchmarking.md) for record layout, baselines, and the gate.
+See [](./benchmarking.md) for record layout, baselines, and the gate.
 
 ## Bindings
 
@@ -89,6 +89,18 @@ each section is preserved. Every page also carries YAML frontmatter with a
 `title` and `description`, and links between pages use empty link text
 (`[](./overview.md)`) so MyST fills in the target's title.
 
+Code fences need a language the site's highlighter knows **by exact name** — it
+does not resolve aliases, and an unknown name degrades silently to unhighlighted
+plain text rather than failing the strict build:
+
+| Content | Use | Not |
+| --- | --- | --- |
+| Shell commands | `bash` | `sh`, `zsh` |
+| A `$`-prompt session with output | `shell` | `console`, `shell-session` |
+| Rust | `rust` | `rust,ignore` |
+| Everything else | `python`, `typescript`, `json`, `toml`, `yaml` | |
+| ASCII diagrams, literal strings, sample output that is not code | `text` | a bare ``` fence |
+
 The external-link checker is a pre-release/manual step, not a gate. The docs
 cite roughly 90 specification and vendor URLs (ISO, ITU, LLNL, frontiersin,
 kakadusoftware) that rate-limit, bot-block, and go offline independently of this
@@ -110,5 +122,5 @@ adjust patience and concurrency.
 | `cd bindings/typescript && npm publish --access public` | Publish `@fideus-labs/nd-image-codecs` |
 | `cd bindings/javascript && npm publish` | Publish the unscoped `nd-image-codecs` name placeholder |
 
-See [publishing.md](./publishing.md) for the full manual release procedure,
+See [](./publishing.md) for the full manual release procedure,
 prerequisites, version-bump locations, and verification steps.

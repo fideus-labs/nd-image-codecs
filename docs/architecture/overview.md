@@ -81,7 +81,7 @@ shape, it:
 
 It is implemented three times — Rust (`ndic-zarr`), pure Python
 (`nd_image_codecs`), and pure TypeScript — with CI asserting byte-identical
-output. See [codec-series.md](./codec-series.md).
+output. See [](./codec-series.md).
 
 ## Crate boundaries
 

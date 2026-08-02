@@ -60,7 +60,7 @@ malformed input** — fuzzing enforces this.
 - Runtime dispatch through a small function-pointer table resolved once (mirroring
   OpenJPH's `ojph_arch` approach); no feature detection in inner loops.
 - Every performance-sensitive addition registers a `BenchEntry` in the same PR
-  (see [benchmarking.md](../benchmarking.md)).
+  (see [](../benchmarking.md)).
 
 ## Documentation
 

@@ -5,8 +5,9 @@ description: 'The top-level map of the nd-image-codecs architecture documentatio
 
 # Architecture
 
-> **Version:** 0.1
-> **Status:** Draft
+:::{note} Document status
+**Version:** 0.1 · **Status:** Draft
+:::
 
 This index is the top-level map of the nd-image-codecs architecture documentation. Start with
 the overview and goals, then open the topic section that matches the code you are
