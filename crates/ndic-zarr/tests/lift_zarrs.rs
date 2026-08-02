@@ -41,8 +41,24 @@ fn named_data_type(dtype_name: &str) -> (DataType, usize) {
 /// The Phase 2 validation pipeline over a `(z, c, y, x)` chunk: transpose to
 /// `(c, z, y, x)`, lift along z, then stock `bytes → blosc`.
 fn build_array(store: Arc<MemoryStore>, dtype_name: &str, kind: &str) -> Array<MemoryStore> {
+    let (_, size) = named_data_type(dtype_name);
+    build_array_with_fill(store, dtype_name, kind, FillValue::new(vec![0u8; size]))
+}
+
+fn build_array_with_fill(
+    store: Arc<MemoryStore>,
+    dtype_name: &str,
+    kind: &str,
+    fill_value: FillValue,
+) -> Array<MemoryStore> {
     let (data_type, size) = named_data_type(dtype_name);
     let levels = if kind == "delta" { 0 } else { 2 };
+    // Blosc sees the *encoded* array: `nd_lift` hands it the widened
+    // coefficient plane, so the shuffle must group by the plane's element
+    // width (8 bytes for 64-bit input, 4 for everything else), not the input
+    // dtype's. A fixed typesize would shuffle 64-bit lanes as pairs of
+    // 32-bit ones and make the series unrepresentative of what it validates.
+    let typesize = if size == 8 { 8 } else { 4 };
     let codecs = [
         json!({ "name": "transpose", "configuration": { "order": [1, 0, 2, 3] } }),
         json!({ "name": "nd_lift", "configuration": {
@@ -53,7 +69,8 @@ fn build_array(store: Arc<MemoryStore>, dtype_name: &str, kind: &str) -> Array<M
         } }),
         json!({ "name": "bytes", "configuration": { "endian": "little" } }),
         json!({ "name": "blosc", "configuration": {
-            "cname": "zstd", "clevel": 5, "shuffle": "shuffle", "typesize": 4, "blocksize": 0
+            "cname": "zstd", "clevel": 5, "shuffle": "shuffle",
+            "typesize": typesize, "blocksize": 0
         } }),
     ];
     let mut array_to_array: Vec<Arc<dyn ArrayToArrayCodecTraits>> = Vec::new();
@@ -66,18 +83,13 @@ fn build_array(store: Arc<MemoryStore>, dtype_name: &str, kind: &str) -> Array<M
             Codec::BytesToBytes(codec) => bytes_to_bytes.push(codec),
         }
     }
-    ArrayBuilder::new(
-        vec![8, 2, 8, 8],
-        vec![4, 1, 8, 8],
-        data_type,
-        FillValue::new(vec![0u8; size]),
-    )
-    .array_to_array_codecs(array_to_array)
-    .array_to_bytes_codec(array_to_bytes.expect("bytes codec"))
-    .bytes_to_bytes_codecs(bytes_to_bytes)
-    .dimension_names(["z", "c", "y", "x"].into())
-    .build(store, "/lift")
-    .expect("array builds")
+    ArrayBuilder::new(vec![8, 2, 8, 8], vec![4, 1, 8, 8], data_type, fill_value)
+        .array_to_array_codecs(array_to_array)
+        .array_to_bytes_codec(array_to_bytes.expect("bytes codec"))
+        .bytes_to_bytes_codecs(bytes_to_bytes)
+        .dimension_names(["z", "c", "y", "x"].into())
+        .build(store, "/lift")
+        .expect("array builds")
 }
 
 /// Write a full `(8, 2, 8, 8)` volume, read it back, assert bit-exactness.
@@ -91,6 +103,14 @@ where
     array.store_array_subset(&subset, &data).expect("store");
     let back: Vec<T> = array.retrieve_array_subset(&subset).expect("retrieve");
     assert_eq!(back, data, "{dtype_name} × {kind} must round-trip exactly");
+}
+
+/// How many elements a `[z, c, y, x]` range list covers.
+fn element_count(ranges: &[std::ops::Range<u64>]) -> usize {
+    ranges
+        .iter()
+        .map(|r| usize::try_from(r.end - r.start).unwrap())
+        .product()
 }
 
 /// Smooth-in-z data (z-major layout) exercising sign handling while staying
@@ -186,6 +206,146 @@ fn coefficients_that_do_not_narrow_error_cleanly() {
         err.to_string().contains("does not narrow back to u16"),
         "unexpected error: {err}"
     );
+}
+
+/// Reading a region smaller than a chunk goes through the codec's partial
+/// decoder. Lifting couples samples, so that decoder inverts the whole chunk
+/// and slices — and it has to own that itself: the codec chain's generic
+/// cache is sized from the wrong side of a shape-changing neighbour, so
+/// leaning on it made every sub-chunk read through `transpose → nd_lift`
+/// fail with `IncompatibleIndexer`.
+#[test]
+fn sub_chunk_reads_work_under_transpose() {
+    for kind in ["delta", "haar", "lift53"] {
+        let array = build_array(Arc::new(MemoryStore::new()), "uint16", kind);
+        let data: Vec<u16> = (0..8 * 2 * 8 * 8)
+            .map(|i| u16::try_from(zwave(i) * 400).unwrap())
+            .collect();
+        array
+            .store_array_subset(&array.subset_all(), &data)
+            .expect("store");
+
+        // One voxel, a row, and a slab that straddles the z-chunk boundary —
+        // none of them chunk-aligned in the transformed axis.
+        for ranges in [
+            vec![3..4, 1..2, 5..6, 6..7],
+            vec![2..3, 0..1, 4..5, 0..8],
+            vec![2..6, 0..2, 1..3, 1..3],
+        ] {
+            let got: Vec<u16> = array.retrieve_array_subset(&ranges).expect("retrieve");
+            let mut expected = Vec::with_capacity(got.len());
+            for z in ranges[0].clone() {
+                for c in ranges[1].clone() {
+                    for y in ranges[2].clone() {
+                        for x in ranges[3].clone() {
+                            let i = ((z * 2 + c) * 8 + y) * 8 + x;
+                            expected.push(data[usize::try_from(i).unwrap()]);
+                        }
+                    }
+                }
+            }
+            assert_eq!(got, expected, "{kind}: sub-chunk read of {ranges:?}");
+        }
+    }
+}
+
+/// `encoded_fill_value` widens the fill value instead of lifting a filled
+/// chunk, which no scalar could represent for a non-zero fill (a constant
+/// chunk lifts to `[v, 0, ...]` under delta). That is sound because zarr uses
+/// the value symmetrically — elide on write, restore on read — so a non-zero
+/// fill has to survive both an untouched chunk and a partially written one.
+#[test]
+fn non_zero_fill_value_round_trips() {
+    for kind in ["delta", "haar", "lift53"] {
+        let fill = 7u16;
+        let array = build_array_with_fill(
+            Arc::new(MemoryStore::new()),
+            "uint16",
+            kind,
+            FillValue::new(fill.to_ne_bytes().to_vec()),
+        );
+
+        // Nothing written yet: every chunk is absent.
+        let all: Vec<u16> = array
+            .retrieve_array_subset(&array.subset_all())
+            .expect("retrieve");
+        assert!(all.iter().all(|&v| v == fill), "{kind}: absent chunks");
+
+        // One chunk-aligned region written; the rest stays absent.
+        let chunk = [0..4, 0..1, 0..8, 0..8];
+        let written = vec![100u16; element_count(&chunk)];
+        array.store_array_subset(&chunk, &written).expect("store");
+        let region: Vec<u16> = array.retrieve_array_subset(&chunk).expect("retrieve");
+        assert_eq!(region, written, "{kind}: the written region");
+        let untouched: Vec<u16> = array
+            .retrieve_array_subset(&[4..8, 1..2, 0..8, 0..8])
+            .expect("retrieve");
+        assert!(untouched.iter().all(|&v| v == fill), "{kind}: untouched");
+
+        // A sub-chunk write forces a read-modify-write of a partial chunk:
+        // the remainder must still be the fill, not a running sum of it.
+        let patch = [4..6, 0..1, 0..2, 0..2];
+        array
+            .store_array_subset(&patch, vec![250u16; element_count(&patch)])
+            .expect("store");
+        let patched: Vec<u16> = array.retrieve_array_subset(&patch).expect("retrieve");
+        assert!(patched.iter().all(|&v| v == 250), "{kind}: the patch");
+        let neighbours: Vec<u16> = array
+            .retrieve_array_subset(&[6..8, 0..1, 0..8, 0..8])
+            .expect("retrieve");
+        assert!(
+            neighbours.iter().all(|&v| v == fill),
+            "{kind}: the rest of the patched chunk"
+        );
+    }
+}
+
+/// A decoder reads coefficients it did not write. Extreme in-range plane
+/// values reach the lifting kernels' arithmetic directly, so every kind must
+/// come back with a `CodecError` or garbage samples — never a panic, whatever
+/// the profile's `overflow-checks` setting (this test binary has them on).
+#[test]
+fn hostile_coefficient_planes_do_not_panic_the_decoder() {
+    use zarrs::array::codec::api::{ArrayBytes, CodecOptions};
+
+    let coeffs: Vec<i32> = vec![
+        i32::MIN,
+        i32::MAX,
+        i32::MIN + 1,
+        i32::MAX - 1,
+        0,
+        -1,
+        i32::MAX,
+        i32::MIN,
+    ];
+    let shape = [std::num::NonZeroU64::new(8).unwrap()];
+    let options = CodecOptions::default();
+    for kind in ["delta", "haar", "lift53"] {
+        let levels = if kind == "delta" { 0 } else { 3 };
+        for group in [0, 3] {
+            let codec = NdLiftCodec::new_with_configuration(
+                &serde_json::from_value(json!({ "version": "0.1", "transforms": [
+                    { "axis": "z", "dimension": 0, "kind": kind, "levels": levels,
+                      "group": group }
+                ] }))
+                .unwrap(),
+            )
+            .expect("codec");
+            for dtype_name in ["uint8", "int16", "uint32", "int32"] {
+                let (dtype, size) = named_data_type(dtype_name);
+                let bytes = ArrayBytes::from(bytemuck::cast_slice::<i32, u8>(&coeffs).to_vec());
+                // Ok (the garbage happened to narrow) or Err (it did not) are
+                // both fine; reaching this line at all is the assertion.
+                let _ = codec.decode(
+                    bytes,
+                    &shape,
+                    &dtype,
+                    &FillValue::new(vec![0u8; size]),
+                    &options,
+                );
+            }
+        }
+    }
 }
 
 /// Every `nd_lift` configuration the cross-language `codec_series` builders

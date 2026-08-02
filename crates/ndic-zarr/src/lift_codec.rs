@@ -13,15 +13,15 @@ use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use zarrs::array::codec::api::{
-    ArrayBytes, ArrayCodecTraits, ArrayToArrayCodecTraits, Codec, CodecError, CodecMetadataOptions,
-    CodecOptions, CodecPluginV3, CodecTraits, CodecTraitsV3, PartialDecoderCapability,
-    PartialEncoderCapability, RecommendedConcurrency,
+    ArrayBytes, ArrayCodecTraits, ArrayPartialDecoderTraits, ArrayToArrayCodecTraits, Codec,
+    CodecError, CodecMetadataOptions, CodecOptions, CodecPluginV3, CodecTraits, CodecTraitsV3,
+    PartialDecoderCapability, PartialEncoderCapability, RecommendedConcurrency,
 };
 use zarrs::array::data_type::{
     Int8DataType, Int16DataType, Int32DataType, Int64DataType, UInt8DataType, UInt16DataType,
     UInt32DataType, UInt64DataType,
 };
-use zarrs::array::{DataType, FillValue, data_type};
+use zarrs::array::{ArraySubset, DataType, FillValue, Indexer, data_type};
 use zarrs::metadata::Configuration;
 use zarrs::metadata::v3::MetadataV3;
 use zarrs::plugin::{PluginCreateError, ZarrVersion};
@@ -329,11 +329,15 @@ impl CodecTraits for NdLiftCodec {
     }
 
     fn partial_decoder_capability(&self) -> PartialDecoderCapability {
-        // Lifting couples samples along the transformed axes: the whole chunk
-        // must be decoded (grouping bounds the coupling, not the codec I/O).
+        // Both true because [`NdLiftPartialDecoder`] decodes the whole chunk
+        // once, up front, and then answers every indexer out of that buffer:
+        // it needs no cache above it (it *is* one) and none below it (it
+        // reads its input exactly once). Lifting couples samples along the
+        // transformed axes, so a genuinely partial decode is impossible —
+        // grouping bounds the coupling, not the codec I/O.
         PartialDecoderCapability {
-            partial_read: false,
-            partial_decode: false,
+            partial_read: true,
+            partial_decode: true,
         }
     }
 
@@ -354,9 +358,95 @@ impl ArrayCodecTraits for NdLiftCodec {
     }
 }
 
+/// Serves chunk subsets out of one full-chunk decode.
+///
+/// The codec cannot decode a subset — every lifting kind couples samples
+/// along its axis — so a partial read has to invert the whole chunk and slice
+/// the result. Owning that here rather than leaving it to the codec chain's
+/// generic cache is what makes `transpose → nd_lift` work: the chain sizes an
+/// inserted cache from the *decoded* representation of the codec it precedes
+/// while the handle it wraps produces the *encoded* one, which for a codec
+/// under `transpose` are different shapes, and the read fails with
+/// `IncompatibleIndexer`. No stock array-to-array codec reports
+/// `partial_decode: false`, so nothing upstream exercises that path.
+struct NdLiftPartialDecoder {
+    /// The decoded chunk shape (`nd_lift` does not reshape).
+    shape: Vec<u64>,
+    data_type: DataType,
+    chunk: ArrayBytes<'static>,
+}
+
+impl NdLiftPartialDecoder {
+    fn new(
+        codec: &NdLiftCodec,
+        input_handle: &dyn ArrayPartialDecoderTraits,
+        shape: &[NonZeroU64],
+        data_type: &DataType,
+        fill_value: &FillValue,
+        options: &CodecOptions,
+    ) -> Result<Self, CodecError> {
+        let shape_u64: Vec<u64> = shape.iter().map(|d| d.get()).collect();
+        let coefficients = input_handle
+            .partial_decode(&ArraySubset::new_with_shape(shape_u64.clone()), options)?;
+        let chunk = codec
+            .decode(coefficients, shape, data_type, fill_value, options)?
+            .into_owned();
+        Ok(Self {
+            shape: shape_u64,
+            data_type: data_type.clone(),
+            chunk,
+        })
+    }
+}
+
+impl ArrayPartialDecoderTraits for NdLiftPartialDecoder {
+    fn data_type(&self) -> &DataType {
+        &self.data_type
+    }
+
+    fn exists(&self) -> Result<bool, zarrs::storage::StorageError> {
+        Ok(true)
+    }
+
+    fn size_held(&self) -> usize {
+        self.chunk.size()
+    }
+
+    fn partial_decode(
+        &self,
+        indexer: &dyn Indexer,
+        _options: &CodecOptions,
+    ) -> Result<ArrayBytes<'_>, CodecError> {
+        self.chunk
+            .extract_array_subset(indexer, &self.shape, &self.data_type)
+    }
+
+    fn supports_partial_decode(&self) -> bool {
+        true
+    }
+}
+
 impl ArrayToArrayCodecTraits for NdLiftCodec {
     fn into_dyn(self: Arc<Self>) -> Arc<dyn ArrayToArrayCodecTraits> {
         self as Arc<dyn ArrayToArrayCodecTraits>
+    }
+
+    fn partial_decoder(
+        self: Arc<Self>,
+        input_handle: Arc<dyn ArrayPartialDecoderTraits>,
+        shape: &[NonZeroU64],
+        data_type: &DataType,
+        fill_value: &FillValue,
+        options: &CodecOptions,
+    ) -> Result<Arc<dyn ArrayPartialDecoderTraits>, CodecError> {
+        Ok(Arc::new(NdLiftPartialDecoder::new(
+            &self,
+            &*input_handle,
+            shape,
+            data_type,
+            fill_value,
+            options,
+        )?))
     }
 
     fn encoded_data_type(&self, decoded_data_type: &DataType) -> Result<DataType, CodecError> {
@@ -373,6 +463,14 @@ impl ArrayToArrayCodecTraits for NdLiftCodec {
     ) -> Result<FillValue, CodecError> {
         // A transform of a single element is the identity, so the fill value
         // only widens to the coefficient plane.
+        //
+        // Not `forward` of a *filled chunk*: for a non-zero fill no scalar
+        // could be, since a constant chunk lifts to something non-uniform
+        // (`[v, 0, ...]` under delta). What the encoded fill value is asked
+        // for is symmetry — a stored region equal to it is elided on write
+        // and restored from it on read — which holds for any value. Absent
+        // chunks are materialized in the decoded domain and never routed
+        // through this codec. `non_zero_fill_value_round_trips` pins it.
         let bytes = transform_dispatch(
             decoded_fill_value.as_ne_bytes(),
             &[1],
