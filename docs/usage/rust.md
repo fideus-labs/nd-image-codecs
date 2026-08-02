@@ -14,7 +14,11 @@ land per the [roadmap](../development/roadmap/index.md).
 [dependencies]
 ndic-core = "0.0"
 ndic-codestream = "0.0"
-ndic-zarr = "0.0"
+# ndic-zarr has no default features. `zarrs` is the one that registers
+# nd_lift/htj2k/nd_zfp into the zarrs plugin registry, so leaving it off gives
+# you a crate that cannot open an array using them. The codec_series builder
+# below needs no features; see "Feature flags" for the rest.
+ndic-zarr = { version = "0.0", features = ["zarrs"] }
 ```
 
 ## Build a codec series
