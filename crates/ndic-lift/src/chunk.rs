@@ -3,6 +3,7 @@
 
 use alloc::format;
 use alloc::vec;
+use alloc::vec::Vec;
 
 use ndic_core::{Error, Result};
 
@@ -99,6 +100,13 @@ fn validate(len: usize, shape: &[usize], steps: &[AxisTransform]) -> Result<()> 
 }
 
 /// Apply one step along its axis, forward or inverse.
+///
+/// The chunk is viewed as `(outer, len, inner)`: for each of the `outer`
+/// slabs, the axis samples are contiguous rows of `inner` elements, and a
+/// group segment is a contiguous sub-slab — the kernels run row-wise over
+/// them directly (no gather/scatter), which keeps every lifting step a
+/// streaming, auto-vectorizable pass. `inner == 1` degenerates to the plain
+/// 1D case; the per-sample operation order is identical either way.
 fn apply_axis<T: PlaneSample>(chunk: &mut [T], shape: &[usize], step: &AxisTransform, fwd: bool) {
     let len = shape[step.dimension];
     if len < 2 {
@@ -106,29 +114,28 @@ fn apply_axis<T: PlaneSample>(chunk: &mut [T], shape: &[usize], step: &AxisTrans
         return;
     }
     let inner: usize = shape[step.dimension + 1..].iter().product();
-    let outer: usize = shape[..step.dimension].iter().product();
     let group = effective_group(step.group, len);
-    let mut line = vec![T::ZERO; len];
-    let mut tmp = vec![T::ZERO; group];
-    for o in 0..outer {
-        let base = o * len * inner;
-        for i in 0..inner {
-            for (k, slot) in line.iter_mut().enumerate() {
-                *slot = chunk[base + k * inner + i];
-            }
-            for seg in line.chunks_mut(group) {
-                let tmp = &mut tmp[..seg.len()];
-                match (step.kind, fwd) {
-                    (LiftKind::Delta, true) => kernel::delta_forward(seg),
-                    (LiftKind::Delta, false) => kernel::delta_inverse(seg),
-                    (LiftKind::Haar, true) => kernel::haar_forward(seg, tmp, step.levels),
-                    (LiftKind::Haar, false) => kernel::haar_inverse(seg, tmp, step.levels),
-                    (LiftKind::Lift53, true) => kernel::lift53_forward(seg, tmp, step.levels),
-                    (LiftKind::Lift53, false) => kernel::lift53_inverse(seg, tmp, step.levels),
+    let mut tmp = match step.kind {
+        LiftKind::Delta => Vec::new(), // delta lifts in place
+        LiftKind::Haar | LiftKind::Lift53 => vec![T::ZERO; group * inner],
+    };
+    for slab in chunk.chunks_mut(len * inner) {
+        for seg in slab.chunks_mut(group * inner) {
+            match (step.kind, fwd) {
+                (LiftKind::Delta, true) => kernel::delta_forward(seg, inner),
+                (LiftKind::Delta, false) => kernel::delta_inverse(seg, inner),
+                (LiftKind::Haar, true) => {
+                    kernel::haar_forward(seg, inner, &mut tmp[..seg.len()], step.levels);
                 }
-            }
-            for (k, &v) in line.iter().enumerate() {
-                chunk[base + k * inner + i] = v;
+                (LiftKind::Haar, false) => {
+                    kernel::haar_inverse(seg, inner, &mut tmp[..seg.len()], step.levels);
+                }
+                (LiftKind::Lift53, true) => {
+                    kernel::lift53_forward(seg, inner, &mut tmp[..seg.len()], step.levels);
+                }
+                (LiftKind::Lift53, false) => {
+                    kernel::lift53_inverse(seg, inner, &mut tmp[..seg.len()], step.levels);
+                }
             }
         }
     }
@@ -175,18 +182,20 @@ fn check_budget<T: PlaneSample>(
     shape: &[usize],
     steps: &[AxisTransform],
 ) -> Result<()> {
-    let Some(first) = chunk.first() else {
+    let Some(&first) = chunk.first() else {
         return Ok(());
     };
-    let mut all = Interval {
-        lo: first.to_i128(),
-        hi: first.to_i128(),
-    };
+    // Scan in the native plane type (a vectorizable min/max reduction);
+    // widen to i128 only for the interval propagation.
+    let (mut lo, mut hi) = (first, first);
     for &v in chunk {
-        let v = v.to_i128();
-        all.lo = all.lo.min(v);
-        all.hi = all.hi.max(v);
+        lo = lo.min(v);
+        hi = hi.max(v);
     }
+    let mut all = Interval {
+        lo: lo.to_i128(),
+        hi: hi.to_i128(),
+    };
     for step in steps {
         let len = shape.get(step.dimension).copied().unwrap_or(0);
         if len < 2 {
