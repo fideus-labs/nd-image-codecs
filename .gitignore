@@ -31,6 +31,15 @@ target/benchmarks/
 bench/viewer/dist/
 bench/viewer/node_modules/
 
+# MyST documentation site build output. `myst build --html` writes the
+# rendered static site (plus its intermediate AST cache) under
+# `docs/_build/`; the site is rebuilt from `docs/myst.yml` and the
+# markdown tree on every run, so nothing in here is committed. The
+# toolchain itself is pinned by `docs/package-lock.json`, which *is*
+# committed. `docs/node_modules/` is already covered by the
+# `node_modules/` rule above.
+docs/_build/
+
 # Test / conformance data caches (downloaded, not vendored)
 test-data/cache/
 *.jph.tmp

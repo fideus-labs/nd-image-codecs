@@ -1,0 +1,81 @@
+# MyST project configuration for the nd-image-codecs documentation site.
+#
+# The project root is `docs/`, not the repository root, so `README.md`,
+# `AGENTS.md`, `CODE_OF_CONDUCT.md`, and the per-crate READMEs stay out of
+# the rendered site. Build with `npm run build` (see ./development/commands.md).
+version: 1
+
+project:
+  title: nd-image-codecs
+  description: >-
+    Composable Zarr v3 codecs for ND scientific images — cross-axis lifting,
+    HTJ2K coefficient planes, and ZFP, with an axis-aware codec-series builder.
+  github: https://github.com/fideus-labs/nd-image-codecs
+  license: MIT
+  authors:
+    - name: Fideus Labs LLC
+      url: https://github.com/fideus-labs
+  keywords:
+    - zarr
+    - ome-zarr
+    - htj2k
+    - jpeg-2000
+    - zfp
+    - wavelet
+    - compression
+    - scientific-imaging
+  # Explicit, hand-maintained table of contents. Filesystem auto-discovery
+  # would order these alphabetically and destroy the deliberate reading order
+  # already encoded in the section landing pages. Every page under `docs/`
+  # must appear here exactly once or it will not appear on the site.
+  toc:
+    - file: index.md
+    - title: Architecture
+      children:
+        - file: architecture/index.md
+        - file: architecture/overview.md
+        - file: architecture/goals.md
+        - file: architecture/codec-series.md
+        - file: architecture/nd-transform.md
+        - file: architecture/ht-block-coder.md
+        - file: architecture/wavelet-transform.md
+        - file: architecture/zfp.md
+        - file: architecture/codestream.md
+        - file: architecture/range-access.md
+        - file: architecture/zarr-codec.md
+    - title: Usage
+      children:
+        - file: usage/index.md
+        - file: usage/zarr.md
+        - file: usage/cli.md
+        - file: usage/rust.md
+        - file: usage/python.md
+        - file: usage/typescript.md
+        - file: usage/thumbnails-and-streaming.md
+    - title: Development
+      children:
+        - file: development/index.md
+        - file: development/commands.md
+        - file: development/benchmarking.md
+        - file: development/test-data.md
+        - file: development/publishing.md
+        - file: development/commits.md
+        - file: development/style/rust.md
+    - title: Roadmap
+      children:
+        - file: development/roadmap/index.md
+        - file: development/roadmap/phase-1-baselines-and-series.md
+        - file: development/roadmap/phase-2-nd-lift.md
+        - file: development/roadmap/phase-3-htj2k-core.md
+        - file: development/roadmap/phase-4-nd-lift-ht.md
+        - file: development/roadmap/phase-5-nd-zfp.md
+        - file: development/roadmap/phase-6-validation-and-docs.md
+
+site:
+  template: book-theme
+  options:
+    logo: assets/nd-image-codecs-logo.svg
+    favicon: assets/nd-image-codecs-logo.svg
+  actions:
+    - title: GitHub
+      url: https://github.com/fideus-labs/nd-image-codecs

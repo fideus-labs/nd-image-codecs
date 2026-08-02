@@ -61,6 +61,23 @@ See [benchmarking.md](./benchmarking.md) for record layout, baselines, and the g
 | `cargo run -p ndic-cli -- inspect fixtures/tiny.jph` | Print codestream structure |
 | `cargo run -p ndic-cli -- index fixtures/tiny.jph --target thumbnail` | Print the byte-range plan |
 
+### Documentation site
+
+The [mystmd](https://mystmd.org) site is a self-contained npm package under
+`docs/`, pinned by `docs/package-lock.json`. Run these from `docs/`.
+
+| Command | Purpose |
+| --- | --- |
+| `cd docs && npm ci` | First-time setup: install the pinned mystmd toolchain from the lockfile |
+| `cd docs && npm start` | Live-reloading preview on <http://localhost:3000> |
+| `cd docs && npm run build` | Static HTML site into `docs/_build/html/` (gitignored) |
+| `cd docs && npm run check` | Strict build — fails on any warning |
+| `cd docs && npm run clean` | Remove `docs/_build/` |
+
+Every page under `docs/` must be listed in the `toc` in `docs/myst.yml` or it
+will not appear on the site; the toc is explicit so the curated reading order of
+each section is preserved.
+
 ### Release
 
 | Command | Purpose |

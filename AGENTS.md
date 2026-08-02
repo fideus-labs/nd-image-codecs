@@ -53,6 +53,7 @@ consult the roadmap before implementing anything.
 | Rust style rules | [./docs/development/style/rust.md](./docs/development/style/rust.md) |
 | Commit message format | [./docs/development/commits.md](./docs/development/commits.md) |
 | Test data & conformance corpus | [./docs/development/test-data.md](./docs/development/test-data.md) |
+| Build or preview the documentation site | [./docs/development/commands.md](./docs/development/commands.md) |
 
 ## Conventions
 
@@ -75,6 +76,9 @@ consult the roadmap before implementing anything.
   (`inventory::submit! { BenchEntry::new(...) }`) in the same PR.
 - Roadmap phases are strictly ordered; do not start a phase's work before its
   predecessors' acceptance criteria are met.
+- Any new page added under `docs/` must also be added to the `toc` in
+  `docs/myst.yml`, or it will not appear on the documentation site — the toc is
+  explicit, not filesystem-discovered.
 
 ## Key dependencies
 
