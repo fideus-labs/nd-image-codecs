@@ -10,6 +10,34 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
+  # A mistyped `runs-on` label is not an error to GitHub — the job just queues
+  # forever against a runner that will never exist. actionlint validates labels
+  # against the known-image list, which is the only cheap guard on the matrix
+  # below.
+  actionlint:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # This job executes a downloaded binary; keep the job token out of
+          # .git/config so that binary can never read it.
+          persist-credentials: false
+      - name: Lint workflow files
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          # Upstream publishes no build attestation, so the release's own
+          # published SHA256 is the integrity check. Update both together.
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -o "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum --check --strict
+          tar -xzf "$archive" actionlint
+          ./actionlint -color
+
   fmt:
     runs-on: ubuntu-24.04
     steps:
@@ -30,9 +58,19 @@ jobs:
       - run: cargo clippy --workspace --all-targets
 
   test:
+    name: test (${{ matrix.os }})
     strategy:
+      # Architecture-specific failures are the whole point of this matrix, so
+      # let every leg report rather than cancelling siblings on the first red.
+      fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14, windows-2022]
+        os:
+          - ubuntu-24.04       # linux   x86_64
+          - ubuntu-24.04-arm   # linux   aarch64
+          - macos-15-intel     # macOS   x86_64 — last Intel image, retires ~fall 2027
+          - macos-15           # macOS   aarch64 (Apple silicon)
+          - windows-2022       # windows x86_64
+          - windows-11-arm     # windows aarch64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
