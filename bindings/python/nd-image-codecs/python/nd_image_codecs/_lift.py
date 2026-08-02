@@ -105,6 +105,14 @@ def validate_config(transforms: list[dict[str, Any]], ndim: int, version: str = 
         kind = t["kind"]
         if kind not in KINDS:
             raise ValueError(f"nd_lift transform kind {kind!r} is not one of {KINDS}")
+        # `axis` is a `String` in the Rust `AxisTransform` and the TypeScript
+        # constructor checks the same thing, so a non-string axis has to fail
+        # here too — otherwise a config Python writes is one serde refuses.
+        if "axis" in t and not isinstance(t["axis"], str):
+            raise ValueError(
+                f"nd_lift transform axis must be a string, got "
+                f"{type(t['axis']).__name__} {t['axis']!r}"
+            )
         if not 0 <= _require_int(t, "dimension") < ndim:
             raise ValueError(
                 f"nd_lift transform dimension {t['dimension']} out of range for a "

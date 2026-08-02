@@ -175,6 +175,21 @@ def test_integer_fields_respect_the_rust_widths() -> None:
     _lift.forward(data, step(levels=255, group=0xFFFFFFFF))
 
 
+def test_axis_must_be_a_string() -> None:
+    # Rust types AxisTransform.axis as String and the TypeScript constructor
+    # checks it too, so a numeric axis must not encode here and then fail
+    # serde on the Rust side of the same configuration.
+    data = np.zeros((4, 4), dtype=np.uint16)
+    for bad in [5, None, 0.5, ["z"], {"name": "z"}]:
+        step = [{"axis": bad, "dimension": 0, "kind": "haar", "levels": 1, "group": 0}]
+        with pytest.raises(ValueError, match="axis must be a string"):
+            _lift.forward(data, step)
+        with pytest.raises(ValueError, match="axis must be a string"):
+            _lift.inverse(data.astype(np.int32), step, np.dtype(np.uint16))
+    # Absent is fine: `axis` is `#[serde(default)]` in AxisTransform.
+    _lift.forward(data, [{"dimension": 0, "kind": "haar", "levels": 1}])
+
+
 def test_transforms_must_be_mappings() -> None:
     data = np.zeros((4, 4), dtype=np.uint16)
     for bad in ["delta", 3, None, ["dimension"]]:
@@ -286,6 +301,66 @@ def test_zarr_codec_is_hashable_and_requires_a_version() -> None:
     live[0]["axis"] = "t"
     assert table[keyed] == "value", "codec key must survive mutation of the source dict"
     assert keyed.to_dict()["configuration"]["transforms"][0]["levels"] == 2
+
+
+@pytest.mark.parametrize("shards", [None, (8, 16, 16)])
+def test_zarr_pipeline_non_zero_fill_value(shards: tuple[int, ...] | None) -> None:
+    # `resolve_metadata` widens the fill value into the coefficient plane
+    # rather than lifting it, which is only sound because zarr uses that value
+    # symmetrically. Three paths have to hold for a non-zero fill:
+    # absent outer chunks, an inner chunk dropped inside a shard, and a
+    # sub-chunk write that forces read-modify-write of a partial chunk.
+    zarr = pytest.importorskip("zarr", minversion="3.1")
+    import nd_image_codecs.zarr_codec  # noqa: F401  (registers nd_lift)
+
+    fill = 7
+    pipeline = [
+        {
+            "name": "nd_lift",
+            "configuration": {
+                "version": "0.1",
+                "transforms": [
+                    {"axis": "z", "dimension": 0, "kind": "delta", "levels": 0, "group": 0}
+                ],
+            },
+        },
+        {"name": "bytes", "configuration": {"endian": "little"}},
+    ]
+    store: dict = {}
+    extra = {"shards": shards} if shards else {}
+    arr = zarr.create_array(
+        store,
+        shape=(8, 16, 16),
+        chunks=(4, 8, 8),
+        dtype="uint16",
+        filters=pipeline[:1],
+        serializer=pipeline[1],
+        compressors=[],
+        fill_value=fill,
+        **extra,
+    )
+
+    # Nothing written: every chunk is absent and must read back as the fill.
+    np.testing.assert_array_equal(zarr.open_array(store, mode="r")[:], fill)
+
+    # One chunk-aligned region written; the rest stays absent. A lifted
+    # constant is not a constant, so a codec-routed fill would show up here.
+    arr[0:4, 0:8, 0:8] = 100
+    back = zarr.open_array(store, mode="r")[:]
+    np.testing.assert_array_equal(back[0:4, 0:8, 0:8], 100)
+    rest = back.copy()
+    rest[0:4, 0:8, 0:8] = fill
+    np.testing.assert_array_equal(rest, fill)
+
+    # A sub-chunk write: nd_lift cannot partial-encode, so zarr decodes the
+    # whole chunk, patches it, and re-encodes. The untouched remainder of that
+    # chunk must still be the fill value, not a running sum of it.
+    arr[4:6, 0:3, 0:3] = 250
+    back = zarr.open_array(store, mode="r")[:]
+    np.testing.assert_array_equal(back[4:6, 0:3, 0:3], 250)
+    neighbours = back[4:8, 0:8, 0:8].copy()
+    neighbours[0:2, 0:3, 0:3] = fill
+    np.testing.assert_array_equal(neighbours, fill)
 
 
 def test_zarr_pipeline_partial_edge_chunks() -> None:

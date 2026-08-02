@@ -94,6 +94,16 @@ class NdLiftCodec(ArrayArrayCodec):
         _lift.plane_dtype(dtype.to_native_dtype())
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
+        # The fill value only widens into the plane, matching the Rust codec's
+        # `encoded_fill_value`. It is deliberately *not* `forward([v, v, ...])`:
+        # for a non-zero `v` no scalar could be, since a constant chunk lifts
+        # to something non-uniform (`[v, 0, ...]` under delta). What downstream
+        # zarr actually asks of this value is symmetry, not that — an inner
+        # chunk equal to it is dropped on write (`write_empty_chunks=False`)
+        # and restored from the same `ArraySpec.fill_value` on read, so drop
+        # and restore agree whatever the value is. Absent *outer* chunks never
+        # reach this codec at all: zarr fills those in the decoded domain.
+        # `test_zarr_pipeline_non_zero_fill_value` pins both paths.
         plane = _lift.plane_dtype(chunk_spec.dtype.to_native_dtype())
         return ArraySpec(
             shape=chunk_spec.shape,

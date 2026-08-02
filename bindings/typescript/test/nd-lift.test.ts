@@ -121,6 +121,19 @@ describe("NdLift config class", () => {
     }
   });
 
+  it("refuses a non-string axis", () => {
+    // Rust types `axis` as `String`, so a numeric axis is a serde error
+    // there. Python's `validate_config` pins the same rule.
+    for (const axis of [5, null, 0.5, ["z"], { name: "z" }]) {
+      const transforms = [
+        { axis, dimension: 0, kind: "haar", levels: 1, group: 0 },
+      ] as unknown as NdLiftTransform[];
+      expect(
+        () => new NdLift({ name: "nd_lift", configuration: { version: "0.1", transforms } }),
+      ).toThrow(/axis .* must be a string/);
+    }
+  });
+
   it("refuses transforms missing kind or dimension", () => {
     // `dimension` and `kind` have no serde default in AxisTransform; `axis`,
     // `levels`, and `group` do, so they stay optional.
