@@ -1,6 +1,9 @@
-## In-Plane Wavelet Transform
+---
+title: In-Plane Wavelet Transform
+description: The two JPEG 2000 Part 1 wavelet kernels — reversible 5/3 and irreversible 9/7 — applied to each trailing 2D (y, x) plane before HT block coding.
+---
 
-> Crate: [`ndic-htj2k`](../../crates/ndic-htj2k/) (2D DWT) · Roadmap:
+> Crate: [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) (2D DWT) · Roadmap:
 > [Phase 3](../development/roadmap/phase-3-htj2k-core.md)
 >
 > The **cross-axis** (z/t/c) transform is a separate, explicit codec — see
@@ -15,7 +18,7 @@ applied to each trailing 2D `(y, x)` plane before HT block coding:
 | Le Gall **5/3** | `Reversible53` | Integer lifting, bit-exact | Lossless (default) |
 | CDF **9/7** | `Irreversible97` | Real-valued lifting + quantization | Lossy, higher ratio |
 
-### Lifting implementation
+## Lifting implementation
 
 Both kernels are implemented as lifting steps over interleaved even/odd sample
 lanes:
@@ -30,7 +33,7 @@ Boundary handling uses **symmetric (mirror) extension** per T.800 Annex F. (The
 `nd_lift` cross-axis codec uses the same boundary rule along z/t; see
 [nd-transform.md](./nd-transform.md).)
 
-### Geometry
+## Geometry
 
 **`dwt_2d`** — the in-plane transform: `xy_levels` dyadic decompositions
 producing the LL/HL/LH/HH subband tree; each resulting subband plane feeds the
@@ -42,7 +45,7 @@ The plane codec is intentionally **2D only**. All depth/time/channel
 decorrelation happens upstream in `nd_lift`, keeping the `htj2k` codestream pure
 Part 1 / Part 15 with no Part 2 machinery.
 
-### Precision budget
+## Precision budget
 
 Coefficients live in `i32` planes (`CoeffPlane`). For 16-bit input and 5 xy
 levels, 5/3 growth stays comfortably within `i32`; the encoder computes the
@@ -50,7 +53,7 @@ exact per-subband bit budget and writes it via quantization markers. The 9/7
 fixed-point path documents its Q-format per lifting step; overflow behavior is
 checked by proptest with extreme-value inputs.
 
-### Testing
+## Testing
 
 - Analytic vectors: known signals (impulse, ramp, DC) against closed-form
   subband values.

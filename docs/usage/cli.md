@@ -1,3 +1,9 @@
+---
+title: CLI — ndic
+short_title: CLI
+description: 'The ndic command-line tool: build a codec series from an array''s axis metadata, then encode, decode, and inspect nd-image-codecs data.'
+---
+
 # CLI — `ndic`
 
 > **Status:** Skeleton — `ndic series` works today; encode/decode behavior lands

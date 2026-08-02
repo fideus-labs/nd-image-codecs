@@ -1,3 +1,8 @@
+---
+title: Zarr & OME-Zarr
+description: Choosing between the nd-delta, nd-lift-ht, and nd-zfp families and wiring the resulting codec series into a Zarr v3 or OME-Zarr array.
+---
+
 # Zarr & OME-Zarr
 
 > **Status:** Skeleton — the builder and nd-delta work in

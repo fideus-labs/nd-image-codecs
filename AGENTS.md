@@ -79,6 +79,21 @@ consult the roadmap before implementing anything.
 - Any new page added under `docs/` must also be added to the `toc` in
   `docs/myst.yml`, or it will not appear on the documentation site — the toc is
   explicit, not filesystem-discovered.
+- Links from `docs/` into source code, benchmarks, or scripts must be absolute
+  `https://github.com/fideus-labs/nd-image-codecs/blob/main/…` (or
+  `/tree/main/…` for a directory) URLs. The MyST project root is `docs/`, so a
+  relative path that escapes it (`../../crates/…`) 404s on the rendered site;
+  absolute URLs render identically on GitHub, so there is no cost. Links
+  *between* pages inside `docs/` stay relative, and should use empty link text
+  — `[](./overview.md)` — so MyST auto-fills the target's title.
+- Every page under `docs/` carries YAML frontmatter with a `title` and a
+  one-sentence `description` (plus `short_title` when the title is too long for
+  a sidebar entry), and a single `#`-level heading hierarchy beneath it — MyST
+  lifts the title into the page heading, so a page should not repeat it. Titles
+  are plain text: mystmd renders frontmatter as a literal string, so backticks
+  would show up verbatim in the sidebar and in auto-filled link text.
+- Run `cd docs && npm run check` (strict build, fails on any warning) before
+  pushing documentation changes.
 
 ## Key dependencies
 

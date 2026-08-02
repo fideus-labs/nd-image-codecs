@@ -1,3 +1,9 @@
+---
+title: TypeScript / Browser
+short_title: TypeScript
+description: 'Using nd-image-codecs from TypeScript and the browser: the codecSeries builder and the WASM codec cores for zarrita.js.'
+---
+
 # TypeScript / Browser
 
 > **Status:** Skeleton — the package scaffolding and the `codecSeries` builder

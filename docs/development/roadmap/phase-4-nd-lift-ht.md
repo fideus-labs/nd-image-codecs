@@ -1,3 +1,9 @@
+---
+title: Phase 4 — The nd-lift-ht Family
+short_title: Phase 4 — nd-lift-ht
+description: Phase 4 fuses the nd_lift transform and the HTJ2K core into the flagship transpose → nd_lift → htj2k family, with the byte-range index that makes thumbnails work.
+---
+
 # Phase 4 — The nd-lift-ht Family
 
 > **Depends on:** Phases 2 + 3 · **Gates:** Phase 6

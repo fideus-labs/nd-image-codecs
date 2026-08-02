@@ -1,8 +1,11 @@
-## Development Commands
+---
+title: Development Commands
+description: Every command needed to build, check, test, lint, benchmark, and document nd-image-codecs, all run from the repository root.
+---
 
 All commands run from the repository root.
 
-### Build & check
+## Build & check
 
 | Command | Purpose |
 | --- | --- |
@@ -11,7 +14,7 @@ All commands run from the repository root.
 | `cargo build -p ndic-cli --release` | Just the `ndic` binary |
 | `cargo build -p ndic-zarr --target wasm32-unknown-unknown` | WASM core check (SIMD128 flags come from `.cargo/config.toml`) |
 
-### Test
+## Test
 
 | Command | Purpose |
 | --- | --- |
@@ -20,7 +23,7 @@ All commands run from the repository root.
 | `cargo test --workspace --release` | Slow proptest/round-trip suites at full speed |
 | `PROPTEST_CASES=4096 cargo test -p ndic-lift` | Deeper property-test runs |
 
-### Lint & format
+## Lint & format
 
 | Command | Purpose |
 | --- | --- |
@@ -29,7 +32,7 @@ All commands run from the repository root.
 | `cargo clippy --workspace --all-targets` | Clippy `all` + `pedantic` (must be warning-clean) |
 | `cargo doc --workspace --no-deps` | Build API docs; `missing_docs` is a warn lint |
 
-### Benchmarks
+## Benchmarks
 
 | Command | Purpose |
 | --- | --- |
@@ -43,7 +46,7 @@ All commands run from the repository root.
 
 See [benchmarking.md](./benchmarking.md) for record layout, baselines, and the gate.
 
-### Bindings
+## Bindings
 
 | Command | Purpose |
 | --- | --- |
@@ -54,14 +57,14 @@ See [benchmarking.md](./benchmarking.md) for record layout, baselines, and the g
 | `python3 scripts/ci/check-series-equality.py` | Cross-language `codec_series` equality over the fixture matrix |
 | `python3 scripts/gen-series-fixtures.py` | Regenerate `fixtures/codec-series/matrix.json` (only on deliberate builder changes) |
 
-### CLI smoke
+## CLI smoke
 
 | Command | Purpose |
 | --- | --- |
 | `cargo run -p ndic-cli -- inspect fixtures/tiny.jph` | Print codestream structure |
 | `cargo run -p ndic-cli -- index fixtures/tiny.jph --target thumbnail` | Print the byte-range plan |
 
-### Documentation site
+## Documentation site
 
 The [mystmd](https://mystmd.org) site is a self-contained npm package under
 `docs/`, pinned by `docs/package-lock.json`. Run these from `docs/`.
@@ -73,12 +76,28 @@ The [mystmd](https://mystmd.org) site is a self-contained npm package under
 | `cd docs && npm run build` | Static HTML site into `docs/_build/html/` (gitignored) |
 | `cd docs && npm run check` | Strict build — fails on any warning |
 | `cd docs && npm run clean` | Remove `docs/_build/` |
+| `python3 scripts/ci/check-docs-links.py` | Check every outbound `http(s)` link in `docs/` (manual, pre-release — **not** in CI) |
+
+**Run `npm run check` before pushing any documentation change.** It is the same
+build as `npm run build` with `--strict`, so an unresolved cross-reference, a
+duplicate identifier, a missing image, or a malformed directive fails loudly
+instead of shipping.
 
 Every page under `docs/` must be listed in the `toc` in `docs/myst.yml` or it
 will not appear on the site; the toc is explicit so the curated reading order of
-each section is preserved.
+each section is preserved. Every page also carries YAML frontmatter with a
+`title` and `description`, and links between pages use empty link text
+(`[](./overview.md)`) so MyST fills in the target's title.
 
-### Release
+The external-link checker is a pre-release/manual step, not a gate. The docs
+cite roughly 90 specification and vendor URLs (ISO, ITU, LLNL, frontiersin,
+kakadusoftware) that rate-limit, bot-block, and go offline independently of this
+repository, so a CI job wrapping it would fail for reasons no contributor could
+fix. It exits non-zero only for a definitively dead target; blocked and
+unreachable hosts are reported as warnings. Use `--timeout` and `--jobs` to
+adjust patience and concurrency.
+
+## Release
 
 | Command | Purpose |
 | --- | --- |

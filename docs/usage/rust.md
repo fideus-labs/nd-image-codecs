@@ -1,3 +1,8 @@
+---
+title: Rust Library
+description: 'Using nd-image-codecs from Rust: the codec_series builder, the codec crates, and their zarrs integration.'
+---
+
 # Rust Library
 
 > **Status:** Skeleton — the `codec_series` builder works today; encode/decode
@@ -91,7 +96,7 @@ match ndic_codestream::decode(&bytes) {
 
 ## Going deeper
 
-- Parameter semantics: [`EncodeParams` docs](../../crates/ndic-core/src/params.rs)
+- Parameter semantics: [`EncodeParams` docs](https://github.com/fideus-labs/nd-image-codecs/blob/main/crates/ndic-core/src/params.rs)
   and [codestream architecture](../architecture/codestream.md)
 - Partial decode & range plans: [range-access](../architecture/range-access.md)
 - Cross-axis transform semantics: [nd-transform](../architecture/nd-transform.md)

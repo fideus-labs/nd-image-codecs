@@ -1,11 +1,15 @@
-## Code Style — Rust
+---
+title: Code Style — Rust
+short_title: Rust Style
+description: 'The Rust conventions every change is held to: pinned toolchain, workspace-inherited clippy lints, error handling through ndic_core::Error, and module layout.'
+---
 
-### Toolchain
+## Toolchain
 
-Rust 1.91+ (pinned in [`rust-toolchain.toml`](../../../rust-toolchain.toml); MSRV is set
+Rust 1.91+ (pinned in [`rust-toolchain.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/rust-toolchain.toml); MSRV is set
 by the `zarrs` dependency), edition 2024. Standard `rustfmt` defaults (no `rustfmt.toml`).
 
-### Clippy
+## Clippy
 
 Workspace clippy config in root `Cargo.toml` — all crates inherit via
 `[lints] workspace = true`. Clippy `all` + `pedantic` at warn level.
@@ -13,7 +17,7 @@ Allowed: `module_name_repetitions`, `must_use_candidate`, `missing_errors_doc`,
 `missing_panics_doc`. `unsafe_code` is warn — use it only inside SIMD lane modules
 (`core::arch` intrinsics), each `unsafe` block carrying a `// SAFETY:` comment.
 
-### Imports
+## Imports
 
 Three groups separated by blank lines:
 1. `std` / `alloc` / `core`
@@ -22,7 +26,7 @@ Three groups separated by blank lines:
 
 No wildcard imports in production code. `use super::*` only in `#[cfg(test)]`.
 
-### Error Handling
+## Error Handling
 
 All fallible functions return `ndic_core::Result<T>` (alias for
 `Result<T, ndic_core::Error>`). Variants: `InvalidArgument`, `Codestream`
@@ -31,7 +35,7 @@ human context in the `message`. Convert `Option` with
 `.ok_or(Error::InvalidArgument { message: ... })`. **The decoder never panics on
 malformed input** — fuzzing enforces this.
 
-### Naming
+## Naming
 
 - Functions/methods: `snake_case`
 - Types/traits/enum variants: `PascalCase`
@@ -41,7 +45,7 @@ malformed input** — fuzzing enforces this.
 - SIMD lane modules: `<name>_<isa>.rs` (e.g., `cleanup_avx2.rs`), scalar reference in
   `<name>_scalar.rs`
 
-### Types & Derives
+## Types & Derives
 
 - Small value types: `#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]`
 - Structs with heap data: `#[derive(Debug, Clone, PartialEq)]`
@@ -49,7 +53,7 @@ malformed input** — fuzzing enforces this.
 - `no_std`-capable crates: `#![cfg_attr(not(feature = "std"), no_std)]` with the `std`
   feature on by default
 
-### SIMD & Performance Code
+## SIMD & Performance Code
 
 - Scalar reference implementation first; it is the conformance oracle.
 - SIMD lanes must be bit-identical to scalar (differential tests enforce).
@@ -58,13 +62,13 @@ malformed input** — fuzzing enforces this.
 - Every performance-sensitive addition registers a `BenchEntry` in the same PR
   (see [benchmarking.md](../benchmarking.md)).
 
-### Documentation
+## Documentation
 
 - Module-level `//!` doc comments on every module
 - Per-item `///` comments with backtick type references (e.g., `[`EncodeParams`]`)
 - Spec references in doc comments cite the clause (e.g., "T.814 §7.3.2")
 
-### Tests
+## Tests
 
 - Inline `#[cfg(test)] mod tests { use super::*; }` in every source file
 - Descriptive names: `cleanup_roundtrips_random_plane`, `plt_offsets_match_packet_walk`

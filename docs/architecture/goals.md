@@ -1,6 +1,10 @@
-## Design Goals and Non-Goals
+---
+title: Design Goals and Non-Goals
+short_title: Goals & Non-Goals
+description: What nd-image-codecs optimizes for — composability, explicit cross-axis decorrelation with no JPEG 2000 Part 2, and byte-range-friendly output — and what it deliberately does not attempt.
+---
 
-### Goals
+## Goals
 
 - **Composability first.** Every capability is a Zarr v3 codec that composes
   with the existing Zarr codec ecosystem (`transpose`, `numcodecs.delta`,
@@ -41,7 +45,7 @@
   phase) written so both humans and coding agents can locate exactly the
   context they need.
 
-### Non-Goals
+## Non-Goals
 
 - **No JPEG 2000 Part 2 (MCT).** This is the central IP decision. We never emit
   or parse `MCT`/`MCC`/`MCO`/`CBD` markers; cross-axis decorrelation is the

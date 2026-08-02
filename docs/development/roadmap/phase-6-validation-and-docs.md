@@ -1,3 +1,9 @@
+---
+title: Phase 6 — Cross-Ecosystem Validation, Performance & Docs
+short_title: Phase 6 — Validation & Docs
+description: Phase 6 proves the three families work identically in Rust, Python, and TypeScript, hardens performance at scale, and finishes the usage documentation with example-verified snippets.
+---
+
 # Phase 6 — Cross-Ecosystem Validation, Performance & Docs
 
 > **Depends on:** Phases 4 + 5 · **Gates:** release

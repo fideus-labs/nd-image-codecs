@@ -1,6 +1,9 @@
-## HT Block Coder (FBCOT)
+---
+title: HT Block Coder (FBCOT)
+description: The FBCOT block coder of ISO/IEC 15444-15 replaces Part 1's EBCOT Tier-1 MQ arithmetic coder, trading roughly 5-10 % compression efficiency for an order-of-magnitude speedup.
+---
 
-> Crate: [`ndic-htj2k`](../../crates/ndic-htj2k/) · Roadmap:
+> Crate: [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) · Roadmap:
 > [Phase 3](../development/roadmap/phase-3-htj2k-core.md)
 
 nd-image-codecs implements the **FBCOT** (Fast Block Coding with Optimized Truncation) algorithm
@@ -12,7 +15,7 @@ faster lossless** coding at a small (~5–10 %) compression-efficiency cost
 ([JPEG HTJ2K white paper](https://ds.jpeg.org/whitepapers/jpeg-htj2k-whitepaper.pdf),
 [Taubman et al., ICIP 2019](https://kakadusoftware.com/wp-content/uploads/icip2019.pdf)).
 
-### Pass structure
+## Pass structure
 
 Classic EBCOT codes every bit-plane with three passes (SigProp, MagRef, Cleanup), all
 arithmetic-coded and all needed for reconstruction. HT restructures this:
@@ -27,7 +30,7 @@ arithmetic-coded and all needed for reconstruction. HT restructures this:
   and discard whole Sets at assembly time — the "Optimized Truncation" in FBCOT
   ([Taubman et al., Frontiers 2022](https://www.frontiersin.org/articles/10.3389/frsip.2022.885644/full)).
 
-### Cleanup-pass sub-streams
+## Cleanup-pass sub-streams
 
 The Cleanup pass concurrently emits three byte-aligned sub-bitstreams within one
 codeword segment:
@@ -46,7 +49,7 @@ indexed by causal neighbor context. There is **no arithmetic-coder feedback loop
 sample path**, which is what makes the whole pass table-driven, branch-light, and
 vectorizable ([T.814](https://www.itu.int/rec/T-REC-T.814)).
 
-### Implementation strategy (mirroring, then extending, OpenJPH)
+## Implementation strategy (mirroring, then extending, OpenJPH)
 
 OpenJPH's coding layer (`src/core/coding/ojph_block_encoder*.cpp`,
 `ojph_block_decoder*.cpp` in [aous72/OpenJPH](https://github.com/aous72/OpenJPH)) ships
@@ -66,13 +69,13 @@ selected at runtime by CPU detection (`ojph_arch.cpp`). nd-image-codecs mirrors 
   typical microscopy / volume targets are ≤ 16-bit integers plus wavelet gain; `MAGB` in the `CAP` marker
   carries the bound (see [codestream.md](./codestream.md)).
 
-### What we don't build
+## What we don't build
 
 - No MQ **encoder** (legacy J2K-1 output is a non-goal; see [goals.md](./goals.md)).
 - No iterative PCRD-opt over many coding passes: rate control starts quantizer-driven
   like OpenJPH, with HT-Set truncation as the later refinement mechanism.
 
-### Test surface
+## Test surface
 
 - Round-trip property tests: random planes × dtypes × block sizes, encode∘decode
   identity on the 5/3 path.

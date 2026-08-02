@@ -1,3 +1,8 @@
+---
+title: nd-image-codecs
+description: 'Composable Zarr v3 codecs for ND scientific images: cross-axis lifting, HTJ2K coefficient planes, and ZFP blocks, assembled by an axis-aware codec-series builder.'
+---
+
 # nd-image-codecs
 
 **Composable Zarr v3 codecs for ND scientific images.**

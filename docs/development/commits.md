@@ -1,4 +1,7 @@
-## Commit Convention
+---
+title: Commit Convention
+description: nd-image-codecs uses Conventional Commits with crate scopes, so every message names the crate it touches.
+---
 
 [Conventional Commits](https://www.conventionalcommits.org/) with crate scopes:
 

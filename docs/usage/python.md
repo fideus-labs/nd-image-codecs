@@ -1,3 +1,8 @@
+---
+title: Python
+description: 'Using nd-image-codecs from Python: the maturin-built nd_image_codecs package, the pure-Python codec_series builder, and the zarr-python codec entry points.'
+---
+
 # Python
 
 > **Status:** Skeleton — the package builds today (maturin) and the

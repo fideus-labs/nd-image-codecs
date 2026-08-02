@@ -1,3 +1,9 @@
+---
+title: Phase 5 — The nd_zfp Codec (Rust ZFP Port)
+short_title: Phase 5 — nd_zfp
+description: Phase 5 delivers a clean-room Rust port of LLNL ZFP for 2D/3D/4D data that reproduces the C implementation's tests, plus the brick index and the Zarr codec wrapper.
+---
+
 # Phase 5 — The `nd_zfp` Codec (Rust ZFP Port)
 
 > **Depends on:** Phase 1 · **Gates:** Phase 6

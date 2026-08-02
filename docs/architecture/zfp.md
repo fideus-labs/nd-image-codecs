@@ -1,6 +1,10 @@
-## The `nd_zfp` Codec (Rust ZFP port)
+---
+title: The nd_zfp Codec (Rust ZFP port)
+short_title: nd_zfp Codec
+description: nd_zfp is a clean-room Rust port of LLNL ZFP for 2D, 3D, and 4D blocks, registered as a Zarr v3 array-to-bytes codec for GPU volume rendering and random brick access.
+---
 
-> Crate: [`ndic-zfp`](../../crates/ndic-zfp/) · Roadmap:
+> Crate: [`ndic-zfp`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zfp) · Roadmap:
 > [Phase 5](../development/roadmap/phase-5-nd-zfp.md)
 
 `nd_zfp` is a clean-room Rust port of [LLNL ZFP](https://github.com/LLNL/zfp)
@@ -10,7 +14,7 @@ ZFP's fixed-rate mode gives every `4^d` block a constant bit budget, so a
 renderer can compute a brick's byte address in O(1) and bound its working set
 exactly.
 
-### Why ZFP as its own codec
+## Why ZFP as its own codec
 
 ZFP is the standard for lossy-but-bounded floating-point scientific arrays and
 is what GPU renderers and simulation post-processing already expect
@@ -18,7 +22,7 @@ is what GPU renderers and simulation post-processing already expect
 codec lets nd-zfp series feed those consumers directly, while the fixed-rate
 mode's random access complements the streaming/pyramid strengths of nd-lift-ht.
 
-### ZFP block algorithm (what the port reproduces)
+## ZFP block algorithm (what the port reproduces)
 
 For each `4^d` block (d = 2, 3, 4), the reference algorithm:
 
@@ -45,7 +49,7 @@ Supported sample types: `f32`, `f64`, `i32`, `i64`; narrower integers are
 promoted, matching the C library's guidance
 ([ZFP modes](https://zfp.readthedocs.io/en/release0.5.4/modes.html)).
 
-### Compatibility contract
+## Compatibility contract
 
 The port is **bitstream-compatible** with the reference C implementation:
 compressed output must be byte-identical for identical parameters. This is
@@ -60,7 +64,7 @@ verified two ways:
   compress the same inputs with both implementations and assert byte equality,
   and cross-decode (Rust-encode → C-decode and vice-versa).
 
-### Port strategy
+## Port strategy
 
 1. **2D first**, scalar and correct, checksum-matched — the conformance oracle.
 2. **3D then 4D**, sharing the generic d-dimensional transform and coder.
@@ -71,7 +75,7 @@ verified two ways:
    modes — enabling `RangeIndex`-style random access (see
    [range-access.md](./range-access.md)).
 
-### Configuration
+## Configuration
 
 ```json
 { "name": "nd_zfp", "configuration": { "mode": "fixed_rate", "rate": 8.0, "dims": 3 } }
@@ -82,7 +86,7 @@ dimensions (2–4). `mode` is one of `reversible`, `fixed_rate`,
 `fixed_accuracy`, `fixed_precision`, with the corresponding parameter
 (`rate`/`tolerance`/`precision`).
 
-### Testing
+## Testing
 
 - Upstream checksum reproduction across the full dimension/type/mode matrix.
 - `zfp-sys` differential + cross-decode equality.

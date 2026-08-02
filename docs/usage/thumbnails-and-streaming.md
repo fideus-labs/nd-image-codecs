@@ -1,3 +1,9 @@
+---
+title: Thumbnails & Streaming over HTTP Range
+short_title: Thumbnails & Streaming
+description: Decoding thumbnails, single planes, and low-resolution previews from any static host with plain HTTP Range requests — no tile server required.
+---
+
 # Thumbnails & Streaming over HTTP Range
 
 > **Status:** Skeleton — `RangeIndex`, thumbnail extraction, and 3D targets land

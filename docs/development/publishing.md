@@ -1,3 +1,8 @@
+---
+title: Publishing
+description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand, including the 0.0.1 name-reservation release.
+---
+
 # Publishing
 
 How to publish nd-image-codecs to crates.io, PyPI, and npm **by hand**. There is
@@ -14,16 +19,16 @@ squat.
 
 | Registry | Package | Source | Publishes |
 | --- | --- | --- | --- |
-| crates.io | `ndic-core` | [`crates/ndic-core`](../../crates/ndic-core/) | library |
-| crates.io | `ndic-htj2k` | [`crates/ndic-htj2k`](../../crates/ndic-htj2k/) | library |
-| crates.io | `ndic-lift` | [`crates/ndic-lift`](../../crates/ndic-lift/) | library |
-| crates.io | `ndic-zfp` | [`crates/ndic-zfp`](../../crates/ndic-zfp/) | library |
-| crates.io | `ndic-codestream` | [`crates/ndic-codestream`](../../crates/ndic-codestream/) | library |
-| crates.io | `ndic-zarr` | [`crates/ndic-zarr`](../../crates/ndic-zarr/) | library |
-| crates.io | `ndic-cli` | [`crates/ndic-cli`](../../crates/ndic-cli/) | `ndic` binary |
-| PyPI | `nd-image-codecs` | [`bindings/python/nd-image-codecs`](../../bindings/python/nd-image-codecs/) | sdist + abi3 wheels |
-| npm | `@fideus-labs/nd-image-codecs` | [`bindings/typescript`](../../bindings/typescript/) | ESM + `.d.ts` |
-| npm | `nd-image-codecs` | [`bindings/javascript`](../../bindings/javascript/) | name placeholder, README only |
+| crates.io | `ndic-core` | [`crates/ndic-core`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-core) | library |
+| crates.io | `ndic-htj2k` | [`crates/ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) | library |
+| crates.io | `ndic-lift` | [`crates/ndic-lift`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-lift) | library |
+| crates.io | `ndic-zfp` | [`crates/ndic-zfp`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zfp) | library |
+| crates.io | `ndic-codestream` | [`crates/ndic-codestream`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-codestream) | library |
+| crates.io | `ndic-zarr` | [`crates/ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) | library |
+| crates.io | `ndic-cli` | [`crates/ndic-cli`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-cli) | `ndic` binary |
+| PyPI | `nd-image-codecs` | [`bindings/python/nd-image-codecs`](https://github.com/fideus-labs/nd-image-codecs/tree/main/bindings/python/nd-image-codecs) | sdist + abi3 wheels |
+| npm | `@fideus-labs/nd-image-codecs` | [`bindings/typescript`](https://github.com/fideus-labs/nd-image-codecs/tree/main/bindings/typescript) | ESM + `.d.ts` |
+| npm | `nd-image-codecs` | [`bindings/javascript`](https://github.com/fideus-labs/nd-image-codecs/tree/main/bindings/javascript) | name placeholder, README only |
 
 **Not published.** Three workspace members carry `publish = false` and are
 skipped automatically by `cargo publish --workspace`:
@@ -51,7 +56,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://registry.npmjs.org/nd-image-cod
 | crates.io account + token | <https://crates.io/settings/tokens>, then `cargo login` |
 | PyPI account + API token | <https://pypi.org/manage/account/token/> (scope it to the project after first upload) |
 | npm account, member of the `fideus-labs` org | `npm login`; create the org at <https://www.npmjs.com/org/create> if it does not exist yet — the scope must exist before the scoped package can be published |
-| Rust 1.91 | pinned by [`rust-toolchain.toml`](../../rust-toolchain.toml) |
+| Rust 1.91 | pinned by [`rust-toolchain.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/rust-toolchain.toml) |
 | maturin ≥ 1.7 | `pipx install maturin` or `uv tool install maturin` |
 | twine | `pipx install twine` |
 | Node 20+ | for `npm publish` |
@@ -266,7 +271,7 @@ list in `package.json`.
 
 ## 4. JavaScript placeholder → npm
 
-[`bindings/javascript`](../../bindings/javascript/) reserves the **unscoped**
+[`bindings/javascript`](https://github.com/fideus-labs/nd-image-codecs/tree/main/bindings/javascript) reserves the **unscoped**
 `nd-image-codecs` name on npm. It contains a README pointing at the scoped
 package and nothing else — no code, no dependency on the scoped package, so it
 never needs to be kept in version lockstep beyond whatever you choose to publish.

@@ -1,10 +1,13 @@
-## Test Data
+---
+title: Test Data
+description: 'The three tiers of data nd-image-codecs validates against: committed micro-fixtures, generated volumes, and a fetched-and-cached conformance corpus. Nothing large is committed.'
+---
 
 nd-image-codecs validates against three tiers of data. Nothing large is committed; fixtures are
 either tiny (checked in), generated, or fetched-and-cached by scripts under
-[`scripts/`](../../scripts/).
+[`scripts/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/scripts).
 
-### Tier 1 — committed micro-fixtures (`fixtures/`)
+## Tier 1 — committed micro-fixtures (`fixtures/`)
 
 Hand-constructed, byte-stable, < 100 KB total:
 
@@ -20,7 +23,7 @@ Hand-constructed, byte-stable, < 100 KB total:
   dtypes × families) with expected pipeline JSON, shared by the Rust, Python,
   and TypeScript builder tests.
 
-### Tier 2 — conformance corpora (fetched, cached)
+## Tier 2 — conformance corpora (fetched, cached)
 
 - **OpenJPH test streams** — [aous72/jp2k_test_codestreams](https://github.com/aous72/jp2k_test_codestreams),
   the corpus OpenJPH's own GoogleTest suite decodes; our decoder must match its
@@ -31,7 +34,7 @@ Hand-constructed, byte-stable, < 100 KB total:
   encodes are decoded back through those implementations in the same job (see
   the `ci.yml` interop matrix).
 
-### Tier 3 — domain volumes (benchmarks, fetched)
+## Tier 3 — domain volumes (benchmarks, fetched)
 
 Representative volumetric data for rate/throughput benchmarks and
 decorrelation-gain measurements (`scripts/fetch-bench-data.sh`):
@@ -50,7 +53,7 @@ lanes run on the deterministic synthetic microscopy generator committed at
 `bench/py/synthetic.py` (seeded Gaussian blobs + Poisson noise), so records are
 reproducible without any download.
 
-### Round-trip invariants (enforced by proptest)
+## Round-trip invariants (enforced by proptest)
 
 - `decode(encode(v)) == v` for every integer dtype × 5/3 × any `nd_lift`
   transform set (bit-exact); likewise for nd-zfp reversible mode.
