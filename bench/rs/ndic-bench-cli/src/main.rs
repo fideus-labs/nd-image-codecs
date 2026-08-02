@@ -26,18 +26,16 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ndic_bench_core::{Baseline, BenchConfig, BenchEntry, BenchRecord, DiffRow, load_records};
 
 mod report;
+// The workloads themselves: compiled into this binary, they register with
+// `inventory` at link time and are never named directly. Rust workloads land
+// with each codec's roadmap phase; the Phase 1 nd-delta lanes are Python-side
+// (see bench/py/).
+mod workloads;
 
-// Link-anchor modules: pulling the workload crates in ensures their
-// `inventory::submit!` registrations are linked into this binary.
-// Rust workloads land with each codec's roadmap phase; the Phase 1 nd-delta
-// lanes are Python-side (see bench/py/).
+// Link-anchor for a workload crate with no local module yet.
 mod _anchors {
     #[allow(unused_imports)]
     pub use ndic_htj2k as _htj2k;
-    #[allow(unused_imports)]
-    pub use ndic_lift as _transform;
-    #[allow(unused_imports)]
-    pub use ndic_zarr as _zarr;
 }
 
 /// Output format for reports.

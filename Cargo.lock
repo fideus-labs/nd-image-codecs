@@ -972,6 +972,7 @@ dependencies = [
  "ndic-lift",
  "ndic-zarr",
  "serde_json",
+ "zarrs",
 ]
 
 [[package]]
@@ -1033,8 +1034,6 @@ dependencies = [
 name = "ndic-lift"
 version = "0.0.1"
 dependencies = [
- "inventory",
- "ndic-bench-core",
  "ndic-core",
  "proptest",
  "serde",
@@ -1058,7 +1057,6 @@ dependencies = [
  "bytemuck",
  "inventory",
  "js-sys",
- "ndic-bench-core",
  "ndic-codestream",
  "ndic-core",
  "ndic-htj2k",

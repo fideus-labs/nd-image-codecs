@@ -10,7 +10,7 @@ from **how to measure and judge** (the driver). The matrix axis — the dimensio
 workload is swept across — is the **codec configuration**, not a compute backend.
 
 ```
-workload crates ── inventory::submit!(BenchEntry) ──┐   (link time)
+src/workloads/* ── inventory::submit!(BenchEntry) ──┐   (link time)
                                                      ▼
 ndic-bench-cli (driver)                 registry walk
   run: for entry × config → timings → BenchRecord JSON
@@ -20,7 +20,8 @@ ndic-bench-cli (driver)                 registry walk
 
 ### BenchEntry (registration)
 
-Workload crates register benchmarks next to the code under test:
+Workloads live in the driver, one module per measured crate under
+`bench/rs/ndic-bench-cli/src/workloads/`:
 
 ```rust
 inventory::submit! {
@@ -28,8 +29,16 @@ inventory::submit! {
 }
 ```
 
-The CLI anchors the workload crates (`mod _anchors`) so their registrations link into
-the binary. Adding a benchmark requires **no** central-list edit.
+Adding a benchmark means adding a module there — the registry walk finds it at link
+time, so there is **no** central-list edit.
+
+They deliberately do *not* live in the codec crates: `ndic-bench-core` is
+`publish = false`, and any published crate naming it — even behind an
+off-by-default feature — fails `cargo publish`, because packaging rewrites
+every `version`-carrying path dependency into a registry dependency and
+resolves it against crates.io. The consequence is that workloads may only use
+a crate's **public** API; anything needing internals belongs in that crate's
+own harness.
 
 ### BenchConfig (the matrix)
 

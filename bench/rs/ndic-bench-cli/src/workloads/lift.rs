@@ -1,4 +1,4 @@
-//! `inventory`-registered transform workloads for the `ndic-bench` driver.
+//! `inventory`-registered `ndic-lift` transform workloads.
 //!
 //! One entry per direction over a deterministic, z-correlated synthetic
 //! volume. Entries participate only in the `nd-lift` config family
@@ -8,12 +8,8 @@
 //! depth. Timing only; compression ratios for the same lanes come from the
 //! `bench/py/run_nd_lift.py` pipeline records.
 
-use alloc::string::ToString;
-use alloc::vec::Vec;
-
 use ndic_bench_core::{BenchConfig, BenchEntry, BenchOutput};
-
-use crate::{AxisTransform, LiftKind, forward, inverse};
+use ndic_lift::{AxisTransform, LiftKind, forward, inverse};
 
 const SHAPE: [usize; 3] = [32, 64, 64];
 const WARMUP: usize = 3;

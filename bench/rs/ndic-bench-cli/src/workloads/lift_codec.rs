@@ -1,22 +1,19 @@
-//! `inventory`-registered `nd_lift` **codec-level** workloads for the
-//! `ndic-bench` driver.
+//! `inventory`-registered `nd_lift` **codec-level** workloads.
 //!
-//! Where the `lift/*` entries (in `ndic-lift`) time the bare plane
-//! transforms, these time the full zarrs codec path — sample widening from
-//! the array dtype into the coefficient plane, the transform, and the
-//! narrowing back — over a `uint16` volume, the dominant microscopy dtype.
-//! Entries participate only in the `nd-lift` config family and opt out of
-//! every other lane; `lift_levels == 0` benches the `delta` kind, otherwise
-//! `lift53` at that depth.
+//! Where the `lift/*` entries time the bare plane transforms, these time the
+//! full zarrs codec path — sample widening from the array dtype into the
+//! coefficient plane, the transform, and the narrowing back — over a `uint16`
+//! volume, the dominant microscopy dtype. Entries participate only in the
+//! `nd-lift` config family and opt out of every other lane; `lift_levels == 0`
+//! benches the `delta` kind, otherwise `lift53` at that depth.
 
 use std::num::NonZeroU64;
 
 use ndic_bench_core::{BenchConfig, BenchEntry, BenchOutput};
 use ndic_lift::{AxisTransform, LiftKind, NdLiftConfig};
+use ndic_zarr::lift_codec::NdLiftCodec;
 use zarrs::array::codec::api::{ArrayBytes, ArrayToArrayCodecTraits, CodecOptions};
 use zarrs::array::{DataType, FillValue, data_type};
-
-use crate::lift_codec::NdLiftCodec;
 
 const SHAPE: [usize; 3] = [32, 64, 64];
 const WARMUP: usize = 3;

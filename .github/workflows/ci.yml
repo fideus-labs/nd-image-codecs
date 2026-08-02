@@ -87,7 +87,7 @@ jobs:
       # The feature set is a strict superset of the default build: it adds the
       # zarrs codec registration (nd_lift composed with stock blosc) and the
       # serde-gated conformance-vector tests.
-      - run: cargo test --workspace --features ndic-zarr/zarrs,ndic-lift/serde,ndic-lift/bench
+      - run: cargo test --workspace --features ndic-zarr/zarrs,ndic-lift/serde
 
   wasm:
     runs-on: ubuntu-24.04

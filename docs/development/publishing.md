@@ -95,7 +95,7 @@ Bumping a release means editing exactly these, then running `cargo check
 | File | Field |
 | --- | --- |
 | `Cargo.toml` | `[workspace.package] version` |
-| `Cargo.toml` | `[workspace.dependencies]` — the `version = "…"` on all 7 internal path deps |
+| `Cargo.toml` | `[workspace.dependencies]` — the `version = "…"` on all 6 internal path deps |
 | `bindings/python/nd-image-codecs/pyproject.toml` | `[project] version` |
 | `bindings/python/nd-image-codecs/python/nd_image_codecs/__init__.py` | `__version__` import fallback |
 | `bindings/typescript/package.json` | `version` |
@@ -104,6 +104,13 @@ Bumping a release means editing exactly these, then running `cargo check
 The internal path deps carry both `path` and `version`. cargo strips `path` when
 packaging and publishes the `version` requirement, so a stale `version = "0.0.0"`
 there makes every downstream crate unresolvable on crates.io. Bump them together.
+
+`ndic-bench-core` is deliberately **not** in `[workspace.dependencies]`. It is
+`publish = false`, and packaging rewrites every `version`-carrying path dep into
+a registry dep — so any published crate naming it fails `cargo publish`, even
+behind an off-by-default feature. `ndic-bench-cli` depends on it by bare path,
+and the benchmark workloads live in the driver (`bench/rs/ndic-bench-cli/src/workloads/`)
+rather than in the codec crates. Do not add it back.
 
 ## 1. Rust → crates.io
 

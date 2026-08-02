@@ -18,9 +18,11 @@ path = "src/main.rs"
 ndic-bench-core = { path = "../ndic-bench-core" }
 ndic-core.workspace = true
 ndic-htj2k.workspace = true
-# `bench` compiles in each crate's inventory-registered workloads.
-ndic-lift = { workspace = true, features = ["bench"] }
-ndic-zarr = { workspace = true, features = ["bench"] }
+# The workloads (src/workloads/) measure these crates through their public
+# API only, so the published crates need no bench dependency of their own.
+ndic-lift.workspace = true
+ndic-zarr = { workspace = true, features = ["zarrs"] }
+zarrs.workspace = true
 clap.workspace = true
 serde_json.workspace = true
 inventory.workspace = true
