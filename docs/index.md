@@ -22,7 +22,7 @@ nd-image-codecs is at version **0.0.1**, a name-reservation release. The
 `codec_series` builder is fully implemented and validated across all three
 language implementations; the **codec encode/decode paths are still scaffolds**
 and land across the six [roadmap phases](development/roadmap/index.md). See
-[](development/publishing.md) for the accurate current status of
+[publishing](development/publishing.md) for the accurate current status of
 every published artifact.
 :::
 

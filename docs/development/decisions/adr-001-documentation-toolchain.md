@@ -42,9 +42,9 @@ honest. The constraints that decided the shape of the answer:
 **Why.** mystmd parses MyST Markdown, a strict superset of CommonMark, so the
 existing pages render without edits — tables, relative links, and fenced code
 blocks all carry over, and the source stays readable on GitHub. It resolves
-relative `./page.md` links into site routes, fills in link text from the target
-page's title, and fails the build on a cross-reference it cannot resolve, which
-is exactly the property the `docs/` tree needed and never had.
+relative `./page.md` links into site routes and fails the build on a
+cross-reference it cannot resolve, which is exactly the property the `docs/`
+tree needed and never had.
 
 Sphinx would have meant either converting to reStructuredText or adding a
 `myst-parser` layer — and in both cases a Python documentation build, a
@@ -118,7 +118,7 @@ down here so nobody rediscovers them:
 
 Creating the project, enabling pull request builds, and managing versions are
 account-level operations no file in this repository can perform. They are written
-up as a runbook in [](../read-the-docs.md).
+up as a runbook in [Read the Docs deployment](../read-the-docs.md).
 
 ## Decision 4 — a pinned `docs/package-lock.json`, not `npm install -g mystmd`
 
@@ -166,7 +166,33 @@ rate-limited, and unreachable hosts to warnings. It runs monthly from
 [`.github/workflows/docs-link-check.yml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/.github/workflows/docs-link-check.yml)
 — a **separate, scheduled, non-blocking** workflow, with `workflow_dispatch` for
 running it on demand — so link rot is reported on a cadence instead of on the
-critical path. See [](../commands.md) for both commands.
+critical path. See [development commands](../commands.md) for both commands.
+
+## Decision 6 — explicit link text, not MyST's auto-filled titles
+
+**Decision.** Links between pages inside `docs/` carry explicit link text —
+`[Overview](./overview.md)`, not `[](./overview.md)`.
+
+**Why.** MyST resolves an empty label to the target page's `title`, which is
+convenient and keeps the two in sync, and the first draft of this site used it
+throughout. It fails the first constraint in the Context above: these files are
+read directly in the repository, and GitHub has no such behavior. It renders
+`[](./overview.md)` literally, as `<a href="./overview.md"></a>` — an anchor
+with no text. On GitHub the link is invisible: a sentence becomes "see  for the
+rules", and a table cell whose only content is the link renders blank.
+
+The auto-filled text is also a poor fit for prose even on the site, because it
+inserts the *full* title rather than the `short_title`. "…and so on (see
+Byte-Range Access: Thumbnails Without a Smart Server)" is what the reader got.
+Explicit text lets a link read as its sentence needs — `byte-range access` in
+prose, `Byte-Range Access` in an index table.
+
+**Consequences.** Link text no longer tracks a renamed page title
+automatically; a retitled page leaves stale link text behind, and `--strict`
+will not catch it because the *target* still resolves. This is the accepted
+cost — a stale-but-readable label is a smaller failure than an invisible link,
+and page titles here are stable. The rule is recorded in `AGENTS.md` and
+[development commands](../commands.md).
 
 ## Not in scope / follow-on
 
@@ -193,7 +219,7 @@ starting point for a future phase:
 
 The cheapest first step is not integration at all: rustdoc is published
 automatically by [docs.rs](https://docs.rs) when the crates hit crates.io (see
-[](../publishing.md)), so the site can link out to a reference it does not build.
+[publishing](../publishing.md)), so the site can link out to a reference it does not build.
 Integration is only worth it if the reference must be versioned and searched
 together with the prose.
 
@@ -207,14 +233,14 @@ bindings.
 Code blocks on this site are **static**. Nothing executes them, and nothing
 checks them against the current API.
 
-[](../roadmap/phase-6-validation-and-docs.md) owns making them real: its
+[Phase 6](../roadmap/phase-6-validation-and-docs.md) owns making them real: its
 "usage docs completion" item puts every `docs/usage/*.md` snippet under a docs CI
 job, with the `rust,ignore` blocks graduating to tested examples as the APIs
 land. That phase now inherits a working documentation pipeline — a strict build,
 a CI job, and a deploy — rather than having to invent one; the work left is
 executing the snippets, not publishing them.
 
-Until then, the wording on the site has to match reality. [](../../usage/index.md)
+Until then, the wording on the site has to match reality. The [usage index](../../usage/index.md)
 previously asserted that "every code block in these pages is executed by CI
 against the current API"; it now states the intent — that the snippets become
 CI-executed when Phase 6 lands — so the published site does not advertise a

@@ -70,7 +70,7 @@ already ships (`transpose`, `blosc`, …).
 Combine the `htj2k` codec with Range requests against `.jph` files or Zarr
 chunks — the byte plans from `ndic index` are plain JSON your app (or a service
 worker) can execute with `fetch(url, { headers: { Range: "bytes=…" } })`. See
-[](./thumbnails-and-streaming.md).
+[thumbnails & streaming](./thumbnails-and-streaming.md).
 
 ## Bundler notes
 

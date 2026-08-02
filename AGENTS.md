@@ -86,14 +86,17 @@ consult the roadmap before implementing anything.
   `/tree/main/…` for a directory) URLs. The MyST project root is `docs/`, so a
   relative path that escapes it (`../../crates/…`) 404s on the rendered site;
   absolute URLs render identically on GitHub, so there is no cost. Links
-  *between* pages inside `docs/` stay relative, and should use empty link text
-  — `[](./overview.md)` — so MyST auto-fills the target's title.
+  *between* pages inside `docs/` stay relative and carry **explicit link text**
+  — `[Overview](./overview.md)`, never `[](./overview.md)`. MyST auto-fills an
+  empty label from the target's title, but GitHub emits a literal empty anchor,
+  so the link vanishes for anyone reading the file in the repository; the
+  auto-filled title is also usually too long to read well mid-sentence.
 - Every page under `docs/` carries YAML frontmatter with a `title` and a
   one-sentence `description` (plus `short_title` when the title is too long for
   a sidebar entry), and a single `#`-level heading hierarchy beneath it — MyST
   lifts the title into the page heading, so a page should not repeat it. Titles
   are plain text: mystmd renders frontmatter as a literal string, so backticks
-  would show up verbatim in the sidebar and in auto-filled link text.
+  would show up verbatim in the sidebar.
 - Fenced code blocks under `docs/` must carry a language the site's highlighter
   (highlight.js, via `book-theme`) actually knows, matched by exact name — it
   does not resolve aliases. Use `bash` for shell commands (**not** `sh`, `zsh`,

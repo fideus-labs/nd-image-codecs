@@ -73,7 +73,7 @@ verified two ways:
 4. **Brick index** — an outer table mapping each `4^d` brick to its byte range;
    trivial and index-free in fixed-rate mode, explicit in the variable-size
    modes — enabling `RangeIndex`-style random access (see
-   [](./range-access.md)).
+   [byte-range access](./range-access.md)).
 
 ## Configuration
 

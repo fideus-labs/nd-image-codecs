@@ -6,7 +6,7 @@ description: Phase 6 proves the three families work identically in Rust, Python,
 
 # Phase 6 — Cross-Ecosystem Validation, Performance & Docs
 
-**Depends on:** Phases 4 + 5 · **Gates:** release · **Architecture:** [](../../architecture/zarr-codec.md)
+**Depends on:** Phases 4 + 5 · **Gates:** release · **Architecture:** [Zarr Codecs](../../architecture/zarr-codec.md)
 
 Phase 6 proves the three families work *identically* everywhere users will run
 them, hardens performance at scale, and finishes the usage documentation with
@@ -34,7 +34,7 @@ example-verified snippets.
    The documentation site itself already exists — mystmd under `docs/`, a strict
    build gating every pull request, and a Read the Docs deploy — so this is a
    matter of executing the snippets on top of that pipeline, not building one.
-   See [](../decisions/adr-001-documentation-toolchain.md) for what is already
+   See [ADR 001](../decisions/adr-001-documentation-toolchain.md) for what is already
    wired up and where executable code blocks were deliberately left out.
 5. **Standardization**: submit `nd_lift`, `htj2k`, and `nd_zfp` codec specs to
    [zarr-extensions](https://github.com/zarr-developers/zarr-extensions);

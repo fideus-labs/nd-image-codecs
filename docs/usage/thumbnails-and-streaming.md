@@ -65,13 +65,13 @@ With `nd_lift` decorrelating z (and grouped t), the coarse structure of each
 group concentrates in its **low-pass plane(s)**. A `thumbnail-3d` plan fetches
 only those planes' low-resolution prefixes — a volume downsampled in all three
 axes from a handful of ranges
-([](../architecture/nd-transform.md)).
+([the `nd_lift` transform](../architecture/nd-transform.md)).
 
 ## Patterns
 
 - **Service worker:** intercept image requests, execute plans, cache by
   `(url, target)` — a static volume/WSI viewer with no backend.
 - **Zarr:** stores with byte-range reads get low-res chunk decode for free; the
-  coefficient-plane index locates planes inside chunks ([](./zarr.md)).
+  coefficient-plane index locates planes inside chunks ([Zarr & OME-Zarr](./zarr.md)).
 - **nd-zfp:** fixed-rate bricks need no plan at all — brick offsets are
   computable ([zfp architecture](../architecture/zfp.md)).

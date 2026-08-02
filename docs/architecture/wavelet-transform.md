@@ -8,7 +8,7 @@ description: The two JPEG 2000 Part 1 wavelet kernels — reversible 5/3 and irr
 
 :::{note} Scope
 The **cross-axis** (z/t/c) transform is a separate, explicit codec — see
-[](./nd-transform.md). This page covers only the in-plane 2D
+[the `nd_lift` transform](./nd-transform.md). This page covers only the in-plane 2D
 wavelet inside the `htj2k` plane codec.
 :::
 
@@ -33,7 +33,7 @@ lanes:
 
 Boundary handling uses **symmetric (mirror) extension** per T.800 Annex F. (The
 `nd_lift` cross-axis codec uses the same boundary rule along z/t; see
-[](./nd-transform.md).)
+[the cross-axis transform](./nd-transform.md).)
 
 ## Geometry
 
@@ -62,4 +62,4 @@ checked by proptest with extreme-value inputs.
 - Round-trip identity on 5/3 for random planes (proptest).
 - 9/7 float-vs-fixed-point divergence bounded and asserted.
 - Cross-check against OpenJPH output on shared inputs (differential lane in the
-  bench suite, see [](../development/benchmarking.md)).
+  bench suite, see [benchmarking](../development/benchmarking.md)).

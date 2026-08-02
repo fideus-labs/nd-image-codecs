@@ -41,7 +41,7 @@ arr[:] = volume
 
 Override which axes get decorrelated with `decorrelate=` (an exact dimension
 index list) or adjust the defaults with `add_decorrelate=` /
-`remove_decorrelate=`; see [](./zarr.md) for the rules.
+`remove_decorrelate=`; see [Zarr & OME-Zarr](./zarr.md) for the rules.
 
 ## Codec classes and entry points
 

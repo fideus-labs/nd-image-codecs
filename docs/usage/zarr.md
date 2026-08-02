@@ -45,7 +45,7 @@ arr = zarr.create_array(store, shape=..., chunks=..., dtype="uint16",
 ```
 
 Builder behavior (full spec:
-[](../architecture/codec-series.md)):
+[codec series](../architecture/codec-series.md)):
 
 - The fastest-moving dimensions are transposed into `(z-)yx` order; `t` is
   placed before `z`/`y` when its chunk extent is > 1.

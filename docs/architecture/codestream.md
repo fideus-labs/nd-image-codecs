@@ -13,7 +13,7 @@ Annex A with Part 15 additions from [T.814](https://www.itu.int/rec/T-REC-T.814)
 
 **No JPEG 2000 Part 2 (MCT) markers are ever emitted or parsed.** Cross-axis
 decorrelation lives entirely in the `nd_lift` codec upstream (see
-[](./nd-transform.md)), so every codestream this crate produces
+[the cross-axis transform](./nd-transform.md)), so every codestream this crate produces
 is pure Part 1 + Part 15.
 
 ## Anatomy
@@ -28,7 +28,7 @@ EOC
 A **packet** is the atomic unit of the body: the code-block contributions for
 one (resolution, precinct, layer, component). The progression order dictates
 packet interleaving; the codec defaults to **RPCL** so all packets of resolution
-0 precede resolution 1, and so on (see [](./range-access.md)).
+0 precede resolution 1, and so on (see [byte-range access](./range-access.md)).
 
 ## Markers emitted
 
@@ -48,7 +48,7 @@ packet interleaving; the codec defaults to **RPCL** so all packets of resolution
 
 `TLM` + `PLT` are what turn a codestream into a *random-access file*: together
 they give the byte offset of every packet without decoding anything (see
-[](./range-access.md)). We make them the default rather than an
+[byte-range access](./range-access.md)). We make them the default rather than an
 option.
 
 ## HT signaling specifics
@@ -68,7 +68,7 @@ the `htj2k` codec writes an outer **coefficient-plane index**: a small table of
 the byte range of each plane's codestream within the chunk. This is what lets
 `RangeIndex::plane(z)` locate a single plane, and what a 3D-thumbnail plan walks
 to gather each group's low-pass plane (see
-[](./range-access.md)).
+[byte-range access](./range-access.md)).
 
 ## Reader design
 

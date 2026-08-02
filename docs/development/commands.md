@@ -44,7 +44,7 @@ All commands run from the repository root.
 | `cargo run -p ndic-bench-cli --release -- compare main --gate ratio --fail-on-regression` | The PR gate, locally |
 | `cargo run -p ndic-bench-cli --release -- compare bench/baselines/main` | Diff latest run against the committed baseline |
 
-See [](./benchmarking.md) for record layout, baselines, and the gate.
+See [benchmarking](./benchmarking.md) for record layout, baselines, and the gate.
 
 ## Bindings
 
@@ -86,8 +86,10 @@ instead of shipping.
 Every page under `docs/` must be listed in the `toc` in `docs/myst.yml` or it
 will not appear on the site; the toc is explicit so the curated reading order of
 each section is preserved. Every page also carries YAML frontmatter with a
-`title` and `description`, and links between pages use empty link text
-(`[](./overview.md)`) so MyST fills in the target's title.
+`title` and `description`, and links between pages carry explicit link text
+(`[Overview](./overview.md)`). MyST would auto-fill an empty label from the
+target's title, but GitHub renders `[](./overview.md)` as an empty anchor — and
+these files are read directly in the repository as well as on the site.
 
 Code fences need a language the site's highlighter knows **by exact name** — it
 does not resolve aliases, and an unknown name degrades silently to unhighlighted
@@ -132,7 +134,7 @@ when running it by hand.
 
 For the deployment side — how the same `npm run check` script builds the
 published site, and what a maintainer must set up by hand — see
-[](./read-the-docs.md).
+[Read the Docs deployment](./read-the-docs.md).
 
 ## Release
 
@@ -147,5 +149,5 @@ published site, and what a maintainer must set up by hand — see
 | `cd bindings/typescript && npm publish --access public` | Publish `@fideus-labs/nd-image-codecs` |
 | `cd bindings/javascript && npm publish` | Publish the unscoped `nd-image-codecs` name placeholder |
 
-See [](./publishing.md) for the full manual release procedure,
+See [publishing](./publishing.md) for the full manual release procedure,
 prerequisites, version-bump locations, and verification steps.

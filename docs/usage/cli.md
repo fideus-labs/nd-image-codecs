@@ -29,7 +29,7 @@ ndic series --axes t,c,z,y,x --chunks 8,1,32,256,256 --dtype uint16 --family nd-
 Output is the `codecs` JSON array to paste into (or pipe through) your Zarr
 tooling — identical to what the [Python](./python.md) and
 [TypeScript](./typescript.md) builders produce. See
-[](./zarr.md) for the builder's transpose/decorrelation rules.
+[Zarr & OME-Zarr](./zarr.md) for the builder's transpose/decorrelation rules.
 
 ## Compress
 
@@ -80,6 +80,6 @@ ndic thumbnail https://example.com/vol.jph --max 128 \
 ```
 
 `thumbnail` plans (like `index`) and then executes the fetch + partial decode in
-one step. See [](./thumbnails-and-streaming.md) for
-the full workflow and [](../architecture/range-access.md) for why
+one step. See [thumbnails & streaming](./thumbnails-and-streaming.md) for
+the full workflow and [byte-range access](../architecture/range-access.md) for why
 this works.

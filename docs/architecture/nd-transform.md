@@ -23,7 +23,7 @@ achieves the same *effect* — decorrelate z/t/c before 2D coding — as a
 standalone, fully specified Zarr codec built from long-published lifting and
 differencing primitives. The 2D codec downstream then only ever sees Part 1 /
 Part 15 syntax. This is the project's central IP posture (see
-[](./goals.md)).
+[design goals](./goals.md)).
 
 ## Configuration
 

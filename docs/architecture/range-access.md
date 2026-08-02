@@ -65,7 +65,7 @@ concentrates the coarse structure into a few planes whose low-resolution packets
 sit early in each RPCL sequence. A 3D thumbnail plan selects, per group:
 resolution levels 0…k of the low-pass plane(s) only. The result decodes into a
 volume downsampled in x, y, *and* z — fetched with the same handful of Range
-requests (see [](./nd-transform.md)).
+requests (see [the `nd_lift` transform](./nd-transform.md)).
 
 ## Precincts
 
@@ -79,4 +79,4 @@ the [Phase 4 roadmap](../development/roadmap/phase-4-nd-lift-ht.md).
 The nd-zfp family provides a different, complementary random-access story: in
 fixed-rate mode every `4^d` brick has a constant byte size, so a renderer
 computes any brick's offset arithmetically — no index fetch at all. The variable
-modes carry an explicit brick index. See [](./zfp.md).
+modes carry an explicit brick index. See [the `nd_zfp` codec](./zfp.md).

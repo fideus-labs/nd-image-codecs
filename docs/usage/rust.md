@@ -35,7 +35,7 @@ let codecs = codec_series(&spec)?;   // → Vec<serde_json::Value>: the Zarr v3 
 ```
 
 The same builder backs `ndic series` and the Python/TypeScript mirrors; output
-is byte-identical across all three (see [](./zarr.md) for the rules).
+is byte-identical across all three (see [Zarr & OME-Zarr](./zarr.md) for the rules).
 
 ## Encode a plane / a volume
 
@@ -50,7 +50,7 @@ let volume = VolumeView { samples: &samples, depth: 64, height: 512, width: 512 
 ```
 
 Cross-axis decorrelation is not an `EncodeParams` concern — it belongs to the
-`nd_lift` codec upstream ([](../architecture/nd-transform.md)):
+`nd_lift` codec upstream ([the cross-axis transform](../architecture/nd-transform.md)):
 
 ```rust
 use ndic_lift::{AxisTransform, LiftKind};
@@ -94,11 +94,11 @@ match ndic_codestream::decode(&bytes) {
 | --- | --- | --- |
 | all | `std` (default) | Disable for `no_std` (WASM core builds) |
 | `ndic-htj2k`, `ndic-lift` | `parallel` (default) | `rayon` across code-blocks; off for wasm32 |
-| `ndic-zarr` | `zarrs` | The Zarr v3 codec registration ([](./zarr.md)) |
+| `ndic-zarr` | `zarrs` | The Zarr v3 codec registration ([Zarr & OME-Zarr](./zarr.md)) |
 
 ## Going deeper
 
 - Parameter semantics: [`EncodeParams` docs](https://github.com/fideus-labs/nd-image-codecs/blob/main/crates/ndic-core/src/params.rs)
   and [codestream architecture](../architecture/codestream.md)
-- Partial decode & range plans: [](../architecture/range-access.md)
-- Cross-axis transform semantics: [](../architecture/nd-transform.md)
+- Partial decode & range plans: [Byte-Range Access](../architecture/range-access.md)
+- Cross-axis transform semantics: [nd_lift Transform](../architecture/nd-transform.md)

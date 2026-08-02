@@ -67,11 +67,11 @@ selected at runtime by CPU detection (`ojph_arch.cpp`). nd-image-codecs mirrors 
   leaves this on the table.
 - Bit-plane count per block bounds: HT supports up to **38 bit-planes** conceptually but
   typical microscopy / volume targets are ≤ 16-bit integers plus wavelet gain; `MAGB` in the `CAP` marker
-  carries the bound (see [](./codestream.md)).
+  carries the bound (see [codestream syntax](./codestream.md)).
 
 ## What we don't build
 
-- No MQ **encoder** (legacy J2K-1 output is a non-goal; see [](./goals.md)).
+- No MQ **encoder** (legacy J2K-1 output is a non-goal; see [design goals](./goals.md)).
 - No iterative PCRD-opt over many coding passes: rate control starts quantizer-driven
   like OpenJPH, with HT-Set truncation as the later refinement mechanism.
 
@@ -81,5 +81,5 @@ selected at runtime by CPU detection (`ojph_arch.cpp`). nd-image-codecs mirrors 
   identity on the 5/3 path.
 - Conformance decode against the OpenJPH test corpus
   ([aous72/jp2k_test_codestreams](https://github.com/aous72/jp2k_test_codestreams)) — see
-  [](../development/test-data.md).
+  [test data](../development/test-data.md).
 - Differential fuzzing scalar-vs-SIMD lanes (must be bit-identical).

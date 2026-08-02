@@ -11,7 +11,7 @@ Rust ([`zarrs`](https://docs.rs/zarrs)), Python
 ([`zarr-python`](https://zarr.readthedocs.io) / [numcodecs](https://numcodecs.readthedocs.io)),
 and TypeScript/WASM ([numcodecs.js](https://github.com/manzt/numcodecs.js) for
 zarrita.js). It ships **two new codecs** and **composes a third family** from
-existing codecs, all wired together by the [](./codec-series.md)
+existing codecs, all wired together by the [codec-series](./codec-series.md)
 builder.
 
 ## The Zarr v3 codec model
@@ -23,10 +23,10 @@ nd-image-codecs uses each stage deliberately:
 | Codec | Kind | Role |
 | --- | --- | --- |
 | `transpose` (stock) | array → array | Put the fastest/decorrelation axes where the tail codec expects them |
-| `nd_lift` (**new**) | array → array | Explicit cross-axis (z/t/c) lifting decorrelation — see [](./nd-transform.md) |
+| `nd_lift` (**new**) | array → array | Explicit cross-axis (z/t/c) lifting decorrelation — see [the cross-axis transform](./nd-transform.md) |
 | `numcodecs.delta` (stock) | array → array | Single-axis differencing (nd-delta family) |
 | `htj2k` (**new**) | array → bytes | Compress each trailing 2D plane as an independent Part 1/15 codestream + coefficient-plane index |
-| `nd_zfp` (**new**) | array → bytes | ZFP 2D/3D/4D blocks + brick index — see [](./zfp.md) |
+| `nd_zfp` (**new**) | array → bytes | ZFP 2D/3D/4D blocks + brick index — see [the Rust ZFP port](./zfp.md) |
 | `bytes`, `blosc`, `crc32c` (stock) | array→bytes / bytes→bytes | Endianness, entropy backend, checksums |
 
 A JPEG 2000 or ZFP codec **must be the array→bytes stage**: it needs the chunk's
@@ -48,7 +48,7 @@ A Zarr chunk of shape `[…, z, y, x]` maps onto the series as follows:
   integer paths, plus `float32/float64` for nd-zfp.
 
 Codec configurations are produced by the builder; see
-[](./codec-series.md) for the JSON.
+[codec series](./codec-series.md) for the JSON.
 
 ## Why this fills a real gap
 
@@ -88,7 +88,7 @@ nd-delta family uses only already-registered names (`transpose`,
 Because each nd-lift-ht plane is an RPCL codestream with `TLM`/`PLT`, and each
 nd-zfp chunk carries a brick index, a reader holding only *part* of a chunk's
 bytes can still produce a low-resolution or single-brick result — the
-[](./range-access.md) machinery applies within chunks, enabling
+[byte-range access](./range-access.md) machinery applies within chunks, enabling
 multiscale-on-demand for viewers even before OME-Zarr pyramid levels are
 consulted.
 

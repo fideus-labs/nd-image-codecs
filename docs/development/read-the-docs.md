@@ -188,7 +188,7 @@ a build environment variable marked public.
 | Version | Tracks | Notes |
 | --- | --- | --- |
 | `latest` | the default branch, `main` | Created automatically; the default version. Always keep it active |
-| `stable` | the highest semver tag, excluding pre-releases | Appears automatically once `v0.0.1` is pushed (see [](./publishing.md)) |
+| `stable` | the highest semver tag, excluding pre-releases | Appears automatically once `v0.0.1` is pushed (see [publishing](./publishing.md)) |
 
 Each version is independently **active** (built and served) or inactive, and
 **hidden** (reachable by direct link but absent from the flyout menu and search)
@@ -218,7 +218,7 @@ environment difference, not a content problem**. Check in this order:
 | `npm ci` fails | `docs/package-lock.json` out of sync with `docs/package.json`; commit the regenerated lockfile |
 | `myst: not found` | The command did not run inside `docs/` — an entry lost its `cd` |
 | `Premature close` / template fetch error | Transient: mystmd downloads the `book-theme` template from GitHub on a cold build. Re-run the build |
-| Strict-mode warnings | A real content problem. Reproduce locally with `cd docs && npm run check` — see [](./commands.md) |
+| Strict-mode warnings | A real content problem. Reproduce locally with `cd docs && npm run check` — see [development commands](./commands.md) |
 | Site renders unstyled, assets 404 | `BASE_URL` was not exported, or was exported in a different `build.commands` entry than the build |
 
 ## Setup checklist

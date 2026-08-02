@@ -20,12 +20,12 @@ lands, read a snippet as the intended API rather than as a tested example.
 
 | Guide | Audience | You'll learn |
 | --- | --- | --- |
-| [](./zarr.md) | Data engineers / imaging scientists | The three codec families, the `codec_series` builder, chunking guidance, validation with imagecodecs |
-| [](./cli.md) | Anyone with a terminal | `ndic compress / expand / series / inspect / index / thumbnail` |
-| [](./rust.md) | Rust developers | Library encode/decode, `EncodeParams`, the series builder, partial decode |
-| [](./python.md) | Python developers | NumPy round-trips, zarr-python entry points, OME-Zarr |
-| [](./typescript.md) | Web developers | WASM codecs, zarrita.js, in-browser decode |
-| [](./thumbnails-and-streaming.md) | Viewer builders | Byte-range plans, HTTP thumbnails, 3D previews |
+| [Zarr & OME-Zarr](./zarr.md) | Data engineers / imaging scientists | The three codec families, the `codec_series` builder, chunking guidance, validation with imagecodecs |
+| [CLI — ndic](./cli.md) | Anyone with a terminal | `ndic compress / expand / series / inspect / index / thumbnail` |
+| [Rust Library](./rust.md) | Rust developers | Library encode/decode, `EncodeParams`, the series builder, partial decode |
+| [Python](./python.md) | Python developers | NumPy round-trips, zarr-python entry points, OME-Zarr |
+| [TypeScript / Browser](./typescript.md) | Web developers | WASM codecs, zarrita.js, in-browser decode |
+| [Thumbnails & Streaming](./thumbnails-and-streaming.md) | Viewer builders | Byte-range plans, HTTP thumbnails, 3D previews |
 
 New to the project? Start with the [architecture overview](../architecture/overview.md)
 for the mental model, then the guide matching your ecosystem.
