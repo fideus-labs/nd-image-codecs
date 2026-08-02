@@ -17,6 +17,7 @@ Open the page that matches the task in front of you.
 | [](./benchmarking.md) | Running and adding benchmarks — record layout, named baselines, and the PR regression gate |
 | [](./test-data.md) | Test data and the conformance corpus: what is vendored, what is downloaded, and where it is cached |
 | [](./publishing.md) | Publishing a release to crates.io, PyPI, and npm — prerequisites, version-bump locations, and verification |
+| [](./read-the-docs.md) | Deploying the documentation site to Read the Docs — the build recipe in the repository, and the manual project setup that is not |
 
 ## Conventions
 

@@ -59,6 +59,7 @@ project:
         - file: development/benchmarking.md
         - file: development/test-data.md
         - file: development/publishing.md
+        - file: development/read-the-docs.md
         - file: development/commits.md
         - file: development/style/rust.md
     - title: Roadmap

@@ -54,6 +54,7 @@ consult the roadmap before implementing anything.
 | Commit message format | [./docs/development/commits.md](./docs/development/commits.md) |
 | Test data & conformance corpus | [./docs/development/test-data.md](./docs/development/test-data.md) |
 | Build or preview the documentation site | [./docs/development/commands.md](./docs/development/commands.md) |
+| Deploy the documentation site (Read the Docs) | [./docs/development/read-the-docs.md](./docs/development/read-the-docs.md), [./.readthedocs.yaml](./.readthedocs.yaml) |
 
 ## Conventions
 
