@@ -506,7 +506,7 @@ impl<'a> Codestream<'a> {
                 region[y * out_w..(y + 1) * out_w]
                     .copy_from_slice(&plane[y * width..y * width + out_w]);
             }
-            dwt::inverse_53(&mut region, out_w, out_h, max_res)?;
+            dwt::simd::inverse_53(&mut region, out_w, out_h, max_res)?;
             comps_out.push(region);
         }
 

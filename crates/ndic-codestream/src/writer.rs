@@ -121,7 +121,9 @@ pub fn encode_image(
     let mut resolutions: Vec<Vec<Vec<BandBlocks>>> = Vec::new(); // [comp][res][band]
     for comp in comps {
         let mut plane = level_shifted(comp, dtype);
-        dwt::forward_53(&mut plane, width, height, levels)?;
+        // The SIMD lane is bit-identical to the scalar reference
+        // (differential-tested) and substantially faster.
+        dwt::simd::forward_53(&mut plane, width, height, levels)?;
         let mut per_res = Vec::with_capacity(usize::from(levels) + 1);
         for r in 0..=levels {
             let bands = bands_of_resolution(width, height, levels, r);

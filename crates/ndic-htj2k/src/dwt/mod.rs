@@ -19,6 +19,8 @@
 //! the current LL region (top-left `w_l x h_l`), leaving `[LL | HL]` over
 //! `[LH | HH]`.
 
+pub mod simd;
+
 extern crate alloc;
 
 use alloc::vec;
@@ -46,7 +48,7 @@ pub const fn level_dims(width: usize, height: usize, level: u8) -> (usize, usize
 /// T.800 F.4.8.2.1 with symmetric extension:
 /// `d[i] = x[2i+1] - ((x[2i] + x[2i+2]) >> 1)`,
 /// `s[i] = x[2i] + ((d[i-1] + d[i] + 2) >> 2)`.
-fn ana_53(x: &[i32], low: &mut [i32], high: &mut [i32]) {
+pub(crate) fn ana_53(x: &[i32], low: &mut [i32], high: &mut [i32]) {
     let n = x.len();
     if n == 1 {
         // Single even sample: passes through unchanged (T.800 eq. F-9).
@@ -73,7 +75,7 @@ fn ana_53(x: &[i32], low: &mut [i32], high: &mut [i32]) {
 }
 
 /// Inverse of [`ana_53`].
-fn syn_53(low: &[i32], high: &[i32], x: &mut [i32]) {
+pub(crate) fn syn_53(low: &[i32], high: &[i32], x: &mut [i32]) {
     let n = x.len();
     if n == 1 {
         x[0] = low[0];
@@ -322,7 +324,7 @@ fn syn_97_1d(x: &mut [f32], low: &mut [f32], high: &mut [f32]) {
     }
 }
 
-fn check_geometry(len: usize, width: usize, height: usize) -> Result<()> {
+pub(crate) fn check_geometry(len: usize, width: usize, height: usize) -> Result<()> {
     if width == 0 || height == 0 || len < width * height {
         return Err(Error::InvalidArgument {
             message: "plane buffer smaller than width * height".into(),
@@ -332,7 +334,7 @@ fn check_geometry(len: usize, width: usize, height: usize) -> Result<()> {
 }
 
 /// Reusable gather/scatter buffers for the line-oriented integer passes.
-struct Scratch {
+pub(crate) struct Scratch {
     /// Interleaved signal.
     sig: Vec<i32>,
     /// De-interleaved low band.
@@ -342,7 +344,7 @@ struct Scratch {
 }
 
 impl Scratch {
-    fn new(width: usize, height: usize) -> Self {
+    pub(crate) fn new(width: usize, height: usize) -> Self {
         let m = width.max(height);
         Self {
             sig: vec![0; m],
@@ -351,7 +353,7 @@ impl Scratch {
         }
     }
 
-    fn split(&mut self, n: usize) -> (&mut [i32], &mut [i32], &mut [i32]) {
+    pub(crate) fn split(&mut self, n: usize) -> (&mut [i32], &mut [i32], &mut [i32]) {
         (
             &mut self.sig[..n],
             &mut self.low[..n.div_ceil(2)],
@@ -391,23 +393,23 @@ impl Scratch {
         }
     }
 
-    fn gather_row(&mut self, plane: &[i32], width: usize, y: usize, w: usize) {
+    pub(crate) fn gather_row(&mut self, plane: &[i32], width: usize, y: usize, w: usize) {
         self.sig[..w].copy_from_slice(&plane[y * width..y * width + w]);
     }
 
-    fn scatter_row_split(&self, plane: &mut [i32], width: usize, y: usize, w: usize) {
+    pub(crate) fn scatter_row_split(&self, plane: &mut [i32], width: usize, y: usize, w: usize) {
         let nl = w.div_ceil(2);
         plane[y * width..y * width + nl].copy_from_slice(&self.low[..nl]);
         plane[y * width + nl..y * width + w].copy_from_slice(&self.high[..w / 2]);
     }
 
-    fn gather_row_split(&mut self, plane: &[i32], width: usize, y: usize, w: usize) {
+    pub(crate) fn gather_row_split(&mut self, plane: &[i32], width: usize, y: usize, w: usize) {
         let nl = w.div_ceil(2);
         self.low[..nl].copy_from_slice(&plane[y * width..y * width + nl]);
         self.high[..w / 2].copy_from_slice(&plane[y * width + nl..y * width + w]);
     }
 
-    fn scatter_row(&self, plane: &mut [i32], width: usize, y: usize, w: usize) {
+    pub(crate) fn scatter_row(&self, plane: &mut [i32], width: usize, y: usize, w: usize) {
         plane[y * width..y * width + w].copy_from_slice(&self.sig[..w]);
     }
 }

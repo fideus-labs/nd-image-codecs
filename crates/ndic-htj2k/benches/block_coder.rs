@@ -14,7 +14,9 @@ fn test_block(k_max: u32) -> Vec<u32> {
     let mut state = 0x1234_5678u64;
     (0..4096)
         .map(|_| {
-            state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1);
             #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
             let v = ((state >> 33) & 0xFFFF) as i32 - 0x8000;
             coeff_to_sign_magnitude(v, shift)
@@ -49,5 +51,39 @@ fn block_coder(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, block_coder);
+fn dwt_lanes(c: &mut Criterion) {
+    let (w, h) = (2048usize, 2048usize);
+    let plane: Vec<i32> = {
+        let mut state = 0x9e37_79b9u64;
+        (0..w * h)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1);
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                {
+                    ((state >> 40) & 0xFFFF) as i32 - 0x8000
+                }
+            })
+            .collect()
+    };
+    let mut buf = plane.clone();
+    c.bench_function("dwt/fwd53_scalar_2048", |b| {
+        b.iter(|| {
+            buf.copy_from_slice(&plane);
+            ndic_htj2k::dwt::forward_53(std::hint::black_box(&mut buf), w, h, 5).unwrap();
+        });
+    });
+    c.bench_function(
+        &format!("dwt/fwd53_simd_{}_2048", ndic_htj2k::dwt::simd::lane_name()),
+        |b| {
+            b.iter(|| {
+                buf.copy_from_slice(&plane);
+                ndic_htj2k::dwt::simd::forward_53(std::hint::black_box(&mut buf), w, h, 5).unwrap();
+            });
+        },
+    );
+}
+
+criterion_group!(benches, block_coder, dwt_lanes);
 criterion_main!(benches);

@@ -967,6 +967,7 @@ dependencies = [
  "clap",
  "inventory",
  "ndic-bench-core",
+ "ndic-codestream",
  "ndic-core",
  "ndic-htj2k",
  "ndic-lift",

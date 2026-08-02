@@ -11,5 +11,6 @@
 //! needs crate internals belongs in that crate's own `#[bench]`/`criterion`
 //! harness instead, not here.
 
+mod htj2k;
 mod lift;
 mod lift_codec;

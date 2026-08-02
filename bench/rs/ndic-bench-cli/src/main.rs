@@ -32,12 +32,6 @@ mod report;
 // (see bench/py/).
 mod workloads;
 
-// Link-anchor for a workload crate with no local module yet.
-mod _anchors {
-    #[allow(unused_imports)]
-    pub use ndic_htj2k as _htj2k;
-}
-
 /// Output format for reports.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Format {

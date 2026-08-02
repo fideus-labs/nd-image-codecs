@@ -18,6 +18,7 @@ path = "src/main.rs"
 ndic-bench-core = { path = "../ndic-bench-core" }
 ndic-core.workspace = true
 ndic-htj2k.workspace = true
+ndic-codestream.workspace = true
 # The workloads (src/workloads/) measure these crates through their public
 # API only, so the published crates need no bench dependency of their own.
 ndic-lift.workspace = true
