@@ -162,10 +162,11 @@ everyone to ignore it.
 **Consequences.** External links are checked by
 [`scripts/ci/check-docs-links.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/ci/check-docs-links.py),
 which exits non-zero only for a definitively dead target and downgrades blocked,
-rate-limited, and unreachable hosts to warnings. It runs by hand before a release
-today; its intended home is a **scheduled, non-blocking** workflow that reports
-rot on a cadence instead of on the critical path. See [](../commands.md) for both
-commands.
+rate-limited, and unreachable hosts to warnings. It runs monthly from
+[`.github/workflows/docs-link-check.yml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/.github/workflows/docs-link-check.yml)
+— a **separate, scheduled, non-blocking** workflow, with `workflow_dispatch` for
+running it on demand — so link rot is reported on a cadence instead of on the
+critical path. See [](../commands.md) for both commands.
 
 ## Not in scope / follow-on
 

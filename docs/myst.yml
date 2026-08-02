@@ -22,7 +22,24 @@ project:
   # decline to render an SVG og:image, so the 160x160 logo cannot serve here.
   # ./assets/nd-image-codecs-social.svg is the editable source; see the header
   # comment there for how to regenerate the PNG.
+  #
+  # It must also be a local path, not a URL: given an absolute `https://…`
+  # thumbnail mystmd still routes it through its image optimizer and emits
+  # `og:image` as `<baseurl>/build/undefined`. Measured, not assumed.
   thumbnail: assets/nd-image-codecs-social.png
+  # There is deliberately no canonical-URL or site-domain key here, because
+  # nothing in this stack consumes one. `site.domains` exists, but it is a
+  # Curvenote/MyST-hosting deploy target validated as a subdomain and it never
+  # reaches the rendered `<head>`; `book-theme` builds its meta tags with the
+  # page origin hardcoded to "", so `og:url` is never emitted and no
+  # `<link rel="canonical">` is generated at all; and the theme's own
+  # `template.yml` option list carries no canonical/url entry — the only
+  # URL-shaped options it has are `logo_url` and `internal_domains`.
+  #
+  # Consequence: `og:image` ships as a site-relative path. That is correct
+  # under the Read the Docs `/en/latest/` prefix, which is what `BASE_URL` is
+  # for, but it is not an absolute URL, and making it one needs an upstream
+  # theme change rather than anything expressible here.
   authors:
     - name: Fideus Labs LLC
       url: https://github.com/fideus-labs

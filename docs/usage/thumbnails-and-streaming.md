@@ -45,7 +45,7 @@ Or in one step:
 ndic thumbnail https://example.com/volume.jph --max 256 -o thumb.png
 ```
 
-```ts
+```typescript
 // Browser: fetch ranges, hand bytes to the WASM codec (typescript.md)
 const res = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
 ```

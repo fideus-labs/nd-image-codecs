@@ -20,7 +20,7 @@ npm install @fideus-labs/nd-image-codecs
 Works today — the builder is pure TypeScript (mirrors the Rust implementation
 byte-for-byte):
 
-```ts
+```typescript
 import { codecSeries } from "@fideus-labs/nd-image-codecs";
 
 const codecs = codecSeries(
@@ -34,7 +34,7 @@ const codecs = codecSeries(
 
 ## Decode a chunk
 
-```ts
+```typescript
 import { Htj2k, NdLift, NdZfp } from "@fideus-labs/nd-image-codecs";
 
 const codec = Htj2k.fromConfig({
@@ -51,7 +51,7 @@ module (SIMD128).
 
 ## zarrita.js registration
 
-```ts
+```typescript
 import * as zarrita from "zarrita";
 import { Htj2k, NdLift, NdZfp } from "@fideus-labs/nd-image-codecs";
 
