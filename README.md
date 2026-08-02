@@ -23,11 +23,6 @@
   for OME-Zarr / OME-NGFF.
 </p>
 
-<p align="center">
-  <sub>No JPEG 2000 Part 2 (MCT) syntax anywhere — cross-axis decorrelation is
-  an explicit Zarr codec, sidestepping Part 2 IP entirely.</sub>
-</p>
-
 ## ✨ The three codec families
 
 nd-image-codecs is not one codec but a **builder** that assembles a *series*
