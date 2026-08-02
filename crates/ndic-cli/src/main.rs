@@ -7,6 +7,9 @@
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+mod commands;
+mod image_io;
+
 /// nd-image-codecs command-line interface.
 #[derive(Parser)]
 #[command(name = "ndic", version, about)]
@@ -17,15 +20,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Compress a raw / `NIfTI` / OME-Zarr input to HTJ2K coefficient planes.
-    Compress,
-    /// Expand HTJ2K coefficient planes back to a raw volume or slice.
-    Expand,
+    /// Compress a 2D PGM/PPM/PNG/raw image to an HTJ2K codestream.
+    Compress(commands::CompressArgs),
+    /// Expand an HTJ2K codestream back to a 2D PGM/PPM/PNG/raw image.
+    Expand(commands::ExpandArgs),
     /// Emit a Zarr v3 codec-series JSON pipeline (nd-delta / nd-lift-ht /
     /// nd-zfp) from axis names, chunk shape, and dtype.
     Series(SeriesArgs),
     /// Print codestream structure (markers, resolutions, layers, tile-parts).
-    Inspect,
+    Inspect(commands::InspectArgs),
     /// Emit the byte-range index (from TLM/PLT and the coefficient-plane
     /// index) for thumbnail / region fetch planning.
     Index,
@@ -105,13 +108,19 @@ fn main() {
                 std::process::exit(1);
             }
         },
-        Command::Compress
-        | Command::Expand
-        | Command::Inspect
-        | Command::Index
-        | Command::Thumbnail => {
-            eprintln!("ndic: subcommands are scaffolded; see docs/development/roadmap/");
+        Command::Compress(args) => exit_on_error(commands::compress(&args)),
+        Command::Expand(args) => exit_on_error(commands::expand(&args)),
+        Command::Inspect(args) => exit_on_error(commands::inspect(&args)),
+        Command::Index | Command::Thumbnail => {
+            eprintln!("ndic: subcommand scaffolded; lands with a later roadmap phase");
         }
+    }
+}
+
+fn exit_on_error(result: anyhow::Result<()>) {
+    if let Err(e) = result {
+        eprintln!("ndic: {e:#}");
+        std::process::exit(1);
     }
 }
 
