@@ -86,10 +86,17 @@ fn decodes_rev53_corpus_bit_exactly() {
         let (Some(file), Some(reference)) = (parts.next(), parts.next()) else {
             continue;
         };
-        if !file.starts_with("simple_dec_rev53") || !file.ends_with(".jph") {
+        if !file.starts_with("simple_dec_rev53")
+            || !std::path::Path::new(file)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("jph"))
+        {
             continue;
         }
-        if reference.ends_with(".yuv") {
+        if std::path::Path::new(reference)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("yuv"))
+        {
             skipped.push((file.to_string(), "YUV 4:2:0 subsampling".to_string()));
             continue;
         }

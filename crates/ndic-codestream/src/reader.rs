@@ -545,6 +545,7 @@ impl<'a> Codestream<'a> {
     }
 }
 
+#[allow(clippy::too_many_arguments, clippy::similar_names)]
 /// The aligned code-block sub-grid a precinct covers within a band:
 /// `(bx0, by0, nx, ny)` in the band's global block grid.
 ///

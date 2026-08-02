@@ -94,8 +94,8 @@ pub fn parse(data: &[u8]) -> Result<JphFile> {
         let (payload_start, payload_end) = match lbox {
             0 => (pos + 8, data.len()),
             1 => {
-                let hi = rd32(data, pos + 8)? as u64;
-                let lo = rd32(data, pos + 12)? as u64;
+                let hi = u64::from(rd32(data, pos + 8)?);
+                let lo = u64::from(rd32(data, pos + 12)?);
                 let xl = usize::try_from((hi << 32) | lo)
                     .map_err(|_| err(pos, "XLBox exceeds addressable size"))?;
                 if xl < 16 || pos + xl > data.len() {
@@ -226,6 +226,22 @@ pub fn wrap(codestream: &[u8], width: u32, height: u32, comps: &[(u8, bool)]) ->
     out
 }
 
+/// Returns the raw codestream: unwraps `.jph`/`.jp2` boxes, passes raw
+/// `SOC`-led codestreams through.
+///
+/// # Errors
+/// [`Error::Codestream`] when the data is neither.
+pub fn unwrap_codestream(data: &[u8]) -> Result<&[u8]> {
+    if data.len() >= 2 && data[0] == 0xFF && data[1] == 0x4F {
+        Ok(data)
+    } else if is_box_format(data) {
+        let f = parse(data)?;
+        Ok(&data[f.codestream.0..f.codestream.1])
+    } else {
+        Err(err(0, "neither a raw codestream nor a JP2-family box file"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,21 +269,5 @@ mod tests {
     fn rejects_bad_signature() {
         assert!(parse(&[0u8; 32]).is_err());
         assert!(!is_box_format(&[0u8; 4]));
-    }
-}
-
-/// Returns the raw codestream: unwraps `.jph`/`.jp2` boxes, passes raw
-/// `SOC`-led codestreams through.
-///
-/// # Errors
-/// [`Error::Codestream`] when the data is neither.
-pub fn unwrap_codestream(data: &[u8]) -> Result<&[u8]> {
-    if data.len() >= 2 && data[0] == 0xFF && data[1] == 0x4F {
-        Ok(data)
-    } else if is_box_format(data) {
-        let f = parse(data)?;
-        Ok(&data[f.codestream.0..f.codestream.1])
-    } else {
-        Err(err(0, "neither a raw codestream nor a JP2-family box file"))
     }
 }
