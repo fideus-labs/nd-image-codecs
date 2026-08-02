@@ -74,6 +74,16 @@ impl Gate {
             Self::Both => row.time_regressed || row.ratio_regressed,
         }
     }
+
+    /// Whether time regressions are held by this gate.
+    fn gates_time(self) -> bool {
+        matches!(self, Self::Time | Self::Both)
+    }
+
+    /// Whether ratio regressions are held by this gate.
+    fn gates_ratio(self) -> bool {
+        matches!(self, Self::Ratio | Self::Both)
+    }
 }
 
 /// nd-image-codecs benchmark driver.
@@ -271,7 +281,7 @@ fn run(
             }
         };
         let rows = ndic_bench_core::diff(&records, &base);
-        println!("{}", report::diffs(&rows, format));
+        println!("{}", report::diffs(&rows, format, gate));
         gate_exit(&rows, gate, fail_on_regression)
     } else {
         println!("{}", report::records(&records, format));
@@ -339,7 +349,7 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             }
             let rows = ndic_bench_core::diff(&current, &base);
-            println!("{}", report::diffs(&rows, format));
+            println!("{}", report::diffs(&rows, format, gate));
             gate_exit(&rows, gate, fail_on_regression)
         }
     }

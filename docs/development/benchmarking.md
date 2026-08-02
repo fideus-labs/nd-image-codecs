@@ -87,6 +87,12 @@ over the baseline (`RATIO_REGRESSION_PCT_THRESHOLD = 0.02`). Normalizing by
 `bytes_in` keeps the gate meaningful when a fixture changes size, and
 compressed sizes are deterministic, so this gate holds across machine classes.
 
+The report's status column honors the selected gate: a threshold exceeded on
+an **ungated** kind renders as `ok (time n/a: ungated)` plus a trailing note,
+rather than `TIME-REGRESSED`, so a ratio-only comparison against baselines
+from a different machine class cannot be misread as a real slowdown. The JSON
+encoding keeps the raw per-kind booleans.
+
 `bench-pr-gate.yml` runs the nd-delta and nd-lift lanes and any registered
 Rust workloads on every PR and compares against `bench/baselines/main/` with
 `--gate ratio --fail-on-regression` (CI runners differ from the baseline
