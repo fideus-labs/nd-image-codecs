@@ -43,8 +43,18 @@ pub fn forward<T: PlaneSample>(
 /// Inverse-transform one chunk in place, undoing [`forward`] exactly: the
 /// steps run in reverse order, each with its inverse kernel.
 ///
-/// No budget check runs on decode — a chunk produced by [`forward`] cannot
-/// overflow on the way back.
+/// No budget check runs on decode, because a chunk produced by [`forward`]
+/// cannot overflow on the way back.
+///
+/// # Precondition
+/// That guarantee covers coefficients [`forward`] actually produced. Callers
+/// decoding bytes from storage — the Zarr codec path — can be handed
+/// arbitrary in-range plane values by a corrupt or hostile stream, for which
+/// the kernels' plain arithmetic wraps in release builds and panics in debug
+/// builds. Neither outcome is memory-unsafe, and the codec's narrowing step
+/// still rejects coefficients that do not fit the array data type, but a
+/// caller that must not panic on untrusted input has to bound the
+/// coefficients itself.
 ///
 /// # Errors
 /// [`Error::InvalidArgument`] when `chunk` does not match `shape`, a step
@@ -75,26 +85,8 @@ fn validate(len: usize, shape: &[usize], steps: &[AxisTransform]) -> Result<()> 
         });
     }
     for step in steps {
-        if step.dimension >= shape.len() {
-            return Err(Error::InvalidArgument {
-                message: format!(
-                    "nd_lift transform on axis {:?}: dimension {} out of range for a \
-                     {}-dimensional chunk",
-                    step.axis,
-                    step.dimension,
-                    shape.len()
-                ),
-            });
-        }
-        if matches!(step.kind, LiftKind::Haar | LiftKind::Lift53) && step.levels == 0 {
-            return Err(Error::InvalidArgument {
-                message: format!(
-                    "nd_lift transform on axis {:?}: kind {:?} needs levels >= 1",
-                    step.axis,
-                    step.kind.as_str()
-                ),
-            });
-        }
+        crate::check_dimension(step, shape.len())?;
+        crate::check_levels(step)?;
     }
     Ok(())
 }
@@ -108,6 +100,14 @@ fn validate(len: usize, shape: &[usize], steps: &[AxisTransform]) -> Result<()> 
 /// streaming, auto-vectorizable pass. `inner == 1` degenerates to the plain
 /// 1D case; the per-sample operation order is identical either way.
 fn apply_axis<T: PlaneSample>(chunk: &mut [T], shape: &[usize], step: &AxisTransform, fwd: bool) {
+    if chunk.is_empty() {
+        // Some extent is zero, so there is no sample to transform. This also
+        // covers the case that would otherwise panic: a zero extent *after*
+        // the transformed axis makes `inner` zero, and `chunks_mut(0)` panics
+        // even on an empty slice. Returning here keeps the `tmp` allocation
+        // below off the empty-chunk path too.
+        return;
+    }
     let len = shape[step.dimension];
     if len < 2 {
         // Singleton axes are a defensive no-op.
@@ -213,11 +213,7 @@ fn check_budget<T: PlaneSample>(
                     step.kind.as_str(),
                     all.lo,
                     all.hi,
-                    if T::MAX_I128 == i128::from(i32::MAX) {
-                        32
-                    } else {
-                        64
-                    },
+                    T::BITS,
                 ),
             });
         };
@@ -235,7 +231,9 @@ fn step_growth<T: PlaneSample>(
 ) -> Option<Interval> {
     let levels = match step.kind {
         LiftKind::Delta => 1,
-        LiftKind::Haar | LiftKind::Lift53 => dyadic_depth(group, step.levels),
+        // The same depth rule the kernels walk, so the budget never
+        // propagates more (or fewer) levels than are actually applied.
+        LiftKind::Haar | LiftKind::Lift53 => kernel::band_count(group, step.levels),
     };
     let mut all = input;
     let mut band = input;
@@ -293,20 +291,6 @@ fn step_growth<T: PlaneSample>(
         band = next_band;
     }
     Some(all)
-}
-
-/// How many dyadic levels a decomposition actually applies to `len` samples.
-fn dyadic_depth(len: usize, levels: u8) -> u32 {
-    let mut m = len;
-    let mut applied = 0;
-    for _ in 0..levels {
-        if m < 2 {
-            break;
-        }
-        applied += 1;
-        m = m.div_ceil(2);
-    }
-    applied
 }
 
 #[cfg(test)]
@@ -370,6 +354,37 @@ mod tests {
     }
 
     #[test]
+    fn zero_sized_axes_are_a_noop() {
+        // A zero extent anywhere makes the chunk empty. The transformed axis
+        // itself may still be long (`[4, 0]`), which used to give the row
+        // iteration a stride of zero.
+        for shape in [
+            [4, 0].as_slice(),
+            [0, 4].as_slice(),
+            [0].as_slice(),
+            [3, 0, 2].as_slice(),
+            [2, 3, 0].as_slice(),
+            // A zero *prefix* leaves `inner` non-zero, so it exercises the
+            // empty-chunk return rather than the zero-stride case.
+            [0, 9].as_slice(),
+            [0, 0].as_slice(),
+        ] {
+            for kind in [LiftKind::Delta, LiftKind::Haar, LiftKind::Lift53] {
+                for dimension in 0..shape.len() {
+                    let steps = [step(dimension, kind, 2, 0)];
+                    let mut chunk: Vec<i32> = Vec::new();
+                    forward(&mut chunk, shape, &steps)
+                        .unwrap_or_else(|e| panic!("forward {shape:?} d{dimension}: {e}"));
+                    assert!(chunk.is_empty());
+                    inverse(&mut chunk, shape, &steps)
+                        .unwrap_or_else(|e| panic!("inverse {shape:?} d{dimension}: {e}"));
+                    assert!(chunk.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn shape_and_dimension_mismatches_error() {
         let mut chunk = vec![0i32; 5];
         assert!(forward(&mut chunk, &[2, 3], &[]).is_err());
@@ -386,6 +401,24 @@ mod tests {
         // The same values are comfortable in an i64 plane.
         let mut chunk = vec![i64::from(i32::MIN), i64::from(i32::MAX)];
         forward(&mut chunk, &[2], &[step(0, LiftKind::Delta, 0, 0)]).unwrap();
+    }
+
+    #[test]
+    fn budget_diagnostic_names_the_plane_width() {
+        // The width comes from `PlaneSample::BITS`; a wrong constant would
+        // still produce a refusal, just one that misreports which plane ran
+        // out of room. Pin both planes so the message stays diagnostic.
+        let mut chunk = vec![i32::MIN, i32::MAX];
+        let err = forward(&mut chunk, &[2], &[step(0, LiftKind::Delta, 0, 0)])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("leave the 32-bit plane"), "{err}");
+
+        let mut chunk = vec![i64::MIN, i64::MAX];
+        let err = forward(&mut chunk, &[2], &[step(0, LiftKind::Delta, 0, 0)])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("leave the 64-bit plane"), "{err}");
     }
 
     #[test]

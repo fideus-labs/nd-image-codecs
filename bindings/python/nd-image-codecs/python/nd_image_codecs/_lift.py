@@ -16,6 +16,8 @@ the same per-axis bit-growth assertion the Rust codec applies.
 
 from __future__ import annotations
 
+import numbers
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -27,8 +29,19 @@ KINDS = ("delta", "haar", "lift53")
 
 
 def check_version(version: str) -> None:
-    """Refuse configuration versions this implementation does not pin."""
-    parts = str(version).split(".")
+    """Refuse configuration versions this implementation does not pin.
+
+    The version is a *string* in the Zarr metadata, and Rust's ``NdLiftConfig``
+    types it as one, so a numeric ``0.1`` is refused rather than stringified —
+    otherwise the JSON number ``0.1`` would decode here but fail serde in the
+    Rust codec. This is the single choke point every entry point calls.
+    """
+    if not isinstance(version, str):
+        raise ValueError(
+            f"nd_lift configuration version must be a string, got "
+            f"{type(version).__name__} {version!r}"
+        )
+    parts = version.split(".")
     ok = len(parts) >= 2 and parts[0] == "0" and parts[1] == "1"
     if not ok:
         raise ValueError(
@@ -37,24 +50,74 @@ def check_version(version: str) -> None:
         )
 
 
+# The bounds the Rust ``AxisTransform`` field types impose. ``dimension`` is a
+# ``usize`` bounded by the chunk rank, which is range-checked separately.
+_INT_FIELD_MAX = {"dimension": None, "levels": 0xFF, "group": 0xFFFF_FFFF}
+_INT_FIELD_RUST = {"dimension": "usize", "levels": "u8", "group": "u32"}
+
+
+def _require_int(t: Mapping[str, Any], field: str, default: int = 0) -> int:
+    """An integer-typed transform field, refusing anything ``int()`` would coerce.
+
+    The Rust ``AxisTransform`` types these as ``usize``/``u8``/``u32``, so serde
+    rejects a float, a string, a bool, or an out-of-range value outright. Bare
+    ``int()`` here would instead *silently truncate* — ``levels: 2.9`` becoming
+    2 changes the decomposition depth without telling anyone — so the type and
+    the width are both checked.
+    """
+    value = t.get(field, default)
+    # `bool` is an `int` subclass in Python; `True` is not a level count.
+    if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+        raise ValueError(
+            f"nd_lift transform {field} must be an integer, got "
+            f"{type(value).__name__} {value!r}"
+        )
+    value = int(value)
+    maximum = _INT_FIELD_MAX[field]
+    if maximum is not None and not 0 <= value <= maximum:
+        raise ValueError(
+            f"nd_lift transform {field} {value} must be >= 0 and <= {maximum} "
+            f"({_INT_FIELD_RUST[field]})"
+        )
+    return value
+
+
 def validate_config(transforms: list[dict[str, Any]], ndim: int, version: str = "0.1") -> None:
-    """Mirror the Rust codec's configuration validation."""
+    """Mirror the Rust codec's configuration validation.
+
+    Every rejection is a ``ValueError``: a malformed configuration is an
+    argument error, never a ``KeyError`` leaking out of a lookup or a value
+    silently coerced into something the Rust codec would have refused.
+    """
     check_version(version)
     allowed = {"axis", "dimension", "kind", "levels", "group"}
     for t in transforms:
+        if not isinstance(t, Mapping):
+            raise ValueError(
+                f"nd_lift transform must be a mapping, got {type(t).__name__} {t!r}"
+            )
         unknown = set(t) - allowed
         if unknown:
             raise ValueError(f"nd_lift transform has unknown fields {sorted(unknown)}")
+        for required in ("kind", "dimension"):
+            if required not in t:
+                raise ValueError(f"nd_lift transform is missing required field {required!r}")
         kind = t["kind"]
         if kind not in KINDS:
             raise ValueError(f"nd_lift transform kind {kind!r} is not one of {KINDS}")
-        if not 0 <= int(t["dimension"]) < ndim:
+        if not 0 <= _require_int(t, "dimension") < ndim:
             raise ValueError(
                 f"nd_lift transform dimension {t['dimension']} out of range for a "
                 f"{ndim}-dimensional chunk"
             )
-        if kind in ("haar", "lift53") and int(t.get("levels", 0)) < 1:
+        if kind in ("haar", "lift53") and _require_int(t, "levels") < 1:
             raise ValueError(f"nd_lift transform kind {kind!r} needs levels >= 1")
+        # `group` is a `u32` in the Rust codec (0 = whole extent), so the width
+        # check inside `_require_int` is what rejects a negative value. That
+        # matters beyond tidiness: a negative group would make the segment
+        # stride negative and skip the transform entirely, storing raw samples
+        # that decode as a no-op too.
+        _require_int(t, "group")
 
 
 def plane_dtype(dtype: np.dtype) -> np.dtype:
@@ -193,15 +256,21 @@ def _apply_axis(chunk: np.ndarray, t: dict[str, Any], fwd: bool) -> np.ndarray:
 # Overflow budget (mirrors ndic-lift's interval propagation exactly)
 # ---------------------------------------------------------------------------
 def _check_budget(chunk: np.ndarray, transforms: list[dict[str, Any]], plane: np.dtype) -> None:
-    if chunk.size == 0 or not transforms:
+    if chunk.size == 0:
         return
     plane_info = np.iinfo(plane)
     lo, hi = int(chunk.min()), int(chunk.max())
+    # The plane-range check is *not* conditional on there being transforms:
+    # widening is the codec's first act either way, and `uint32`/`uint64`
+    # samples above the signed plane's maximum would otherwise wrap silently
+    # in the `astype` that follows. The Rust codec refuses the same input.
     if lo < plane_info.min or hi > plane_info.max:
         raise OverflowError(
             f"nd_lift overflow budget: input range [{lo}, {hi}] does not fit the widened "
             f"{plane} coefficient plane"
         )
+    if not transforms:
+        return
 
     def fits(a: int, b: int) -> bool:
         return a >= plane_info.min and b <= plane_info.max

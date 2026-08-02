@@ -9,6 +9,12 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
 
+# Least privilege for every job: this workflow only builds, lints, and tests
+# a checkout — nothing here writes to the repository or its metadata. Any job
+# that needs more has to opt in explicitly with its own block.
+permissions:
+  contents: read
+
 jobs:
   # A mistyped `runs-on` label is not an error to GitHub — the job just queues
   # forever against a runner that will never exist. actionlint validates labels
@@ -112,7 +118,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: pipx install maturin
       - run: maturin build --release -m bindings/python/nd-image-codecs/Cargo.toml
-      - run: pip install pytest "zarr>=3" numpy numcodecs
+      - run: pip install pytest "zarr>=3.1" numpy numcodecs
       - run: python -m pytest bindings/python/nd-image-codecs/tests -q
 
   typescript:

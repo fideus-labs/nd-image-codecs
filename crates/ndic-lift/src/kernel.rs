@@ -28,10 +28,6 @@
 
 use crate::sample::PlaneSample;
 
-/// Enough level slots for any band: a band of length ≥ 2 halves at most
-/// `usize::BITS − 1` times.
-const MAX_LEVELS: usize = usize::BITS as usize;
-
 /// The row of axis sample `i`.
 #[inline]
 fn row<T>(buf: &[T], i: usize, inner: usize) -> &[T] {
@@ -200,6 +196,9 @@ fn right_even(k: usize, n: usize) -> usize {
 /// ```
 fn lift53_forward_level<T: PlaneSample>(x: &mut [T], inner: usize, tmp: &mut [T]) {
     let n = x.len() / inner;
+    // `nd - 1` below needs a non-empty detail band; `band_count` only yields
+    // levels of at least two samples, which is the sole caller path.
+    debug_assert!(n >= 2, "a 5/3 level needs at least two samples");
     let ns = n.div_ceil(2);
     let nd = n / 2;
     let (ts, td) = tmp.split_at_mut(ns * inner);
@@ -226,6 +225,8 @@ fn lift53_forward_level<T: PlaneSample>(x: &mut [T], inner: usize, tmp: &mut [T]
 /// Inverse of one 5/3 level: undo update (evens), then undo predict (odds).
 fn lift53_inverse_level<T: PlaneSample>(x: &mut [T], inner: usize, tmp: &mut [T]) {
     let n = x.len() / inner;
+    // Same precondition as the forward level: `nd - 1` must not underflow.
+    debug_assert!(n >= 2, "a 5/3 level needs at least two samples");
     let ns = n.div_ceil(2);
     let nd = n / 2;
     let (s, d) = x.split_at(ns * inner);
@@ -253,21 +254,36 @@ fn lift53_inverse_level<T: PlaneSample>(x: &mut [T], inner: usize, tmp: &mut [T]
     x.copy_from_slice(&tmp[..n * inner]);
 }
 
-/// The dyadic band lengths a `levels`-deep decomposition of `n` samples
-/// actually visits (a level needs at least two samples).
-fn band_lengths(n: usize, levels: u8) -> ([usize; MAX_LEVELS], usize) {
-    let mut bands = [0usize; MAX_LEVELS];
+/// How many dyadic levels a `levels`-deep decomposition of `n` samples
+/// actually visits: a level needs at least two samples, so the chain stops
+/// early once the approximation band is a singleton.
+///
+/// This is the single definition of the depth rule — the encode-time overflow
+/// budget ([`crate::forward`]) propagates exactly this many levels.
+pub(crate) fn band_count(n: usize, levels: u8) -> u32 {
     let mut count = 0;
     let mut m = n;
     for _ in 0..levels {
         if m < 2 {
             break;
         }
-        bands[count] = m;
         count += 1;
         m = m.div_ceil(2);
     }
-    (bands, count)
+    count
+}
+
+/// The length of band `k` of a decomposition of `n` samples.
+///
+/// Each level's approximation band is `⌈m/2⌉` of the previous one, and nested
+/// ceiling division collapses: `⌈⌈n/2⌉/2⌉ = ⌈n/4⌉`, so band `k` is simply
+/// `⌈n / 2ᵏ⌉`. Computing it closed-form keeps the level walk allocation-free
+/// — `apply_axis` runs it once per segment.
+#[inline]
+fn band_len(n: usize, k: u32) -> usize {
+    // `band_count` never exceeds `usize::BITS`, so `k < usize::BITS` here.
+    debug_assert!(k < usize::BITS);
+    n.div_ceil(1usize << k)
 }
 
 /// Apply `levels` forward levels of `level_fn`, recursing on the `s` band.
@@ -278,9 +294,10 @@ fn multi_level_forward<T: PlaneSample>(
     levels: u8,
     level_fn: fn(&mut [T], usize, &mut [T]),
 ) {
-    let (bands, count) = band_lengths(x.len() / inner, levels);
-    for &m in &bands[..count] {
-        level_fn(&mut x[..m * inner], inner, &mut tmp[..m * inner]);
+    let n = x.len() / inner;
+    for k in 0..band_count(n, levels) {
+        let m = band_len(n, k) * inner;
+        level_fn(&mut x[..m], inner, &mut tmp[..m]);
     }
 }
 
@@ -292,9 +309,10 @@ fn multi_level_inverse<T: PlaneSample>(
     levels: u8,
     level_fn: fn(&mut [T], usize, &mut [T]),
 ) {
-    let (bands, count) = band_lengths(x.len() / inner, levels);
-    for &m in bands[..count].iter().rev() {
-        level_fn(&mut x[..m * inner], inner, &mut tmp[..m * inner]);
+    let n = x.len() / inner;
+    for k in (0..band_count(n, levels)).rev() {
+        let m = band_len(n, k) * inner;
+        level_fn(&mut x[..m], inner, &mut tmp[..m]);
     }
 }
 
@@ -455,6 +473,33 @@ mod tests {
             delta_forward(&mut x, 1);
             delta_inverse(&mut x, 1);
             assert_eq!(x, input);
+        }
+    }
+
+    #[test]
+    fn closed_form_band_lengths_match_the_halving_chain() {
+        // `band_len` replaces an iterated `div_ceil(2)` walk with `⌈n/2ᵏ⌉`;
+        // the two must agree for every band the depth rule actually visits.
+        for n in 0usize..=257 {
+            for levels in [0u8, 1, 2, 3, 8, 255] {
+                let mut m = n;
+                let mut walked = Vec::new();
+                for _ in 0..levels {
+                    if m < 2 {
+                        break;
+                    }
+                    walked.push(m);
+                    m = m.div_ceil(2);
+                }
+                let count = band_count(n, levels);
+                assert_eq!(
+                    count as usize,
+                    walked.len(),
+                    "depth for n={n} levels={levels}"
+                );
+                let closed: Vec<usize> = (0..count).map(|k| band_len(n, k)).collect();
+                assert_eq!(closed, walked, "bands for n={n} levels={levels}");
+            }
         }
     }
 

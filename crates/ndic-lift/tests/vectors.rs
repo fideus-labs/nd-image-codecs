@@ -5,7 +5,7 @@
 //! specification.
 #![cfg(feature = "serde")]
 
-use ndic_lift::{AxisTransform, forward, inverse};
+use ndic_lift::{AxisTransform, CODEC_VERSION, forward, inverse};
 use serde_json::Value;
 
 fn i64_list(v: &Value) -> Vec<i64> {
@@ -26,10 +26,23 @@ fn conformance_vectors() {
         &std::fs::read_to_string(path).expect("run the gen_vectors example first"),
     )
     .expect("valid JSON");
+    // The fixture freezes one *version's* semantics. Pin it explicitly, so a
+    // version bump on either side has to move the vectors with it instead of
+    // silently passing against foreign expectations.
+    assert_eq!(
+        doc["version"].as_str().expect("version"),
+        CODEC_VERSION,
+        "fixture semantics version must match this build"
+    );
     let cases = doc["cases"].as_array().expect("cases");
     assert!(!cases.is_empty());
     for case in cases {
         let name = case["name"].as_str().expect("name");
+        assert_eq!(
+            case["configuration"]["version"].as_str().expect("version"),
+            CODEC_VERSION,
+            "case {name} carries a foreign semantics version"
+        );
         let shape: Vec<usize> = case["shape"]
             .as_array()
             .expect("shape")

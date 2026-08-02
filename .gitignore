@@ -40,3 +40,6 @@ test-data/cache/
 .serena/
 .claude/*
 !.claude/skills/
+.maestro/
+
+.coverage

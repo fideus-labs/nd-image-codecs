@@ -5,13 +5,21 @@ use ndic_lift::{AxisTransform, LiftKind, forward, inverse};
 use proptest::collection::vec as pvec;
 use proptest::prelude::*;
 
-/// The value ranges of every supported ≤32-bit input dtype, expressed in the
-/// `i32` plane they transform in.
+/// Input value ranges that transform in the `i32` plane.
+///
+/// The ≤16-bit dtypes appear at their full width — the plane is wide enough
+/// for any transform this test generates. `u32`/`i32` input also lands in the
+/// `i32` plane but cannot be exercised at full width: the overflow budget
+/// refuses those encodes outright (`chunk::tests::
+/// budget_refuses_full_range_i32_planes`), so 32-bit dtypes contribute a
+/// bounded sub-range with the same headroom [`i64_cases`] leaves — 15 bits
+/// for three steps × three 5/3 levels and their intermediates.
 const I32_PLANE_RANGES: &[(i32, i32)] = &[
     (0, u8::MAX as i32),
     (i8::MIN as i32, i8::MAX as i32),
     (0, u16::MAX as i32),
     (i16::MIN as i32, i16::MAX as i32),
+    (-(1 << 16), 1 << 16),
 ];
 
 fn kinds() -> impl Strategy<Value = LiftKind> {

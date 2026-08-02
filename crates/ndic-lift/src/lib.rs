@@ -133,15 +133,7 @@ impl NdLiftConfig {
     pub fn validate_semantics(&self) -> Result<()> {
         check_version(&self.version)?;
         for step in &self.transforms {
-            if matches!(step.kind, LiftKind::Haar | LiftKind::Lift53) && step.levels == 0 {
-                return Err(Error::InvalidArgument {
-                    message: format!(
-                        "nd_lift transform on axis {:?}: kind {:?} needs levels >= 1",
-                        step.axis,
-                        step.kind.as_str()
-                    ),
-                });
-            }
+            check_levels(step)?;
         }
         Ok(())
     }
@@ -155,18 +147,43 @@ impl NdLiftConfig {
     pub fn validate(&self, ndim: usize) -> Result<()> {
         self.validate_semantics()?;
         for step in &self.transforms {
-            if step.dimension >= ndim {
-                return Err(Error::InvalidArgument {
-                    message: format!(
-                        "nd_lift transform on axis {:?}: dimension {} out of range for a \
-                         {ndim}-dimensional chunk",
-                        step.axis, step.dimension
-                    ),
-                });
-            }
+            check_dimension(step, ndim)?;
         }
         Ok(())
     }
+}
+
+/// A lifting kind must decompose at least one level.
+///
+/// Shared with [`forward`]/[`inverse`] so the configuration gate and the
+/// chunk gate cannot drift apart — including the message text.
+pub(crate) fn check_levels(step: &AxisTransform) -> Result<()> {
+    if matches!(step.kind, LiftKind::Haar | LiftKind::Lift53) && step.levels == 0 {
+        return Err(Error::InvalidArgument {
+            message: format!(
+                "nd_lift transform on axis {:?}: kind {:?} needs levels >= 1",
+                step.axis,
+                step.kind.as_str()
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// A step's `dimension` must index a chunk of `ndim` dimensions.
+///
+/// Shared with [`forward`]/[`inverse`]; see [`check_levels`].
+pub(crate) fn check_dimension(step: &AxisTransform, ndim: usize) -> Result<()> {
+    if step.dimension >= ndim {
+        return Err(Error::InvalidArgument {
+            message: format!(
+                "nd_lift transform on axis {:?}: dimension {} out of range for a \
+                 {ndim}-dimensional chunk",
+                step.axis, step.dimension
+            ),
+        });
+    }
+    Ok(())
 }
 
 /// Refuse configuration versions this build does not implement.

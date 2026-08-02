@@ -73,8 +73,23 @@ class NdLift:
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> NdLift:
-        """Construct from a Zarr v3 ``configuration`` object."""
-        return cls(transforms=config.get("transforms", []), version=config.get("version", "0.1"))
+        """Construct from a Zarr v3 ``configuration`` object.
+
+        ``version`` is required here, matching the Rust ``NdLiftConfig``
+        (which has no serde default for it) and the TypeScript class: a
+        configuration object read back from storage states its own semantics
+        rather than inheriting whichever version this build implements. The
+        constructor's default is for authoring configurations in code.
+        """
+        from . import _lift
+
+        if "version" not in config:
+            raise ValueError(
+                'nd_lift configuration must carry an explicit "version" '
+                f"(this build implements {_lift.SUPPORTED_VERSION}); "
+                "refusing rather than mis-decoding"
+            )
+        return cls(transforms=config.get("transforms", []), version=config["version"])
 
     def encode(self, chunk: Any) -> Any:
         """Forward-transform an ndarray chunk into its widened coefficient plane."""

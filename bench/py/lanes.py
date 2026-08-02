@@ -127,8 +127,19 @@ def run_lanes(
                         help="comma-separated lane labels to run")
     args = parser.parse_args()
 
+    # Reject unusable inputs up front: zero samples leaves `raw_ns` empty and
+    # `min()` raises mid-run, a negative warmup silently records a different
+    # sample count than requested, and an empty lane list exits 0 having
+    # written nothing — which reads like a successful run.
+    if args.samples < 1:
+        parser.error("--samples must be at least 1")
+    if args.warmup < 0:
+        parser.error("--warmup must be non-negative")
+
     out = args.out or REPO / "target" / "benchmarks" / git_hash()
     selected = [lane.strip() for lane in args.lanes.split(",") if lane.strip()]
+    if not selected:
+        parser.error(f"--lanes must select at least one lane; available: {sorted(lanes)}")
     unknown = [lane for lane in selected if lane not in lanes]
     if unknown:
         parser.error(f"unknown lanes {unknown}; available: {sorted(lanes)}")

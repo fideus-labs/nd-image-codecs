@@ -25,18 +25,24 @@ export type ZarrCodec = { name: string; configuration?: Record<string, unknown> 
 // ---------------------------------------------------------------------------
 // Registered codec classes (scaffolds; see roadmap)
 // ---------------------------------------------------------------------------
-/** One `nd_lift` decorrelation step (the schema the Rust codec accepts). */
+/**
+ * One `nd_lift` decorrelation step (the schema the Rust codec accepts).
+ *
+ * Optionality mirrors `AxisTransform`'s serde attributes exactly: `dimension`
+ * and `kind` are required, while `axis`, `levels`, and `group` are
+ * `#[serde(default)]` and may be omitted.
+ */
 export interface NdLiftTransform {
-  /** Axis name (e.g. `"z"`, `"t"`); informational. */
-  axis: string;
+  /** Axis name (e.g. `"z"`, `"t"`); informational. Defaults to `""`. */
+  axis?: string;
   /** Axis index into the post-transpose chunk shape. */
   dimension: number;
   /** Transform kind. */
   kind: "delta" | "haar" | "lift53";
-  /** Dyadic decomposition levels (ignored for `delta`; >= 1 for lifting kinds). */
-  levels: number;
-  /** Group length along the axis (0 = the whole chunk extent). */
-  group: number;
+  /** Dyadic decomposition levels (ignored for `delta`; >= 1 for lifting kinds). Defaults to 0. */
+  levels?: number;
+  /** Group length along the axis (0 = the whole chunk extent). Defaults to 0. */
+  group?: number;
 }
 
 /** The `nd_lift` configuration version this package implements. */
@@ -44,32 +50,133 @@ export const ND_LIFT_VERSION = "0.1";
 
 export interface NdLiftConfig {
   name: "nd_lift";
-  configuration?: { version?: string; transforms?: NdLiftTransform[] };
+  /** Omit entirely for the defaults; when present, `version` is required. */
+  configuration?: { version: string; transforms?: NdLiftTransform[] };
+}
+
+/** The transform fields the Rust and Python validators accept. */
+const ND_LIFT_TRANSFORM_FIELDS: ReadonlySet<string> = new Set([
+  "axis",
+  "dimension",
+  "kind",
+  "levels",
+  "group",
+]);
+
+/**
+ * The integer transform fields, with the bounds their Rust types impose:
+ * `dimension: usize` (required), `levels: u8`, `group: u32` — the latter two
+ * `#[serde(default)]`, so absent means 0. `axis` is `#[serde(default)]` too
+ * and is informational, so it is optional here as well.
+ */
+const ND_LIFT_INT_FIELDS = [
+  { name: "dimension", max: Number.MAX_SAFE_INTEGER, rust: "usize", required: true },
+  { name: "levels", max: 0xff, rust: "u8", required: false },
+  { name: "group", max: 0xffff_ffff, rust: "u32", required: false },
+] as const;
+
+/**
+ * One integer transform field, validated against its Rust type.
+ *
+ * JSON supplies these, so a numeric string or a fractional value reaches here
+ * intact; `("8" ?? 0) < 0` is false, and serde would reject both. Returns the
+ * value (0 when absent and optional) so callers can range-check further.
+ */
+function ndLiftUintField(
+  t: Record<string, unknown>,
+  field: (typeof ND_LIFT_INT_FIELDS)[number],
+): number {
+  const raw = t[field.name];
+  if (raw === undefined || raw === null) {
+    if (field.required) {
+      throw new Error(`nd_lift transform is missing required field ${JSON.stringify(field.name)}`);
+    }
+    return 0;
+  }
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw > field.max) {
+    throw new Error(
+      `nd_lift transform ${field.name} ${JSON.stringify(raw)} must be >= 0 and ` +
+        `<= ${field.max} (${field.rust})`,
+    );
+  }
+  return raw;
 }
 
 /**
  * Config class for the `nd_lift` Zarr v3 array-to-array codec. Serializes
  * exactly the configurations the Rust codec accepts and applies the same
- * validation (version gate, `levels >= 1` for lifting kinds). The WASM
- * encode/decode core lands with the nd-lift-ht integration (roadmap Phase 4).
+ * validation: the version gate, unknown transform fields, `levels >= 1` for
+ * lifting kinds, and a non-negative `group`. The WASM encode/decode core
+ * lands with the nd-lift-ht integration (roadmap Phase 4).
  */
 export class NdLift {
   static codecName = "nd_lift" as const;
 
   constructor(public readonly config: NdLiftConfig) {
-    const { version = ND_LIFT_VERSION, transforms = [] } = config.configuration ?? {};
-    const [major, minor] = String(version).split(".");
+    const configuration = config.configuration;
+    // Rust's `NdLiftConfig` has no serde default for `version`, so a
+    // configuration object read off storage without one is refused there.
+    // Refuse it here too instead of assuming this build's semantics. An
+    // absent `configuration` is the "all defaults" case, matching
+    // `NdLiftConfig::new`.
+    // `!= null` on purpose: it catches both `undefined` and `null`, so a JSON
+    // `"configuration": null` falls through to the defaults below instead of
+    // throwing a TypeError on property access.
+    if (configuration != null && configuration.version === undefined) {
+      throw new Error(
+        `nd_lift configuration must carry an explicit "version" (this build implements ` +
+          `${ND_LIFT_VERSION}); refusing rather than mis-decoding`,
+      );
+    }
+    const { version = ND_LIFT_VERSION, transforms = [] } = configuration ?? {};
+    // Rust types `version` as `String`, so the JSON number 0.1 is a serde
+    // error there; stringifying it here would accept a configuration the
+    // codec refuses. The Python `check_version` gate does the same.
+    if (typeof version !== "string") {
+      throw new Error(
+        `nd_lift configuration version must be a string, got ${JSON.stringify(version)}`,
+      );
+    }
+    const [major, minor] = version.split(".");
     if (major !== "0" || minor !== "1") {
       throw new Error(
         `nd_lift configuration version ${JSON.stringify(version)} is not supported by this ` +
           `build (implements ${ND_LIFT_VERSION}); refusing rather than mis-decoding`,
       );
     }
+    // This is a deserialization boundary — the values arrive from JSON, so the
+    // static types are a claim, not a guarantee. Check the shape before
+    // reaching into it, or `for...of`/`Object.keys` throw a bare TypeError
+    // instead of a diagnostic the caller can act on.
+    if (!Array.isArray(transforms)) {
+      throw new Error(`nd_lift transforms must be an array, got ${JSON.stringify(transforms)}`);
+    }
     for (const t of transforms) {
+      if (t === null || typeof t !== "object" || Array.isArray(t)) {
+        throw new Error(`nd_lift transform must be an object, got ${JSON.stringify(t)}`);
+      }
+      const fields = t as unknown as Record<string, unknown>;
+      const unknown = Object.keys(fields)
+        .filter((k) => !ND_LIFT_TRANSFORM_FIELDS.has(k))
+        .sort();
+      if (unknown.length > 0) {
+        throw new Error(`nd_lift transform has unknown fields ${JSON.stringify(unknown)}`);
+      }
+      if (!("kind" in fields)) {
+        throw new Error('nd_lift transform is missing required field "kind"');
+      }
+      if (fields.axis !== undefined && typeof fields.axis !== "string") {
+        throw new Error(`nd_lift transform axis ${JSON.stringify(fields.axis)} must be a string`);
+      }
+      let levels = 0;
+      for (const field of ND_LIFT_INT_FIELDS) {
+        const value = ndLiftUintField(fields, field);
+        if (field.name === "levels") levels = value;
+      }
       if (!["delta", "haar", "lift53"].includes(t.kind)) {
         throw new Error(`nd_lift transform kind ${JSON.stringify(t.kind)} is unknown`);
       }
-      if (t.kind !== "delta" && (t.levels ?? 0) < 1) {
+      if (t.kind !== "delta" && levels < 1) {
         throw new Error(`nd_lift transform kind ${JSON.stringify(t.kind)} needs levels >= 1`);
       }
     }

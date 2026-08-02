@@ -3,6 +3,13 @@
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign, Shr, Sub, SubAssign};
 
+mod sealed {
+    /// Keeps [`super::PlaneSample`] closed over `i32` and `i64`.
+    pub trait Sealed {}
+    impl Sealed for i32 {}
+    impl Sealed for i64 {}
+}
+
 /// An integer coefficient-plane sample type.
 ///
 /// `nd_lift` transforms input samples in a **widened** signed plane so the
@@ -15,8 +22,14 @@ use core::ops::{Add, AddAssign, Shr, Sub, SubAssign};
 ///
 /// `>>` must be an *arithmetic* shift (Rust's `>>` on signed integers), which
 /// the kernels rely on for floor division by powers of two.
+///
+/// The trait is **sealed**: it carries the invariant that the budget check
+/// makes plain arithmetic exact, which an outside implementation for a
+/// narrower or unusual type would silently break. `i32` and `i64` are the
+/// only planes.
 pub trait PlaneSample:
-    Copy
+    sealed::Sealed
+    + Copy
     + Ord
     + Debug
     + 'static
@@ -36,6 +49,8 @@ pub trait PlaneSample:
     const MIN_I128: i128;
     /// The plane's maximum value, widened for overflow-budget arithmetic.
     const MAX_I128: i128;
+    /// The plane's width in bits, for diagnostics.
+    const BITS: u32;
 
     /// The sample value, widened for overflow-budget arithmetic.
     fn to_i128(self) -> i128;
@@ -49,6 +64,7 @@ macro_rules! impl_plane_sample {
             const TWO: Self = 2;
             const MIN_I128: i128 = <$ty>::MIN as i128;
             const MAX_I128: i128 = <$ty>::MAX as i128;
+            const BITS: u32 = <$ty>::BITS;
 
             #[inline]
             fn to_i128(self) -> i128 {

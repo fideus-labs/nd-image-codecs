@@ -31,7 +31,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python bench dependencies
-        run: pip install "zarr>=3" numpy numcodecs
+        run: pip install "zarr>=3.1" numpy numcodecs
 
       - name: Run the nd-delta lanes
         run: python3 bench/py/run_nd_delta.py --samples 10

@@ -77,6 +77,111 @@ def test_overflow_budget_refused() -> None:
         _lift.forward(data, step)
 
 
+@pytest.mark.parametrize("dtype", ["uint32", "uint64"])
+def test_plane_range_checked_without_transforms(dtype: str) -> None:
+    # Widening happens whether or not there are transforms, so an unsigned
+    # sample above the signed plane's maximum must be refused either way —
+    # otherwise `astype` wraps it to a negative coefficient silently.
+    above_plane = 2**31 if dtype == "uint32" else 2**63
+    data = np.full((4,), above_plane, dtype=dtype)
+    with pytest.raises(OverflowError, match="does not fit the widened"):
+        _lift.forward(data, [])
+    step = [{"axis": "z", "dimension": 0, "kind": "delta", "levels": 0, "group": 0}]
+    with pytest.raises(OverflowError, match="does not fit the widened"):
+        _lift.forward(data, step)
+
+
+def test_empty_transform_list_widens_in_range_data() -> None:
+    # The other half of the budget split: with no transforms there is nothing
+    # to propagate, so an in-range chunk must widen cleanly rather than be
+    # caught by the range check that now runs unconditionally.
+    data = np.array([[0, 7], [65535, 3]], dtype=np.uint16)
+    coeffs = _lift.forward(data, [])
+    assert coeffs.dtype == np.dtype(np.int32)
+    np.testing.assert_array_equal(coeffs, data.astype(np.int32))
+    np.testing.assert_array_equal(_lift.inverse(coeffs, [], data.dtype), data)
+
+
+def test_malformed_transforms_raise_value_errors() -> None:
+    data = np.zeros((4, 4), dtype=np.uint16)
+    # Missing required fields are argument errors, not KeyErrors.
+    for bad in [{"kind": "delta"}, {"dimension": 0}]:
+        with pytest.raises(ValueError, match="missing required field"):
+            _lift.forward(data, [bad])
+    # A negative group would make the segment stride negative, silently
+    # skipping the transform on both encode and decode.
+    step = [{"axis": "z", "dimension": 0, "kind": "haar", "levels": 1, "group": -1}]
+    with pytest.raises(ValueError, match="group -1 must be >= 0"):
+        _lift.forward(data, step)
+    with pytest.raises(ValueError, match="group -1 must be >= 0"):
+        _lift.inverse(data.astype(np.int32), step, np.dtype(np.uint16))
+
+
+def test_from_config_requires_an_explicit_version() -> None:
+    with pytest.raises(ValueError, match='explicit "version"'):
+        NdLift.from_config({"transforms": []})
+    assert NdLift.from_config({"version": "0.1", "transforms": []}).version == "0.1"
+
+
+def test_version_must_be_a_string() -> None:
+    # The Zarr metadata types `version` as a string and Rust's NdLiftConfig
+    # declares it `String`, so the JSON number 0.1 must not decode here and
+    # then fail serde on the Rust side.
+    for bad in [0.1, 1, None, ["0", "1"]]:
+        with pytest.raises(ValueError, match="version must be a string"):
+            _lift.check_version(bad)
+        with pytest.raises(ValueError, match="version must be a string"):
+            NdLift.from_config({"version": bad, "transforms": []})
+
+
+def test_integer_fields_reject_coercible_non_integers() -> None:
+    # Bare int() would silently truncate: `levels: 2.9` -> 2 quietly changes
+    # the decomposition depth. Rust's serde refuses these outright.
+    data = np.zeros((4, 4), dtype=np.uint16)
+
+    def step(**over: object) -> list[dict]:
+        base = {"axis": "z", "dimension": 0, "kind": "haar", "levels": 2, "group": 0}
+        return [{**base, **over}]
+
+    for field, value in [
+        ("levels", 2.9),
+        ("group", 8.5),
+        ("dimension", 1.5),
+        ("levels", "2"),
+        ("group", True),
+        ("dimension", None),
+    ]:
+        with pytest.raises(ValueError, match=f"{field} must be an integer"):
+            _lift.forward(data, step(**{field: value}))
+
+    # Genuine integers still pass, including NumPy integer scalars.
+    _lift.forward(data, step(levels=np.int64(2), group=np.int32(4), dimension=np.int8(0)))
+
+
+def test_integer_fields_respect_the_rust_widths() -> None:
+    # `levels` is a u8 and `group` a u32 in AxisTransform; serde refuses
+    # anything wider, so a value that only fits a Python int must not slip by.
+    data = np.zeros((4, 4), dtype=np.uint16)
+
+    def step(**over: object) -> list[dict]:
+        base = {"axis": "z", "dimension": 0, "kind": "haar", "levels": 2, "group": 0}
+        return [{**base, **over}]
+
+    with pytest.raises(ValueError, match=r"levels 256 must be >= 0 and <= 255 \(u8\)"):
+        _lift.forward(data, step(levels=256))
+    with pytest.raises(ValueError, match=r"group 4294967296 must be .*<= 4294967295 \(u32\)"):
+        _lift.forward(data, step(group=2**32))
+    # The widest in-range values are still accepted.
+    _lift.forward(data, step(levels=255, group=0xFFFFFFFF))
+
+
+def test_transforms_must_be_mappings() -> None:
+    data = np.zeros((4, 4), dtype=np.uint16)
+    for bad in ["delta", 3, None, ["dimension"]]:
+        with pytest.raises(ValueError, match="transform must be a mapping"):
+            _lift.forward(data, [bad])
+
+
 def test_config_class_serializes_rust_accepted_configs() -> None:
     codec = NdLift(
         transforms=[{"axis": "z", "dimension": 2, "kind": "lift53", "levels": 2, "group": 0}]
@@ -100,7 +205,7 @@ def test_config_class_serializes_rust_accepted_configs() -> None:
 def _zarr_roundtrip_pipeline(
     data: np.ndarray, chunks: tuple[int, ...], pipeline: list[dict]
 ) -> tuple[np.ndarray, int]:
-    zarr = pytest.importorskip("zarr", minversion="3.0")
+    zarr = pytest.importorskip("zarr", minversion="3.1")
     import nd_image_codecs.zarr_codec  # noqa: F401  (registers nd_lift)
 
     serializer_at = next(i for i, c in enumerate(pipeline) if c["name"] == "bytes")
@@ -152,6 +257,35 @@ def test_zarr_pipeline_roundtrip(kind: str) -> None:
     back, stored = _zarr_roundtrip_pipeline(data, (8, 32, 32), pipeline)
     np.testing.assert_array_equal(back, data)
     assert stored < data.nbytes, "the lift pipeline must compress correlated volumes"
+
+
+def test_zarr_codec_is_hashable_and_requires_a_version() -> None:
+    pytest.importorskip("zarr", minversion="3.1")
+    from nd_image_codecs.zarr_codec import NdLiftCodec
+
+    transforms = [{"axis": "z", "dimension": 0, "kind": "lift53", "levels": 2, "group": 0}]
+    codec = NdLiftCodec(transforms=transforms)
+    # zarr hashes codecs (cached pipeline lookups); the frozen dataclass's
+    # generated __hash__ would raise on the dict-valued `transforms` field.
+    assert hash(codec) == hash(NdLiftCodec(transforms=transforms))
+    assert codec == NdLiftCodec(transforms=transforms)
+    assert len({codec, NdLiftCodec(transforms=transforms)}) == 1
+    assert hash(codec) != hash(NdLiftCodec(transforms=[]))
+
+    with pytest.raises(ValueError, match='explicit "version"'):
+        NdLiftCodec.from_dict({"name": "nd_lift", "configuration": {"transforms": transforms}})
+    restored = NdLiftCodec.from_dict(codec.to_dict())
+    assert restored == codec
+
+    # The constructor copies each transform, so mutating the caller's dict
+    # afterwards must not shift the codec's hash and strand it as a dict key.
+    live = [{"axis": "z", "dimension": 0, "kind": "lift53", "levels": 2, "group": 0}]
+    keyed = NdLiftCodec(transforms=live)
+    table = {keyed: "value"}
+    live[0]["levels"] = 99
+    live[0]["axis"] = "t"
+    assert table[keyed] == "value", "codec key must survive mutation of the source dict"
+    assert keyed.to_dict()["configuration"]["transforms"][0]["levels"] == 2
 
 
 def test_zarr_pipeline_partial_edge_chunks() -> None:

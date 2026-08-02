@@ -1,6 +1,8 @@
 """``nd_lift`` as a ``zarr-python`` (v3) array-to-array codec.
 
-Importing this module requires ``zarr >= 3``. The codec is registered with
+Importing this module requires ``zarr >= 3.1`` — the release that introduced
+``zarr.core.dtype`` and the ``to_native_dtype()`` accessor this codec resolves
+its coefficient plane through. The codec is registered with
 zarr both via the ``zarr.codecs`` entry point (when this package is
 installed) and explicitly through :func:`register`, so pipelines authored by
 :func:`nd_image_codecs.codec_series` — e.g. the Phase 2 validation series
@@ -53,9 +55,29 @@ class NdLiftCodec(ArrayArrayCodec):
         object.__setattr__(self, "version", str(version))
         object.__setattr__(self, "transforms", tuple(dict(t) for t in transforms))
 
+    def __hash__(self) -> int:
+        # `transforms` holds dicts, so the frozen dataclass's generated
+        # `__hash__` raises. zarr hashes codecs (e.g. the sharding codec's
+        # cached pipeline lookups), so hash the same content `__eq__`
+        # compares, in a normalized hashable form.
+        return hash(
+            (self.version, tuple(tuple(sorted(t.items())) for t in self.transforms)),
+        )
+
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration = parse_named_configuration(data, "nd_lift")
+        # The Rust codec's `NdLiftConfig` has no serde default for `version`,
+        # so a stored configuration without one is refused there. Refuse it
+        # here too rather than assuming the version this build happens to
+        # implement — the constructor's default is for authoring configs in
+        # code, not for reading them back off storage.
+        if "version" not in configuration:
+            raise ValueError(
+                'nd_lift configuration must carry an explicit "version" '
+                f"(this build implements {_lift.SUPPORTED_VERSION}); "
+                "refusing rather than mis-decoding"
+            )
         return cls(**configuration)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
