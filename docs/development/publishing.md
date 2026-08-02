@@ -49,13 +49,24 @@ unregistered on crates.io. Confirm which versions are live before you publish â€
 a version already on a registry cannot be re-uploaded:
 
 ```bash
+# `-sS` keeps the progress meter off but still prints transfer errors, and an
+# unparseable body reports QUERY FAILED rather than being read as "unpublished".
+# A 404 for a name that is genuinely free returns valid JSON and prints `none`.
+versions() { python3 -c '
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+except json.JSONDecodeError:
+    print("QUERY FAILED"); raise SystemExit(1)
+print(",".join(v["num"] for v in d.get("versions", [])) or "none")'; }
+
 for c in ndic-core ndic-htj2k ndic-lift ndic-zfp ndic-codestream ndic-zarr ndic-cli; do
   printf '%-16s ' "$c"
-  curl -s -H "User-Agent: nd-image-codecs (matt@fideus.io)" \
-    "https://crates.io/api/v1/crates/$c" \
-    | python3 -c "import sys,json;d=json.load(sys.stdin);print(','.join(v['num'] for v in d.get('versions',[])) or 'none')"
+  curl -sS -H "User-Agent: nd-image-codecs (matt@fideus.io)" \
+    "https://crates.io/api/v1/crates/$c" | versions
 done
-curl -s https://pypi.org/pypi/nd-image-codecs/json | python3 -c "import sys,json;print(sorted(json.load(sys.stdin)['releases']))"
+curl -sS https://pypi.org/pypi/nd-image-codecs/json \
+  | python3 -c "import sys,json;print(sorted(json.load(sys.stdin)['releases']))"
 npm view @fideus-labs/nd-image-codecs versions
 npm view nd-image-codecs versions
 ```
@@ -88,12 +99,25 @@ Run from the repository root.
 git status --porcelain          # must be empty
 git switch main && git pull
 
-# 2. Version must read 0.0.2 in every manifest.
-rg -n '"0\.0\.2"|version = "0\.0\.2"' Cargo.toml \
+# 2. Version must read 0.0.2 in every location under "Where the version lives".
+#    Assert per file: a single `rg` across all of them exits 0 on one match and
+#    would pass with the rest stale.
+for f in Cargo.toml \
+         bindings/python/nd-image-codecs/pyproject.toml \
+         bindings/python/nd-image-codecs/python/nd_image_codecs/__init__.py \
+         bindings/typescript/package.json \
+         bindings/typescript/package-lock.json \
+         bindings/javascript/package.json; do
+  rg -q '0\.0\.2' "$f" || printf 'MISSING 0.0.2: %s\n' "$f"
+done
+
+#    ...and nothing may still carry the previous version. This is what catches a
+#    partial bump: one of the two package-lock.json fields, or one internal path
+#    dep in Cargo.toml. Expect no output.
+rg -n '0\.0\.1' Cargo.toml bindings/javascript/package.json \
+  bindings/typescript/package.json bindings/typescript/package-lock.json \
   bindings/python/nd-image-codecs/pyproject.toml \
-  bindings/typescript/package.json \
-  bindings/typescript/package-lock.json \
-  bindings/javascript/package.json
+  bindings/python/nd-image-codecs/python/nd_image_codecs/__init__.py
 
 # 3. Everything green.
 cargo fmt --all --check
@@ -347,7 +371,7 @@ builder.
 - [ ] `cargo owner --add` on all seven crates
 - [ ] `maturin sdist` + `maturin build --release`, `twine check`, import smoke-test
 - [ ] `twine upload --repository testpypi`, then `twine upload`
-- [ ] `bindings/typescript`: build, test, `npm publish --access public`
+- [ ] `bindings/typescript`: build; `npm test` may report no test files; `npm publish --access public`
 - [ ] `bindings/javascript`: `npm publish`
 - [ ] Installs verified from all three registries
 - [ ] `v0.0.2` tagged and pushed; GitHub release created

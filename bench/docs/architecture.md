@@ -29,8 +29,11 @@ inventory::submit! {
 }
 ```
 
-Adding a benchmark means adding a module there — the registry walk finds it at link
-time, so there is **no** central-list edit.
+A new entry in an existing module needs nothing else — the registry walk finds it at
+link time, so there is **no** central list of benchmarks to edit. A new *file*, on the
+other hand, needs its `mod` line in `workloads/mod.rs`: Rust does not discover files in
+a directory, and without the declaration the module is never compiled and its
+`inventory::submit!` entries never link.
 
 They deliberately do *not* live in the codec crates: `ndic-bench-core` is
 `publish = false`, and any published crate naming it — even behind an
