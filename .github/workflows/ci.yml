@@ -9,6 +9,12 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
 
+# Least privilege for every job: this workflow only builds, lints, and tests
+# a checkout — nothing here writes to the repository or its metadata. Any job
+# that needs more has to opt in explicitly with its own block.
+permissions:
+  contents: read
+
 jobs:
   # A mistyped `runs-on` label is not an error to GitHub — the job just queues
   # forever against a runner that will never exist. actionlint validates labels
@@ -56,6 +62,8 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets
+      # Feature-gated surfaces: the zarrs codec registration + bench workloads.
+      - run: cargo clippy --workspace --all-targets --features ndic-zarr/zarrs,ndic-lift/serde,ndic-lift/bench
 
   test:
     name: test (${{ matrix.os }})
@@ -76,7 +84,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace
+      # The feature set is a strict superset of the default build: it adds the
+      # zarrs codec registration (nd_lift composed with stock blosc) and the
+      # serde-gated conformance-vector tests.
+      - run: cargo test --workspace --features ndic-zarr/zarrs,ndic-lift/serde,ndic-lift/bench
 
   wasm:
     runs-on: ubuntu-24.04
@@ -107,7 +118,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: pipx install maturin
       - run: maturin build --release -m bindings/python/nd-image-codecs/Cargo.toml
-      - run: pip install pytest "zarr>=3" numpy numcodecs
+      - run: pip install pytest "zarr>=3.1" numpy numcodecs
       - run: python -m pytest bindings/python/nd-image-codecs/tests -q
 
   typescript:

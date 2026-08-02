@@ -1,0 +1,534 @@
+{
+  "cases": [
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "delta",
+            "levels": 0
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "input": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "name": "delta-ramp",
+      "plane": "i32",
+      "shape": [
+        7
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 2,
+            "kind": "delta",
+            "levels": 0
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        10,
+        1,
+        20,
+        3
+      ],
+      "input": [
+        10,
+        11,
+        20,
+        23
+      ],
+      "name": "delta-group-2",
+      "plane": "i32",
+      "shape": [
+        4
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "haar",
+            "levels": 1
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        9,
+        9,
+        9,
+        0,
+        0,
+        0
+      ],
+      "input": [
+        9,
+        9,
+        9,
+        9,
+        9,
+        9
+      ],
+      "name": "haar-dc",
+      "plane": "i32",
+      "shape": [
+        6
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "haar",
+            "levels": 1
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        4,
+        -5,
+        5,
+        -5
+      ],
+      "input": [
+        2,
+        7,
+        -2,
+        -7
+      ],
+      "name": "haar-signed-pairs",
+      "plane": "i32",
+      "shape": [
+        4
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "haar",
+            "levels": 2
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        3,
+        16,
+        5,
+        1,
+        4
+      ],
+      "input": [
+        1,
+        2,
+        4,
+        8,
+        16
+      ],
+      "name": "haar-two-levels-odd",
+      "plane": "i32",
+      "shape": [
+        5
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "lift53",
+            "levels": 1
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        2,
+        1,
+        4,
+        0
+      ],
+      "input": [
+        0,
+        4,
+        0,
+        0
+      ],
+      "name": "lift53-impulse",
+      "plane": "i32",
+      "shape": [
+        4
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "lift53",
+            "levels": 1
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        0,
+        2,
+        4,
+        6,
+        0,
+        0,
+        0,
+        1
+      ],
+      "input": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "name": "lift53-ramp",
+      "plane": "i32",
+      "shape": [
+        8
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "lift53",
+            "levels": 2
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        5,
+        5,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "input": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "name": "lift53-dc-two-levels-odd",
+      "plane": "i32",
+      "shape": [
+        7
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 3,
+            "kind": "lift53",
+            "levels": 2
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        88,
+        -30,
+        5,
+        20,
+        -40
+      ],
+      "input": [
+        100,
+        90,
+        70,
+        40,
+        0
+      ],
+      "name": "lift53-group-3-odd-tail",
+      "plane": "i32",
+      "shape": [
+        5
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "lift53",
+            "levels": 2
+          },
+          {
+            "axis": "t",
+            "dimension": 2,
+            "group": 2,
+            "kind": "delta",
+            "levels": 0
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        39424,
+        -3772,
+        22571,
+        12798,
+        53049,
+        -21085,
+        9701,
+        21231,
+        21239,
+        -14560,
+        -10081,
+        54432,
+        -5576,
+        10539,
+        5632,
+        -31812,
+        17277,
+        -61204,
+        26619,
+        -18871,
+        15314,
+        24765,
+        -10609,
+        10339
+      ],
+      "input": [
+        20165,
+        54275,
+        14301,
+        9319,
+        48180,
+        9442,
+        12189,
+        44157,
+        48062,
+        13688,
+        35880,
+        39243,
+        60706,
+        52003,
+        4396,
+        30797,
+        41404,
+        60954,
+        4220,
+        53670,
+        42604,
+        14405,
+        17821,
+        17977
+      ],
+      "name": "volume-lift53-z-delta-t",
+      "plane": "i32",
+      "shape": [
+        3,
+        2,
+        4
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "haar",
+            "levels": 1
+          },
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "lift53",
+            "levels": 1
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        456,
+        674,
+        33,
+        294,
+        507,
+        31,
+        -2683,
+        -80,
+        257,
+        99,
+        1293,
+        899,
+        -1703,
+        2340,
+        -403,
+        1360,
+        -2322,
+        3937
+      ],
+      "input": [
+        1733,
+        -1021,
+        -35,
+        -921,
+        1076,
+        -798,
+        1949,
+        1149,
+        958,
+        -648,
+        1064,
+        331,
+        1314,
+        803,
+        -1748,
+        77,
+        -1604,
+        1562
+      ],
+      "name": "volume-haar-then-lift53-same-axis",
+      "plane": "i32",
+      "shape": [
+        6,
+        3
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "lift53",
+            "levels": 2
+          },
+          {
+            "axis": "x",
+            "dimension": 1,
+            "group": 0,
+            "kind": "delta",
+            "levels": 0
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        7,
+        -15,
+        17,
+        -19
+      ],
+      "input": [
+        7,
+        -8,
+        9,
+        -10
+      ],
+      "name": "singleton-axis-noop",
+      "plane": "i32",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    {
+      "configuration": {
+        "transforms": [
+          {
+            "axis": "z",
+            "dimension": 0,
+            "group": 0,
+            "kind": "lift53",
+            "levels": 2
+          }
+        ],
+        "version": "0.1"
+      },
+      "expected": [
+        11212086134784,
+        2414547724288,
+        -10519002574848,
+        -29577012183040,
+        -37947472707584,
+        -3868009299968
+      ],
+      "input": [
+        31260093513728,
+        -4729496993792,
+        18434936864768,
+        -19666044518400,
+        18127919513600,
+        14259910213632
+      ],
+      "name": "i64-plane-wide-values",
+      "plane": "i64",
+      "shape": [
+        6
+      ]
+    }
+  ],
+  "description": "nd_lift 0.1 conformance vectors — frozen forward outputs; regenerate only on a version-bumping semantics change (cargo run -p ndic-lift --features serde --example gen_vectors)",
+  "version": "0.1"
+}

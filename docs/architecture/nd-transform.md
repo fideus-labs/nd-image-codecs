@@ -42,7 +42,7 @@ Each entry in `transforms` is one 1D transform applied along one axis:
 | --- | --- |
 | `axis` | Human-readable axis name (`"z"`, `"t"`, `"c"`, …); informational. |
 | `dimension` | The axis's index into the **post-transpose** chunk shape — this is what the decoder uses. |
-| `kind` | `delta`, `haar`, or `lift53` (9/7 float lifting is the Phase 2 lossy extension). |
+| `kind` | `delta`, `haar`, or `lift53` (9/7 float lifting is the Phase 4 lossy extension). |
 | `levels` | Dyadic decomposition levels for lifting kinds; ignored for `delta`. |
 | `group` | Group length along the axis; `0` = the whole chunk extent. Bounds decode amplification and working memory. |
 
@@ -55,7 +55,7 @@ Transforms are applied in listed order on encode and in reverse on decode.
 | `delta` | `r[i] = x[i] − x[i−1]`, `r[0] = x[0]` | Yes (integers) | Fastest; single lifting step; longest dependency chain, bounded by `group`. |
 | `haar` | Reversible integer Haar lifting: `d = x₁ − x₀`, `s = x₀ + ⌊d/2⌋` | Yes (integers) | Compact support (2 samples); good for short axes. |
 | `lift53` | Le Gall 5/3 integer lifting (predict + update), T.800 rounding | Yes (integers) | Better smooth-signal decorrelation; needs symmetric boundary handling. |
-| `lift97` *(Phase 2)* | CDF 9/7 float lifting + per-band quantization | No | Lossy; higher ratio; pairs with lossy `htj2k`. |
+| `lift97` *(Phase 4)* | CDF 9/7 float lifting + per-band quantization | No | Lossy; higher ratio; pairs with lossy `htj2k`. |
 
 ### Lifting math (5/3)
 
@@ -88,6 +88,16 @@ supported integer dtype.
   16-bit input, 5/3 growth over a handful of levels stays well within `i32`; the
   codec asserts the per-axis bit-growth budget on encode.
 - 64-bit integer input is transformed in `i64` and range-checked.
+- **Decode is total.** The encode budget says nothing about a coefficient
+  plane read back from storage, which a corrupt or hostile stream can fill
+  with any in-range value, so the inverse kernels wrap on overflow rather than
+  relying on the build profile: decoding untrusted bytes never panics. This
+  adds no constraint to `0.1` — coefficients the forward transform produced
+  are inside the budget and never reach a wrap — it only fixes the behavior
+  outside the specified domain. Decoders that must *detect* corruption rather
+  than survive it compose a checksum codec (Zarr v3's `crc32c`) below
+  `nd_lift`; the codec's own narrowing check catches only the corruption that
+  leaves the array data type's range.
 - The lossy `lift97` path documents its Q-format per lifting step; overflow
   behavior is checked by proptest with extreme-value inputs.
 
@@ -112,6 +122,11 @@ refuse unknown major versions rather than silently mis-decoding.
   integer dtype (proptest).
 - Analytic vectors: impulse, ramp, DC against closed-form band values.
 - Boundary/odd-length/singleton edge cases enumerated explicitly.
+- **Conformance vectors**: `fixtures/nd-lift/vectors.json` freezes forward
+  outputs for the `0.1` semantics (regenerated only by the version-bumping
+  `gen_vectors` example); the Rust crate and the NumPy reference
+  implementation (`nd_image_codecs._lift`) both assert bit-identical outputs
+  against it, so the implementations cannot drift apart.
 - Cross-validation: an `nd_lift`-then-`htj2k` volume decoded through the Python
-  binding and checked against a NumPy reference implementation of the same
+  binding and checked against the NumPy reference implementation of the same
   lifting math (Phase 6).

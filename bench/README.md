@@ -22,6 +22,7 @@ bench/
 
 ```sh
 python3 bench/py/run_nd_delta.py                       # the Phase 1 nd-delta lanes (needs zarr>=3)
+python3 bench/py/run_nd_lift.py                        # the Phase 2 nd-lift lanes (needs zarr>=3.1)
 cargo run -p ndic-bench-cli --release -- list
 cargo run -p ndic-bench-cli --release -- run
 cargo run -p ndic-bench-cli --release -- run --filter htj2k --config simd-53-ht --format markdown

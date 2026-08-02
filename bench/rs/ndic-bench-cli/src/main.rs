@@ -36,6 +36,8 @@ mod _anchors {
     pub use ndic_htj2k as _htj2k;
     #[allow(unused_imports)]
     pub use ndic_lift as _transform;
+    #[allow(unused_imports)]
+    pub use ndic_zarr as _zarr;
 }
 
 /// Output format for reports.
@@ -71,6 +73,16 @@ impl Gate {
             Self::Ratio => row.ratio_regressed,
             Self::Both => row.time_regressed || row.ratio_regressed,
         }
+    }
+
+    /// Whether time regressions are held by this gate.
+    fn gates_time(self) -> bool {
+        matches!(self, Self::Time | Self::Both)
+    }
+
+    /// Whether ratio regressions are held by this gate.
+    fn gates_ratio(self) -> bool {
+        matches!(self, Self::Ratio | Self::Both)
     }
 }
 
@@ -141,6 +153,8 @@ fn builtin_configs() -> Vec<BenchConfig> {
         cfg("blosc-zstd", "baseline", false, false, 0),
         cfg("nd-delta-zstd", "nd-delta", false, false, 0),
         cfg("nd-delta-lz4", "nd-delta", false, false, 0),
+        cfg("nd-lift-delta-zstd", "nd-lift", false, false, 0),
+        cfg("nd-lift-53-zstd", "nd-lift", false, false, 2),
         cfg("scalar-53-ht", "nd-lift-ht", false, false, 0),
         cfg("simd-53-ht", "nd-lift-ht", true, false, 0),
         cfg("simd-97-ht", "nd-lift-ht", true, true, 0),
@@ -236,6 +250,11 @@ fn run(
                 eprintln!("running {}/{} [{}]", entry.module, entry.name, cfg.label);
             }
             let output = (entry.run)(cfg);
+            if output.raw_ns.is_empty() {
+                // The entry opted out of this config (e.g. a transform
+                // workload on a non-transform lane) — no record.
+                continue;
+            }
             let name = format!("{}/{}", entry.module, entry.name);
             let record = BenchRecord::from_output(&name, &cfg.label, &hash, &output);
             if let Err(e) = record.save(&root) {
@@ -262,7 +281,7 @@ fn run(
             }
         };
         let rows = ndic_bench_core::diff(&records, &base);
-        println!("{}", report::diffs(&rows, format));
+        println!("{}", report::diffs(&rows, format, gate));
         gate_exit(&rows, gate, fail_on_regression)
     } else {
         println!("{}", report::records(&records, format));
@@ -330,7 +349,7 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             }
             let rows = ndic_bench_core::diff(&current, &base);
-            println!("{}", report::diffs(&rows, format));
+            println!("{}", report::diffs(&rows, format, gate));
             gate_exit(&rows, gate, fail_on_regression)
         }
     }

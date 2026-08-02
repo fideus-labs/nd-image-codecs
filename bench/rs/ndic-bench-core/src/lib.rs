@@ -54,7 +54,9 @@ pub struct BenchEntry {
     pub module: &'static str,
     /// Benchmark name within the module, e.g. `cleanup_encode_64x64`.
     pub name: &'static str,
-    /// The workload: timed samples plus optional codec byte counts.
+    /// The workload: timed samples plus optional codec byte counts. Return an
+    /// empty output ([`BenchOutput::default`]) to opt out of a config the
+    /// workload does not apply to — the driver skips the record.
     pub run: fn(&BenchConfig) -> BenchOutput,
 }
 

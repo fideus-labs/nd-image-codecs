@@ -26,13 +26,52 @@ fn fmt_change(pct: Option<f64>) -> String {
     pct.map_or_else(|| "new".to_owned(), |p| format!("{:+.1} %", p * 100.0))
 }
 
-fn row_status(row: &DiffRow) -> &'static str {
-    match (row.time_regressed, row.ratio_regressed) {
-        (false, false) => "ok",
-        (true, false) => "TIME-REGRESSED",
-        (false, true) => "RATIO-REGRESSED",
-        (true, true) => "TIME+RATIO-REGRESSED",
+/// The status column honors the **active gate**: only regressions of a gated
+/// kind shout. A threshold exceeded on an ungated kind renders as an `ok`
+/// annotation instead — the PR gate compares CI-runner timings against
+/// baselines from a different machine class, where the time thresholds are
+/// not meaningful (`--gate ratio`; see `docs/development/benchmarking.md`).
+fn row_status(row: &DiffRow, gate: crate::Gate) -> String {
+    match (
+        row.time_regressed && gate.gates_time(),
+        row.ratio_regressed && gate.gates_ratio(),
+    ) {
+        (true, true) => "TIME+RATIO-REGRESSED".to_owned(),
+        (true, false) => "TIME-REGRESSED".to_owned(),
+        (false, true) => "RATIO-REGRESSED".to_owned(),
+        (false, false) => {
+            let mut ungated = Vec::new();
+            if row.time_regressed && !gate.gates_time() {
+                ungated.push("time n/a");
+            }
+            if row.ratio_regressed && !gate.gates_ratio() {
+                ungated.push("ratio n/a");
+            }
+            if ungated.is_empty() {
+                "ok".to_owned()
+            } else {
+                format!("ok ({}: ungated)", ungated.join(", "))
+            }
+        }
     }
+}
+
+/// A trailing note for the human-readable formats when thresholds were
+/// exceeded on kinds the active gate does not hold.
+fn ungated_note(rows: &[DiffRow], gate: crate::Gate) -> Option<String> {
+    let time = !gate.gates_time() && rows.iter().any(|r| r.time_regressed);
+    let ratio = !gate.gates_ratio() && rows.iter().any(|r| r.ratio_regressed);
+    let kinds = match (time, ratio) {
+        (true, true) => "time and ratio",
+        (true, false) => "time",
+        (false, true) => "ratio",
+        (false, false) => return None,
+    };
+    Some(format!(
+        "note: {kinds} changes are informational only — that gate is not active for this \
+         comparison (timing is not comparable across machine classes; \
+         see docs/development/benchmarking.md)"
+    ))
 }
 
 /// Render plain records (no baseline) in the given format.
@@ -64,8 +103,10 @@ pub fn records(records: &[BenchRecord], format: crate::Format) -> String {
     }
 }
 
-/// Render diff rows (current vs baseline) in the given format.
-pub fn diffs(rows: &[DiffRow], format: crate::Format) -> String {
+/// Render diff rows (current vs baseline) in the given format. `gate` selects
+/// which regression kinds the status column shouts about; the JSON encoding
+/// keeps the raw per-kind booleans untouched.
+pub fn diffs(rows: &[DiffRow], format: crate::Format, gate: crate::Gate) -> String {
     let header = [
         "config",
         "benchmark",
@@ -87,19 +128,23 @@ pub fn diffs(rows: &[DiffRow], format: crate::Format) -> String {
                 fmt_change(d.time_change_pct),
                 fmt_ratio(d.ratio),
                 fmt_ratio(d.baseline_ratio),
-                row_status(d).to_owned(),
+                row_status(d, gate),
             ]
         })
         .collect();
+    let with_note = |table_text: String, prefix: &str| match ungated_note(rows, gate) {
+        Some(note) => format!("{table_text}\n\n{prefix}{note}"),
+        None => table_text,
+    };
     match format {
         crate::Format::Json => serde_json::to_string_pretty(rows).expect("rows serialize"),
         crate::Format::Both => format!(
             "{}\n{}",
-            table(&header, &cells, TableStyle::Ascii),
+            with_note(table(&header, &cells, TableStyle::Ascii), ""),
             serde_json::to_string_pretty(rows).expect("rows serialize")
         ),
-        crate::Format::Ascii => table(&header, &cells, TableStyle::Ascii),
-        crate::Format::Markdown => table(&header, &cells, TableStyle::Markdown),
+        crate::Format::Ascii => with_note(table(&header, &cells, TableStyle::Ascii), ""),
+        crate::Format::Markdown => with_note(table(&header, &cells, TableStyle::Markdown), "> "),
         crate::Format::Csv => table(&header, &cells, TableStyle::Csv),
     }
 }
@@ -155,5 +200,63 @@ fn table<const N: usize>(header: &[&str; N], rows: &[[String; N]], style: TableS
             }
             out
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Gate;
+
+    fn row(time_regressed: bool, ratio_regressed: bool) -> DiffRow {
+        DiffRow {
+            name: "m/n".into(),
+            config: "cfg".into(),
+            median_ns: 120,
+            baseline_median_ns: Some(100),
+            time_change_pct: Some(0.2),
+            ratio: Some(0.5),
+            baseline_ratio: Some(0.4),
+            time_regressed,
+            ratio_regressed,
+        }
+    }
+
+    #[test]
+    fn status_honors_the_active_gate() {
+        assert_eq!(row_status(&row(false, false), Gate::Both), "ok");
+        assert_eq!(row_status(&row(true, false), Gate::Both), "TIME-REGRESSED");
+        assert_eq!(
+            row_status(&row(true, true), Gate::Both),
+            "TIME+RATIO-REGRESSED"
+        );
+        // The ratio-only PR gate renders time thresholds as informational.
+        assert_eq!(
+            row_status(&row(true, false), Gate::Ratio),
+            "ok (time n/a: ungated)"
+        );
+        assert_eq!(row_status(&row(true, true), Gate::Ratio), "RATIO-REGRESSED");
+        assert_eq!(
+            row_status(&row(false, true), Gate::Time),
+            "ok (ratio n/a: ungated)"
+        );
+    }
+
+    #[test]
+    fn ungated_note_appears_only_when_relevant() {
+        assert!(ungated_note(&[row(false, false)], Gate::Ratio).is_none());
+        assert!(ungated_note(&[row(true, false)], Gate::Both).is_none());
+        let note = ungated_note(&[row(true, false)], Gate::Ratio).expect("note");
+        assert!(note.contains("time changes are informational"), "{note}");
+    }
+
+    #[test]
+    fn markdown_diffs_carry_the_note_json_stays_raw() {
+        let rows = [row(true, false)];
+        let md = diffs(&rows, crate::Format::Markdown, Gate::Ratio);
+        assert!(md.contains("ok (time n/a: ungated)"), "{md}");
+        assert!(md.contains("> note:"), "{md}");
+        let json = diffs(&rows, crate::Format::Json, Gate::Ratio);
+        assert!(json.contains("\"time_regressed\": true"), "{json}");
     }
 }
