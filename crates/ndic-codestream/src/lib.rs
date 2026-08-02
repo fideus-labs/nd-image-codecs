@@ -21,6 +21,7 @@
 
 pub mod bitio;
 pub mod geometry;
+pub mod jph;
 pub mod markers;
 pub mod packet;
 pub mod quant;
@@ -29,4 +30,5 @@ pub mod tagtree;
 pub mod writer;
 
 pub use reader::{Codestream, Decoded, PacketSpan};
+
 pub use writer::encode_image;

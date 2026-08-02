@@ -67,6 +67,8 @@ pub struct PacketSpan {
     pub comp: usize,
     /// Resolution of the packet.
     pub res: u8,
+    /// Precinct grid position `(px, py)` within the resolution.
+    pub precinct: (usize, usize),
     /// Byte offset within the codestream.
     pub offset: usize,
     /// Packet length (header + bodies).
@@ -254,33 +256,73 @@ impl<'a> Codestream<'a> {
                 message: "multiple quality layers".into(),
             });
         }
-        if self.cod.scod & 1 != 0 {
+        if matches!(self.cod.progression, 3 | 4) && self.cod.scod & 1 != 0 {
             return Err(Error::Unsupported {
-                message: "explicit precinct sizes".into(),
+                message: "PCRL/CPRL with explicit precinct sizes".into(),
             });
         }
         Ok(())
     }
 
-    /// The packet visit order: `(comp, res)` pairs per the progression.
-    fn packet_order(&self, max_res: u8) -> Vec<(usize, u8)> {
+    /// Precinct grid of resolution `r`: `(npx, npy)`.
+    fn precinct_grid(&self, r: u8) -> (usize, usize) {
+        let levels = self.cod.decomps;
+        let (rw, rh) = dwt::level_dims(self.siz.xsiz as usize, self.siz.ysiz as usize, levels - r);
+        let (ppx, ppy) = self.cod.precinct_exp(r);
+        if rw == 0 || rh == 0 {
+            (0, 0)
+        } else {
+            (rw.div_ceil(1 << ppx.min(31)), rh.div_ceil(1 << ppy.min(31)))
+        }
+    }
+
+    /// The packet visit order: `(comp, res, px, py)` per the progression
+    /// (T.800 §B.12, single tile, one layer).
+    fn packet_sequence(&self) -> Vec<(usize, u8, usize, usize)> {
         let comps = self.siz.comps.len();
-        let comp_major = matches!(self.cod.progression, 3 | 4);
         let mut order = Vec::new();
-        if comp_major {
-            for c in 0..comps {
+        match self.cod.progression {
+            // RPCL: resolution, position raster, component.
+            2 => {
                 for r in 0..=self.cod.decomps {
-                    order.push((c, r));
+                    let (npx, npy) = self.precinct_grid(r);
+                    for py in 0..npy {
+                        for px in 0..npx {
+                            for c in 0..comps {
+                                order.push((c, r, px, py));
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            for r in 0..=self.cod.decomps {
+            // PCRL/CPRL: only reachable with maximal precincts (one per
+            // resolution), where they reduce to component-major order.
+            3 | 4 => {
                 for c in 0..comps {
-                    order.push((c, r));
+                    for r in 0..=self.cod.decomps {
+                        let (npx, npy) = self.precinct_grid(r);
+                        for py in 0..npy {
+                            for px in 0..npx {
+                                order.push((c, r, px, py));
+                            }
+                        }
+                    }
+                }
+            }
+            // LRCP/RLCP: resolution, component, position raster.
+            _ => {
+                for r in 0..=self.cod.decomps {
+                    for c in 0..comps {
+                        let (npx, npy) = self.precinct_grid(r);
+                        for py in 0..npy {
+                            for px in 0..npx {
+                                order.push((c, r, px, py));
+                            }
+                        }
+                    }
                 }
             }
         }
-        order.retain(|&(_, r)| r <= max_res);
         order
     }
 
@@ -311,18 +353,19 @@ impl<'a> Codestream<'a> {
             }
         }
 
-        let order = self.packet_order(self.cod.decomps);
+        let order = self.packet_sequence();
         let mut spans = Vec::with_capacity(order.len());
         let mut oi = 0;
         for tp in &self.tile_parts {
             let mut off = tp.body.start;
             for &len in &tp.plt {
-                let Some(&(comp, res)) = order.get(oi) else {
+                let Some(&(comp, res, px, py)) = order.get(oi) else {
                     return Err(err(off, "PLT lists more packets than expected"));
                 };
                 spans.push(PacketSpan {
                     comp,
                     res,
+                    precinct: (px, py),
                     offset: off,
                     len: len as usize,
                 });
@@ -376,18 +419,35 @@ impl<'a> Codestream<'a> {
         let stripe_causal = self.cod.stripe_causal();
 
         let mut cursor = 0usize;
-        for (comp, res) in self.packet_order(levels) {
+        for (comp, res, ppx_i, ppy_i) in self.packet_sequence() {
             let bands = bands_of_resolution(width, height, levels, res);
-            let (ecbw, ecbh) = effective_cb(cbw_n, cbh_n, 15, 15, res);
-            let parse_bands: Vec<ParseBand> = bands
+            let (ppx, ppy) = self.cod.precinct_exp(res);
+            let (ecbw, ecbh) = effective_cb(cbw_n, cbh_n, ppx, ppy, res);
+            // Per band: the precinct's aligned code-block sub-grid
+            // (origin bx0/by0 and extent nx/ny in the band's global grid).
+            let shift = u8::from(res > 0);
+            let sub_grids: Vec<(usize, usize, usize, usize)> = bands
                 .iter()
                 .map(|b| {
-                    let (nx, ny) = b.grid(ecbw, ecbh);
-                    ParseBand {
-                        nx,
-                        ny,
-                        k_max: self.quant.k_max(b.res, b.band),
-                    }
+                    precinct_block_range(
+                        b.w,
+                        b.h,
+                        ppx - shift,
+                        ppy - shift,
+                        ppx_i,
+                        ppy_i,
+                        ecbw,
+                        ecbh,
+                    )
+                })
+                .collect();
+            let parse_bands: Vec<ParseBand> = bands
+                .iter()
+                .zip(&sub_grids)
+                .map(|(b, &(_, _, nx, ny))| ParseBand {
+                    nx,
+                    ny,
+                    k_max: self.quant.k_max(b.res, b.band),
                 })
                 .collect();
 
@@ -397,7 +457,8 @@ impl<'a> Codestream<'a> {
 
             for blk in &packet.blocks {
                 let band = &bands[blk.band];
-                let rect = band.block_rect(blk.bx, blk.by, ecbw, ecbh);
+                let (bx0, by0, _, _) = sub_grids[blk.band];
+                let rect = band.block_rect(bx0 + blk.bx, by0 + blk.by, ecbw, ecbh);
                 let seg_len = (blk.len_cleanup + blk.len_refinement) as usize;
                 let Some(seg) = body.get(p..p + seg_len) else {
                     return Err(err(p, "packet body truncated"));
@@ -482,4 +543,37 @@ impl<'a> Codestream<'a> {
             comps: comps_out,
         })
     }
+}
+
+/// The aligned code-block sub-grid a precinct covers within a band:
+/// `(bx0, by0, nx, ny)` in the band's global block grid.
+///
+/// `pp_log` are the precinct exponents in *band* coordinates (already
+/// reduced by one for resolutions above 0); block sizes divide precinct
+/// sizes, so precinct edges align with block boundaries.
+fn precinct_block_range(
+    bw: usize,
+    bh: usize,
+    ppx_log: u8,
+    ppy_log: u8,
+    px: usize,
+    py: usize,
+    cbw: usize,
+    cbh: usize,
+) -> (usize, usize, usize, usize) {
+    if bw == 0 || bh == 0 {
+        return (0, 0, 0, 0);
+    }
+    let ppw = 1usize << ppx_log.min(31);
+    let pph = 1usize << ppy_log.min(31);
+    let x0 = px * ppw;
+    let y0 = py * pph;
+    if x0 >= bw || y0 >= bh {
+        return (0, 0, 0, 0);
+    }
+    let x1 = (x0 + ppw).min(bw);
+    let y1 = (y0 + pph).min(bh);
+    let bx0 = x0 / cbw;
+    let by0 = y0 / cbh;
+    (bx0, by0, x1.div_ceil(cbw) - bx0, y1.div_ceil(cbh) - by0)
 }
