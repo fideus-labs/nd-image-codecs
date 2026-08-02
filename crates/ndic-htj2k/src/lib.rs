@@ -18,6 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod block;
+pub mod dwt;
 
 pub use block::{
     BlockPasses, coeff_to_sign_magnitude, decode_block, encode_block, sign_magnitude_to_coeff,
