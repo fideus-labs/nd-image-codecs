@@ -46,15 +46,23 @@ pub fn forward<T: PlaneSample>(
 /// No budget check runs on decode, because a chunk produced by [`forward`]
 /// cannot overflow on the way back.
 ///
-/// # Precondition
-/// That guarantee covers coefficients [`forward`] actually produced. Callers
-/// decoding bytes from storage — the Zarr codec path — can be handed
-/// arbitrary in-range plane values by a corrupt or hostile stream, for which
-/// the kernels' plain arithmetic wraps in release builds and panics in debug
-/// builds. Neither outcome is memory-unsafe, and the codec's narrowing step
-/// still rejects coefficients that do not fit the array data type, but a
-/// caller that must not panic on untrusted input has to bound the
-/// coefficients itself.
+/// # Untrusted coefficients
+/// Callers decoding bytes from storage — the Zarr codec path — can be handed
+/// arbitrary in-range plane values by a corrupt or hostile stream, which the
+/// [`forward`] budget says nothing about. Such a plane is **safe to pass
+/// here**: the inverse kernels use wrapping arithmetic, so no input can panic
+/// under `overflow-checks` or otherwise depend on the build profile. The
+/// result is defined but meaningless, which is all a corrupt chunk can
+/// produce; the codec's narrowing step rejects coefficients that do not fit
+/// the array data type, and a caller that must *detect* corruption rather
+/// than merely survive it wants a checksum codec (Zarr v3's `crc32c`) below
+/// this one.
+///
+/// A conservative decode-time budget is deliberately not the answer: the
+/// worst-case bound over a coefficient range is far wider than the values
+/// [`forward`] actually emits (a delta group of `g` samples bounds partial
+/// sums only by `g × range`), so it would refuse chunks this codec had just
+/// written.
 ///
 /// # Errors
 /// [`Error::InvalidArgument`] when `chunk` does not match `shape`, a step
@@ -419,6 +427,42 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("leave the 64-bit plane"), "{err}");
+    }
+
+    #[test]
+    fn inverse_survives_hostile_coefficient_planes() {
+        // Decode input comes off storage, so it can hold any in-range plane
+        // value — including ones no `forward` would emit. The inverse kernels
+        // wrap rather than panic, which this asserts by running under the test
+        // profile's `overflow-checks`: plain arithmetic would abort here.
+        let extremes = [
+            i32::MIN,
+            i32::MAX,
+            i32::MIN + 1,
+            i32::MAX - 1,
+            0,
+            -1,
+            i32::MIN,
+            i32::MAX,
+        ];
+        for kind in [LiftKind::Delta, LiftKind::Haar, LiftKind::Lift53] {
+            for group in [0, 2, 3] {
+                for shape in [[8].as_slice(), [4, 2].as_slice(), [2, 2, 2].as_slice()] {
+                    for dimension in 0..shape.len() {
+                        let mut chunk = extremes.to_vec();
+                        inverse(&mut chunk, shape, &[step(dimension, kind, 3, group)])
+                            .expect("a hostile plane decodes to garbage, not an error or a panic");
+                    }
+                }
+            }
+        }
+        // The same in the i64 plane, whose wrap boundary differs.
+        let mut chunk = vec![i64::MIN, i64::MAX, i64::MIN + 1, i64::MAX - 1];
+        for kind in [LiftKind::Delta, LiftKind::Haar, LiftKind::Lift53] {
+            let mut hostile = chunk.clone();
+            inverse(&mut hostile, &[4], &[step(0, kind, 2, 0)]).expect("i64 plane");
+            chunk.rotate_left(1);
+        }
     }
 
     #[test]

@@ -22,9 +22,26 @@
 //! the detail grid. Odd lengths need no padding; signals shorter than two
 //! samples are left untouched.
 //!
-//! Overflow: callers guarantee (via the [`crate::forward`] budget check) that
-//! every expression below fits the [`PlaneSample`] type, so the kernels use
-//! plain arithmetic.
+//! Overflow: the two directions have different guarantees, so they use
+//! different arithmetic.
+//!
+//! The **forward** kernels run behind the [`crate::forward`] budget check,
+//! which has already refused any input whose coefficients or lifting
+//! intermediates could leave the [`PlaneSample`] range. They use plain
+//! arithmetic, so a bug that let the budget drift out of step with the depth
+//! rule trips an overflow panic in the test suite instead of silently
+//! producing wrong coefficients.
+//!
+//! The **inverse** kernels have no such guarantee: their input is whatever a
+//! storage read produced, and a corrupt or hostile coefficient plane can hold
+//! any in-range value. They use the wrapping operations on [`PlaneSample`],
+//! which are the same machine instructions but leave overflow *defined* —
+//! decoding untrusted bytes must not depend on the profile's `overflow-checks`
+//! setting to avoid a panic. Coefficients [`crate::forward`] actually produced
+//! never reach a wrap, so this changes no `0.1` output.
+//!
+//! Each row primitive below belongs to exactly one direction, which is what
+//! keeps the split honest — no operation is shared between the two.
 
 use crate::sample::PlaneSample;
 
@@ -56,7 +73,7 @@ fn row_sub<T: PlaneSample>(out: &mut [T], a: &[T], b: &[T]) {
 #[inline]
 fn row_add<T: PlaneSample>(out: &mut [T], a: &[T], b: &[T]) {
     for ((o, &a), &b) in out.iter_mut().zip(a).zip(b) {
-        *o = a + b;
+        *o = a.wrapping_add(b);
     }
 }
 
@@ -72,7 +89,7 @@ fn row_haar_update<T: PlaneSample>(out: &mut [T], x0: &[T], d: &[T]) {
 #[inline]
 fn row_haar_unupdate<T: PlaneSample>(out: &mut [T], s: &[T], d: &[T]) {
     for ((o, &s), &d) in out.iter_mut().zip(s).zip(d) {
-        *o = s - (d >> 1);
+        *o = s.wrapping_sub(d >> 1);
     }
 }
 
@@ -88,7 +105,7 @@ fn row_predict<T: PlaneSample>(out: &mut [T], odd: &[T], left: &[T], right: &[T]
 #[inline]
 fn row_unpredict<T: PlaneSample>(out: &mut [T], d: &[T], left: &[T], right: &[T]) {
     for (((o, &d), &l), &r) in out.iter_mut().zip(d).zip(left).zip(right) {
-        *o = d + ((l + r + T::ONE) >> 1);
+        *o = d.wrapping_add((l.wrapping_add(r).wrapping_add(T::ONE)) >> 1);
     }
 }
 
@@ -104,7 +121,7 @@ fn row_update<T: PlaneSample>(out: &mut [T], even: &[T], dl: &[T], dr: &[T]) {
 #[inline]
 fn row_unupdate<T: PlaneSample>(out: &mut [T], s: &[T], dl: &[T], dr: &[T]) {
     for (((o, &s), &dl), &dr) in out.iter_mut().zip(s).zip(dl).zip(dr) {
-        *o = s - ((dl + dr + T::TWO) >> 2);
+        *o = s.wrapping_sub((dl.wrapping_add(dr).wrapping_add(T::TWO)) >> 2);
     }
 }
 
@@ -142,7 +159,7 @@ fn row_sub_assign<T: PlaneSample>(out: &mut [T], a: &[T]) {
 #[inline]
 fn row_add_assign<T: PlaneSample>(out: &mut [T], a: &[T]) {
     for (o, &a) in out.iter_mut().zip(a) {
-        *o += a;
+        *o = (*o).wrapping_add(a);
     }
 }
 

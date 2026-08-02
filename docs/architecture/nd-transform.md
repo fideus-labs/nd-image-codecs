@@ -88,6 +88,16 @@ supported integer dtype.
   16-bit input, 5/3 growth over a handful of levels stays well within `i32`; the
   codec asserts the per-axis bit-growth budget on encode.
 - 64-bit integer input is transformed in `i64` and range-checked.
+- **Decode is total.** The encode budget says nothing about a coefficient
+  plane read back from storage, which a corrupt or hostile stream can fill
+  with any in-range value, so the inverse kernels wrap on overflow rather than
+  relying on the build profile: decoding untrusted bytes never panics. This
+  adds no constraint to `0.1` — coefficients the forward transform produced
+  are inside the budget and never reach a wrap — it only fixes the behavior
+  outside the specified domain. Decoders that must *detect* corruption rather
+  than survive it compose a checksum codec (Zarr v3's `crc32c`) below
+  `nd_lift`; the codec's own narrowing check catches only the corruption that
+  leaves the array data type's range.
 - The lossy `lift97` path documents its Q-format per lifting step; overflow
   behavior is checked by proptest with extreme-value inputs.
 

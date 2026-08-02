@@ -17,8 +17,14 @@ mod sealed {
 /// for 64-bit inputs (see `docs/architecture/nd-transform.md`). The
 /// [`forward`](crate::forward) budget check guarantees every kernel
 /// expression — including the `x₀ + x₂ + 1` and `d₋ + d₊ + 2` intermediates —
-/// stays inside the plane's range, so the kernels use plain (non-widening)
-/// arithmetic.
+/// stays inside the plane's range, so the forward kernels use plain
+/// (non-widening) arithmetic.
+///
+/// The inverse kernels get no such guarantee — their input is whatever a
+/// storage read produced — so they use [`wrapping_add`](Self::wrapping_add)
+/// and [`wrapping_sub`](Self::wrapping_sub) instead. Both are the same machine
+/// instruction as `+`/`-`; the difference is that a corrupt coefficient plane
+/// cannot turn into a panic under `overflow-checks`.
 ///
 /// `>>` must be an *arithmetic* shift (Rust's `>>` on signed integers), which
 /// the kernels rely on for floor division by powers of two.
@@ -54,6 +60,14 @@ pub trait PlaneSample:
 
     /// The sample value, widened for overflow-budget arithmetic.
     fn to_i128(self) -> i128;
+
+    /// `self + other`, wrapping on overflow — the inverse kernels' addition.
+    #[must_use]
+    fn wrapping_add(self, other: Self) -> Self;
+
+    /// `self − other`, wrapping on overflow — the inverse kernels' subtraction.
+    #[must_use]
+    fn wrapping_sub(self, other: Self) -> Self;
 }
 
 macro_rules! impl_plane_sample {
@@ -69,6 +83,16 @@ macro_rules! impl_plane_sample {
             #[inline]
             fn to_i128(self) -> i128 {
                 i128::from(self)
+            }
+
+            #[inline]
+            fn wrapping_add(self, other: Self) -> Self {
+                <$ty>::wrapping_add(self, other)
+            }
+
+            #[inline]
+            fn wrapping_sub(self, other: Self) -> Self {
+                <$ty>::wrapping_sub(self, other)
             }
         }
     };
