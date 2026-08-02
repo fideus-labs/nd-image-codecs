@@ -1,4 +1,7 @@
-## Overview
+---
+title: Overview
+description: 'The whole nd-image-codecs design in one page: capture cross-axis correlation with an explicit transform, then compress the transformed planes with a proven 2D entropy backend.'
+---
 
 nd-image-codecs is a **family of composable Zarr v3 codecs** for ND scientific
 images. Instead of one monolithic format, it provides a *builder* that
@@ -12,7 +15,7 @@ proven 2D/entropy backend.** Cross-axis decorrelation is never hidden inside a
 JPEG 2000 Part 2 MCT — it is its own Zarr array-to-array codec (`nd_lift`), so
 the whole system is free of Part 2 IP.
 
-### The three families
+## The three families
 
 ```text
                  axis names (t,c,z,y,x…) + chunk shape + dtype
@@ -40,7 +43,7 @@ the whole system is free of Part 2 IP.
 | **nd-lift-ht** | `transpose → nd_lift → htj2k` | 5/3 lossless or 9/7 lossy | Resolution pyramids, thumbnails, streaming |
 | **nd-zfp** | `transpose → nd_zfp` | Reversible or fixed-rate/-accuracy/-precision | GPU bricks, random access, predictable memory |
 
-### Why this combination
+## Why this combination
 
 - **Explicit cross-axis decorrelation.** A 1D lifting transform (`delta`,
   reversible `haar`, or reversible `5/3`) along z / time / channel captures the
@@ -63,7 +66,7 @@ the whole system is free of Part 2 IP.
   workhorse of OME-Zarr microscopy
   ([Blosc microscopy study](https://pmc.ncbi.nlm.nih.gov/articles/PMC9900847/)).
 
-### The codec-series builder
+## The codec-series builder
 
 The builder is the heart of the system and is the one component fully
 implemented today. Given each dimension's index and axis name plus the chunk
@@ -78,9 +81,9 @@ shape, it:
 
 It is implemented three times — Rust (`ndic-zarr`), pure Python
 (`nd_image_codecs`), and pure TypeScript — with CI asserting byte-identical
-output. See [codec-series.md](./codec-series.md).
+output. See [codec series](./codec-series.md).
 
-### Crate boundaries
+## Crate boundaries
 
 The workspace forms an acyclic graph:
 
@@ -101,7 +104,7 @@ behind `is_x86_feature_detected!` / `is_aarch64_feature_detected!`, with a
 portable `wide` fallback — including first-class NEON, which OpenJPH still
 stubs out).
 
-### Data model
+## Data model
 
 The canonical in-memory layout is row-major `[…, z, y, x]` with `x` fastest
 (`ndic_core::VolumeView`). Sample types are 8/16/32/64-bit signed and unsigned

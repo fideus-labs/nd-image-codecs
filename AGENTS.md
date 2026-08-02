@@ -53,6 +53,9 @@ consult the roadmap before implementing anything.
 | Rust style rules | [./docs/development/style/rust.md](./docs/development/style/rust.md) |
 | Commit message format | [./docs/development/commits.md](./docs/development/commits.md) |
 | Test data & conformance corpus | [./docs/development/test-data.md](./docs/development/test-data.md) |
+| Build or preview the documentation site | [./docs/development/commands.md](./docs/development/commands.md) |
+| Deploy the documentation site (Read the Docs) | [./docs/development/read-the-docs.md](./docs/development/read-the-docs.md), [./.readthedocs.yaml](./.readthedocs.yaml) |
+| Why the documentation toolchain is what it is | [./docs/development/decisions/adr-001-documentation-toolchain.md](./docs/development/decisions/adr-001-documentation-toolchain.md) |
 
 ## Conventions
 
@@ -75,6 +78,44 @@ consult the roadmap before implementing anything.
   (`inventory::submit! { BenchEntry::new(...) }`) in the same PR.
 - Roadmap phases are strictly ordered; do not start a phase's work before its
   predecessors' acceptance criteria are met.
+- Any new page added under `docs/` must also be added to the `toc` in
+  `docs/myst.yml`, or it will not appear on the documentation site — the toc is
+  explicit, not filesystem-discovered.
+- Links from `docs/` into source code, benchmarks, or scripts must be absolute
+  `https://github.com/fideus-labs/nd-image-codecs/blob/main/…` (or
+  `/tree/main/…` for a directory) URLs. The MyST project root is `docs/`, so a
+  relative path that escapes it (`../../crates/…`) 404s on the rendered site;
+  absolute URLs render identically on GitHub, so there is no cost. Links
+  *between* pages inside `docs/` stay relative and carry **explicit link text**
+  — `[Overview](./overview.md)`, never `[](./overview.md)`. MyST auto-fills an
+  empty label from the target's title, but GitHub emits a literal empty anchor,
+  so the link vanishes for anyone reading the file in the repository; the
+  auto-filled title is also usually too long to read well mid-sentence.
+- Every page under `docs/` carries YAML frontmatter with a `title` and a
+  one-sentence `description` (plus `short_title` when the title is too long for
+  a sidebar entry), then one `#` heading repeating that title, then `##`
+  sections below it. Keep the `#`: frontmatter is not a heading, so for anyone
+  reading the file on GitHub or in a plain markdown viewer it is the page's only
+  title. mystmd consumes that leading `#` and titles the page from the
+  frontmatter instead, so the rendered page still carries exactly one `<h1>` —
+  the repetition exists in the source and never in the output, and removing the
+  heading to "deduplicate" it only costs the in-repo reader. Frontmatter titles
+  are plain text: mystmd renders them as a literal string, so backticks would
+  show up verbatim in the sidebar, while the `#` heading is ordinary markdown
+  and may use them.
+- Fenced code blocks under `docs/` must carry a language the site's highlighter
+  (highlight.js, via `book-theme`) actually knows, matched by exact name — it
+  does not resolve aliases. Use `bash` for shell commands (**not** `sh`, `zsh`,
+  or `console`, all of which silently fall back to unhighlighted `text`),
+  `shell` for a `$`-prompt transcript, `rust` (not `rust,ignore`), `python`,
+  `typescript`, `json`, `toml`, `yaml` — and `text` deliberately, for ASCII
+  diagrams and literal strings that are not code.
+- Run `cd docs && npm run check` (strict build, fails on any warning) before
+  pushing documentation changes. The `docs` job in CI runs that same script on
+  every pull request, so a broken link or an unresolved cross-reference will
+  block the merge; the rendered site is downloadable from the run as the
+  `docs-site` artifact. External links are checked by a separate monthly
+  workflow that is deliberately not a PR gate.
 
 ## Key dependencies
 

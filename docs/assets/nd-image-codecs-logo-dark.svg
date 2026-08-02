@@ -1,0 +1,20 @@
+<!-- Dark-mode variant of nd-image-codecs-logo.svg. Same geometry; the gradient
+     is lifted from blue-600/violet-600 to blue-400/purple-400 and the receding
+     slices from 0.45/0.7 to 0.6/0.8, because the light-mode stops sit at about
+     1.6:1 against the theme's dark header and effectively disappear. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#c084fc"/>
+    </linearGradient>
+  </defs>
+  <!-- stacked z-slices -->
+  <g fill="none" stroke="url(#g)" stroke-width="6" stroke-linejoin="round">
+    <path d="M30 112 L80 88 L130 112 L80 136 Z" opacity="0.6"/>
+    <path d="M30 88 L80 64 L130 88 L80 112 Z" opacity="0.8"/>
+    <path d="M30 64 L80 40 L130 64 L80 88 Z"/>
+  </g>
+  <!-- wavelet along z -->
+  <path d="M80 30 q6 -10 12 0 t12 0" fill="none" stroke="#c084fc" stroke-width="4" stroke-linecap="round"/>
+</svg>

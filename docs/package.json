@@ -1,0 +1,18 @@
+{
+  "name": "nd-image-codecs-docs",
+  "version": "0.0.1",
+  "description": "MyST documentation site for nd-image-codecs — composable Zarr v3 codecs for ND scientific images.",
+  "license": "MIT",
+  "author": "Fideus Labs LLC",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "myst start",
+    "build": "myst build --html",
+    "check": "myst build --html --strict",
+    "clean": "myst clean --all --yes"
+  },
+  "devDependencies": {
+    "mystmd": "1.10.1"
+  }
+}

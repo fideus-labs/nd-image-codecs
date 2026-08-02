@@ -1,0 +1,153 @@
+# MyST project configuration for the nd-image-codecs documentation site.
+#
+# The project root is `docs/`, not the repository root, so `README.md`,
+# `AGENTS.md`, `CODE_OF_CONDUCT.md`, and the per-crate READMEs stay out of
+# the rendered site. Build with `npm run build` (see ./development/commands.md).
+version: 1
+
+project:
+  title: nd-image-codecs
+  description: >-
+    Composable Zarr v3 codecs for ND scientific images — cross-axis lifting,
+    HTJ2K coefficient planes, and ZFP, with an axis-aware codec-series builder.
+  # Also the source of the per-page "Edit This Page" link. mystmd resolves
+  # those against the *git* root rather than this project root, so they come
+  # out as .../edit/main/docs/<page>.md — the `docs/` prefix is already there
+  # and `edit_url` does not need to be set by hand. Verified at three depths;
+  # see ./development/decisions/adr-001-documentation-toolchain.md.
+  github: https://github.com/fideus-labs/nd-image-codecs
+  license: MIT
+  # Open Graph card. Every page inherits this unless it sets its own
+  # `thumbnail`. It must be a raster: Slack, GitHub, X, and LinkedIn all
+  # decline to render an SVG og:image, so the 160x160 logo cannot serve here.
+  # ./assets/nd-image-codecs-social.svg is the editable source; see the header
+  # comment there for how to regenerate the PNG.
+  #
+  # It must also be a local path, not a URL: given an absolute `https://…`
+  # thumbnail mystmd still routes it through its image optimizer and emits
+  # `og:image` as `<baseurl>/build/undefined`. Measured, not assumed.
+  thumbnail: assets/nd-image-codecs-social.png
+  # There is deliberately no canonical-URL or site-domain key here, because
+  # nothing in this stack consumes one. `site.domains` exists, but it is a
+  # Curvenote/MyST-hosting deploy target validated as a subdomain and it never
+  # reaches the rendered `<head>`; `book-theme` builds its meta tags with the
+  # page origin hardcoded to "", so `og:url` is never emitted and no
+  # `<link rel="canonical">` is generated at all; and the theme's own
+  # `template.yml` option list carries no canonical/url entry — the only
+  # URL-shaped options it has are `logo_url` and `internal_domains`.
+  #
+  # Consequence: `og:image` ships as a site-relative path. That is correct
+  # under the Read the Docs `/en/latest/` prefix, which is what `BASE_URL` is
+  # for, but it is not an absolute URL, and making it one needs an upstream
+  # theme change rather than anything expressible here.
+  authors:
+    - name: Fideus Labs LLC
+      url: https://github.com/fideus-labs
+  keywords:
+    - zarr
+    - ome-zarr
+    - htj2k
+    - jpeg-2000
+    - zfp
+    - wavelet
+    - compression
+    - scientific-imaging
+  # Explicit, hand-maintained table of contents. Filesystem auto-discovery
+  # would order these alphabetically and destroy the deliberate reading order
+  # already encoded in the section landing pages. Every page under `docs/`
+  # must appear here exactly once or it will not appear on the site.
+  toc:
+    - file: index.md
+    - title: Architecture
+      children:
+        - file: architecture/index.md
+        - file: architecture/overview.md
+        - file: architecture/goals.md
+        - file: architecture/codec-series.md
+        - file: architecture/nd-transform.md
+        - file: architecture/ht-block-coder.md
+        - file: architecture/wavelet-transform.md
+        - file: architecture/zfp.md
+        - file: architecture/codestream.md
+        - file: architecture/range-access.md
+        - file: architecture/zarr-codec.md
+    - title: Usage
+      children:
+        - file: usage/index.md
+        - file: usage/zarr.md
+        - file: usage/cli.md
+        - file: usage/rust.md
+        - file: usage/python.md
+        - file: usage/typescript.md
+        - file: usage/thumbnails-and-streaming.md
+    - title: Development
+      children:
+        - file: development/index.md
+        - file: development/commands.md
+        - file: development/benchmarking.md
+        - file: development/test-data.md
+        - file: development/publishing.md
+        - file: development/read-the-docs.md
+        - file: development/commits.md
+        - file: development/style/rust.md
+        - file: development/decisions/adr-001-documentation-toolchain.md
+    - title: Roadmap
+      children:
+        - file: development/roadmap/index.md
+        - file: development/roadmap/phase-1-baselines-and-series.md
+        - file: development/roadmap/phase-2-nd-lift.md
+        - file: development/roadmap/phase-3-htj2k-core.md
+        - file: development/roadmap/phase-4-nd-lift-ht.md
+        - file: development/roadmap/phase-5-nd-zfp.md
+        - file: development/roadmap/phase-6-validation-and-docs.md
+
+site:
+  # Pinned to the commit upstream published as book-theme v1.3.1, not the bare
+  # name `book-theme`. That name resolves through api.mystmd.org to a `.git`
+  # download link, which mystmd turns into `archive/refs/heads/main.zip` — so a
+  # cold build renders this site with whatever the theme's `main` branch holds
+  # that morning. The theme is not decoration: it supplies the JavaScript,
+  # HTML, and CSS of every published page, which makes an unpinned `main` both
+  # a reproducibility hole and third-party code entering the site unreviewed.
+  # `mystmd` itself is pinned in package.json; this closes the other half.
+  #
+  # mystmd passes any `.zip` URL straight to the downloader (a `.git` one it
+  # rewrites to the branch archive), so a commit archive is the immutable form.
+  # Upstream mirrors jupyter-book/myst-theme releases into
+  # https://github.com/myst-templates/book-theme; to upgrade, swap the sha for
+  # the next release commit and rerun `npm run check`.
+  template: https://github.com/myst-templates/book-theme/archive/45706bcb9ac02b6713270785e3fc22eda348ed3b.zip
+  # Header navigation: the four section landing pages. The sidebar already
+  # lists every page, so this is a shortcut to the top of each section, not a
+  # second table of contents.
+  nav:
+    - title: Architecture
+      url: /architecture
+    - title: Usage
+      url: /usage
+    - title: Development
+      url: /development
+    - title: Roadmap
+      url: /development/roadmap
+  options:
+    # Mirror the `docs/` folder structure into URLs. Without this, mystmd
+    # flattens every page to its basename and deduplicates with a counter, so
+    # the four section indexes become /index-1 … /index-4 and
+    # development/style/rust.md becomes /rust-1. Those are unusable as `nav`
+    # targets and meaningless in a shared link or a search result.
+    folders: true
+    logo: assets/nd-image-codecs-logo.svg
+    # The light-mode gradient (blue-600 → violet-600) measures ~3.4:1 against
+    # the theme's dark header, and its 0.45-opacity back slice ~1.6:1 — legible
+    # only as a smudge. The dark variant lifts both.
+    logo_dark: assets/nd-image-codecs-logo-dark.svg
+    logo_text: nd-image-codecs
+    logo_alt: nd-image-codecs
+    # mystmd copies this file to /favicon.ico verbatim — it does not convert
+    # it — so pointing at an SVG ships an SVG named .ico, which Chromium
+    # refuses to decode. This is a real ICO holding 16/32/48 PNG entries,
+    # rendered from ./assets/favicon.svg.
+    favicon: assets/favicon.ico
+  actions:
+    - title: GitHub
+      url: https://github.com/fideus-labs/nd-image-codecs

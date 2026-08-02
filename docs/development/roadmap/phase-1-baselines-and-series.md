@@ -1,8 +1,13 @@
+---
+title: Phase 1 — Baselines & the Codec-Series Builder
+short_title: Phase 1 — Baselines & Series
+description: 'Phase 1 delivers something useful on day one without implementing any new codec: the nd-delta family, the codec_series builder in all three languages, and a working benchmark harness.'
+---
+
 # Phase 1 — Baselines & the Codec-Series Builder
 
-> **Depends on:** nothing (first phase) · **Gates:** all later phases
-> **Architecture:** [codec-series.md](../../architecture/codec-series.md),
-> [zarr-codec.md](../../architecture/zarr-codec.md)
+**Depends on:** nothing (first phase) · **Gates:** all later phases · **Architecture:** [Codec Series](../../architecture/codec-series.md),
+[Zarr Codecs](../../architecture/zarr-codec.md)
 
 Phase 1 delivers something useful on day one **without implementing any new
 codec**: the **nd-delta** family (built entirely from existing Zarr codecs), the

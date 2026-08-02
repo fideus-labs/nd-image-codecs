@@ -1,7 +1,15 @@
+---
+title: Thumbnails & Streaming over HTTP Range
+short_title: Thumbnails & Streaming
+description: Decoding thumbnails, single planes, and low-resolution previews from any static host with plain HTTP Range requests — no tile server required.
+---
+
 # Thumbnails & Streaming over HTTP Range
 
-> **Status:** Skeleton — `RangeIndex`, thumbnail extraction, and 3D targets land
-> with [Phase 4](../development/roadmap/phase-4-nd-lift-ht.md).
+:::{caution} Status: Skeleton
+`RangeIndex`, thumbnail extraction, and 3D targets land
+with [Phase 4](../development/roadmap/phase-4-nd-lift-ht.md).
+:::
 
 Any nd-lift-ht plane (`.jph`) or chunk on any static host (S3, GCS, nginx…)
 supports partial decode with plain `Range:` requests — no tile server. Why this
@@ -9,7 +17,7 @@ works: [range-access architecture](../architecture/range-access.md).
 
 ## The plan format
 
-```sh
+```shell
 $ ndic index https://example.com/volume.jph --target thumbnail
 {
   "target": "thumbnail",
@@ -26,18 +34,18 @@ Plans are coalesced — a thumbnail is typically 1–3 ranges.
 
 ## Executing a plan
 
-```sh
+```bash
 curl -s -H "Range: bytes=0-1233,1234-18761" https://example.com/volume.jph -o thumb.part
 ndic expand thumb.part --partial -o thumb.raw
 ```
 
 Or in one step:
 
-```sh
+```bash
 ndic thumbnail https://example.com/volume.jph --max 256 -o thumb.png
 ```
 
-```ts
+```typescript
 // Browser: fetch ranges, hand bytes to the WASM codec (typescript.md)
 const res = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
 ```
@@ -57,13 +65,13 @@ With `nd_lift` decorrelating z (and grouped t), the coarse structure of each
 group concentrates in its **low-pass plane(s)**. A `thumbnail-3d` plan fetches
 only those planes' low-resolution prefixes — a volume downsampled in all three
 axes from a handful of ranges
-([nd-transform.md](../architecture/nd-transform.md)).
+([the `nd_lift` transform](../architecture/nd-transform.md)).
 
 ## Patterns
 
 - **Service worker:** intercept image requests, execute plans, cache by
   `(url, target)` — a static volume/WSI viewer with no backend.
 - **Zarr:** stores with byte-range reads get low-res chunk decode for free; the
-  coefficient-plane index locates planes inside chunks ([zarr.md](./zarr.md)).
+  coefficient-plane index locates planes inside chunks ([Zarr & OME-Zarr](./zarr.md)).
 - **nd-zfp:** fixed-rate bricks need no plan at all — brick offsets are
   computable ([zfp architecture](../architecture/zfp.md)).

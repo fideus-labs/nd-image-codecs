@@ -1,20 +1,31 @@
+---
+title: Rust Library
+description: 'Using nd-image-codecs from Rust: the codec_series builder, the codec crates, and their zarrs integration.'
+---
+
 # Rust Library
 
-> **Status:** Skeleton — the `codec_series` builder works today; encode/decode
-> land per the [roadmap](../development/roadmap/index.md).
+:::{caution} Status: Skeleton
+The `codec_series` builder works today; encode/decode
+land per the [roadmap](../development/roadmap/index.md).
+:::
 
 ```toml
 [dependencies]
 ndic-core = "0.0"
 ndic-codestream = "0.0"
-ndic-zarr = "0.0"
+# ndic-zarr has no default features. `zarrs` is the one that registers
+# nd_lift/htj2k/nd_zfp into the zarrs plugin registry, so leaving it off gives
+# you a crate that cannot open an array using them. The codec_series builder
+# below needs no features; see "Feature flags" for the rest.
+ndic-zarr = { version = "0.0", features = ["zarrs"] }
 ```
 
 ## Build a codec series
 
 Works today:
 
-```rust,ignore
+```rust
 use ndic_zarr::series::{codec_series, Axis, Family, SeriesSpec};
 
 let axes: Vec<Axis> = "tczyx"
@@ -28,11 +39,11 @@ let codecs = codec_series(&spec)?;   // → Vec<serde_json::Value>: the Zarr v3 
 ```
 
 The same builder backs `ndic series` and the Python/TypeScript mirrors; output
-is byte-identical across all three (see [zarr.md](./zarr.md) for the rules).
+is byte-identical across all three (see [Zarr & OME-Zarr](./zarr.md) for the rules).
 
 ## Encode a plane / a volume
 
-```rust,ignore
+```rust
 use ndic_core::{EncodeParams, SampleType, VolumeView, WaveletKind};
 
 // Defaults are streaming-friendly: RPCL, 64×64 blocks, 5/3, TLM/PLT on.
@@ -43,9 +54,9 @@ let volume = VolumeView { samples: &samples, depth: 64, height: 512, width: 512 
 ```
 
 Cross-axis decorrelation is not an `EncodeParams` concern — it belongs to the
-`nd_lift` codec upstream ([nd-transform](../architecture/nd-transform.md)):
+`nd_lift` codec upstream ([the cross-axis transform](../architecture/nd-transform.md)):
 
-```rust,ignore
+```rust
 use ndic_lift::{AxisTransform, LiftKind};
 
 let steps = [AxisTransform {
@@ -56,7 +67,7 @@ let steps = [AxisTransform {
 
 ## Decode — full and partial
 
-```rust,ignore
+```rust
 // Full decode
 // let vol = ndic_codestream::decode(&bytes)?;
 
@@ -71,7 +82,7 @@ let steps = [AxisTransform {
 Everything returns `ndic_core::Result<T>`; match on the variants when you need to
 distinguish caller bugs from bad data:
 
-```rust,ignore
+```rust
 use ndic_core::Error;
 
 match ndic_codestream::decode(&bytes) {
@@ -87,11 +98,11 @@ match ndic_codestream::decode(&bytes) {
 | --- | --- | --- |
 | all | `std` (default) | Disable for `no_std` (WASM core builds) |
 | `ndic-htj2k`, `ndic-lift` | `parallel` (default) | `rayon` across code-blocks; off for wasm32 |
-| `ndic-zarr` | `zarrs` | The Zarr v3 codec registration ([zarr.md](./zarr.md)) |
+| `ndic-zarr` | `zarrs` | The Zarr v3 codec registration ([Zarr & OME-Zarr](./zarr.md)) |
 
 ## Going deeper
 
-- Parameter semantics: [`EncodeParams` docs](../../crates/ndic-core/src/params.rs)
+- Parameter semantics: [`EncodeParams` docs](https://github.com/fideus-labs/nd-image-codecs/blob/main/crates/ndic-core/src/params.rs)
   and [codestream architecture](../architecture/codestream.md)
-- Partial decode & range plans: [range-access](../architecture/range-access.md)
-- Cross-axis transform semantics: [nd-transform](../architecture/nd-transform.md)
+- Partial decode & range plans: [Byte-Range Access](../architecture/range-access.md)
+- Cross-axis transform semantics: [nd_lift Transform](../architecture/nd-transform.md)

@@ -1,0 +1,54 @@
+# Read the Docs build configuration for the nd-image-codecs documentation site.
+#
+# Read the Docs has no native mystmd builder, so this file uses `build.commands`,
+# which replaces RTD's default build entirely: install the pinned toolchain, run
+# the strict build, and copy the result into `$READTHEDOCS_OUTPUT/html`.
+# Nothing else runs — no Sphinx, no mkdocs, no automatic environment creation —
+# and `build.commands` is mutually exclusive with the `sphinx`/`mkdocs`/`python`
+# keys, so none of those appear below.
+#
+# The build itself is NOT spelled out here: `npm run check` in docs/package.json
+# is the one canonical strict-build command, and the `docs` job in
+# .github/workflows/ci.yml runs that same script on every pull request. Change
+# the build by editing that script, not by inlining a different `myst build`
+# invocation here — the point is that CI and Read the Docs cannot drift apart.
+#
+# This file is only half the deployment. Creating the project, enabling pull
+# request builds, and managing versions are manual steps that cannot be
+# expressed here — see docs/development/read-the-docs.md.
+
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    # Matches the `typescript` job in .github/workflows/ci.yml. No Python tool:
+    # the site has no executable content, so a Python runtime would only add
+    # build time.
+    nodejs: "22"
+
+  # Each entry runs as its own shell invocation, starting from the checkout
+  # root. A bare `cd docs` on its own line would not carry over to the next
+  # entry, so every command that needs to run inside `docs/` chains its own.
+  commands:
+    - cd docs && npm ci
+
+    # RTD never serves a project at the domain root: the default version is
+    # published under /en/latest/ and pull request previews under
+    # https://<slug>--<pr>.readthedocs.build/en/<pr>/. Without BASE_URL the MyST
+    # build emits root-absolute asset and navigation URLs (/build/_assets/*.css,
+    # /myst-theme.css, the logo, every inter-page link) that all 404 under a
+    # prefix — measured, not assumed.
+    #
+    # READTHEDOCS_VERSION holds the pull request number on preview builds, so
+    # this must be derived from the environment; hardcoding /en/latest would
+    # publish a working `latest` and a broken preview for every pull request.
+    #
+    # `npm run check` is `myst build --html --strict`; --strict fails the build
+    # on any warning, so a broken link or a bad directive stops the deploy
+    # rather than publishing a degraded site. BASE_URL is the only thing RTD
+    # adds on top of the shared script — CI needs no path prefix.
+    - cd docs && export BASE_URL="/${READTHEDOCS_LANGUAGE}/${READTHEDOCS_VERSION}" && npm run check
+
+    - mkdir -p "$READTHEDOCS_OUTPUT/html"
+    - cp -r docs/_build/html/. "$READTHEDOCS_OUTPUT/html/"

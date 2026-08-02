@@ -1,8 +1,12 @@
-## Codec Series (the builder)
+---
+title: Codec Series (the builder)
+short_title: Codec Series
+description: A codec series is a complete Zarr v3 codec pipeline assembled from an array's axis metadata; the codec_series builder is the one component that is fully implemented today.
+---
 
-> Crate: [`ndic-zarr`](../../crates/ndic-zarr/) (`series` module) · mirrored in
-> the Python and TypeScript bindings · Roadmap:
-> [Phase 1](../development/roadmap/phase-1-baselines-and-series.md)
+**Crate:** [`ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) (`series` module) · mirrored in
+the Python and TypeScript bindings · **Roadmap:**
+[Phase 1](../development/roadmap/phase-1-baselines-and-series.md)
 
 A **codec series** is a complete Zarr v3 codec pipeline — a `transpose`
 followed by decorrelation and a plane/block codec — that nd-image-codecs
@@ -10,7 +14,7 @@ assembles from an array's axis metadata. The `codec_series` builder is the one
 component that is fully implemented today (pure metadata; it compiles and is
 unit-tested), and it is the primary entry point for users.
 
-### Inputs
+## Inputs
 
 | Input | Meaning |
 | --- | --- |
@@ -21,7 +25,7 @@ unit-tested), and it is the primary entry point for users.
 | **decorrelate** | Optional override of which dimensions get a cross-axis transform (see below). |
 | family tuning | `lift` kind, `xy_levels`, `reversible`, `delta_backend`, `zfp_rate`. |
 
-### Axis roles
+## Axis roles
 
 | Axis | Role | Default treatment |
 | --- | --- | --- |
@@ -32,7 +36,7 @@ unit-tested), and it is the primary entry point for users.
 | `c` | Channel | Leading, untransformed by default (channels are often uncorrelated); opt in with a decorrelation override |
 | other | Custom NGFF axes | Leading, untransformed by default |
 
-### Transpose rule
+## Transpose rule
 
 The builder targets the order
 
@@ -47,7 +51,7 @@ The builder targets the order
   with the leading dimensions.
 - If the target order equals the identity, **no `transpose` codec is emitted**.
 
-### Decorrelation-axis selection
+## Decorrelation-axis selection
 
 By default the decorrelation set is: `z` (when its chunk size > 1), and `t`
 (when its chunk size > 1). Overrides:
@@ -61,7 +65,7 @@ By default the decorrelation set is: `z` (when its chunk size > 1), and `t`
 `x` and `y` can never be decorrelation targets — the 2D plane codec already
 decorrelates them — and the builder returns an error if they are requested.
 
-### Per-family tails
+## Per-family tails
 
 **nd-delta** — built entirely from existing Zarr codecs:
 
@@ -98,7 +102,7 @@ transpose → nd_zfp{mode, dims, [rate]}
 than 4 non-singleton chunk dimensions is an error — reduce the chunking or split
 the array.
 
-### Output
+## Output
 
 `codec_series` returns a list of Zarr v3 codec metadata objects, in application
 order, ready to serialize into array metadata. Example (`t,c,z,y,x` uint16,
@@ -115,7 +119,7 @@ chunks `8,1,32,256,256`, nd-lift-ht):
 ]
 ```
 
-### Three implementations, one behavior
+## Three implementations, one behavior
 
 The builder exists in Rust (`ndic_zarr::series::codec_series`), pure Python
 (`nd_image_codecs.codec_series`), and pure TypeScript (`codecSeries`). The
@@ -124,7 +128,7 @@ authoring and pipeline validation are available everywhere. CI runs the same
 matrix of inputs through all three and asserts byte-identical JSON — any change
 to one must be mirrored in the others.
 
-### Testing
+## Testing
 
 - Rust unit tests in `series.rs` cover: t/z grouping, t-chunk-of-1 staying
   leading, XYZ→ZYX transpose, delta-axis-moves-fastest, exact/remove overrides,

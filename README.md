@@ -7,11 +7,17 @@
 <p align="center">
   <a href="https://github.com/fideus-labs/nd-image-codecs/actions/workflows/ci.yml"><img src="https://github.com/fideus-labs/nd-image-codecs/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/fideus-labs/nd-image-codecs/actions/workflows/bench-pr-gate.yml"><img src="https://github.com/fideus-labs/nd-image-codecs/actions/workflows/bench-pr-gate.yml/badge.svg" alt="Bench" /></a>
+  <a href="https://nd-image-codecs.readthedocs.io/en/latest/"><img src="https://readthedocs.org/projects/nd-image-codecs/badge/?version=latest" alt="Documentation" /></a>
   <a href="LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
 </p>
 
 <p align="center">
   <strong>Composable Zarr v3 codecs for ND scientific images.</strong>
+</p>
+
+<p align="center">
+  📖 <a href="https://nd-image-codecs.readthedocs.io/en/latest/"><strong>Read the documentation</strong></a>
+  — architecture, usage guides, and the roadmap, rendered and searchable.
 </p>
 
 <p align="center">
@@ -149,6 +155,10 @@ nd-image-codecs/
 See [docs/development/commands.md](docs/development/commands.md) for the full list.
 
 ## 📚 Documentation
+
+The rendered site is at **<https://nd-image-codecs.readthedocs.io/en/latest/>** —
+read it there rather than browsing the markdown below. Deployment and the manual
+Read the Docs setup: [docs/development/read-the-docs.md](docs/development/read-the-docs.md).
 
 - [Architecture](docs/architecture/index.md) — the codec series builder, the `nd_lift` transform, the HTJ2K plane codec, the ZFP port, codestream syntax, and range access
 - [Development](docs/development/) — commands, style, commits, benchmarking, test data, [publishing](docs/development/publishing.md)

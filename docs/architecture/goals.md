@@ -1,6 +1,10 @@
-## Design Goals and Non-Goals
+---
+title: Design Goals and Non-Goals
+short_title: Goals & Non-Goals
+description: What nd-image-codecs optimizes for — composability, explicit cross-axis decorrelation with no JPEG 2000 Part 2, and byte-range-friendly output — and what it deliberately does not attempt.
+---
 
-### Goals
+## Goals
 
 - **Composability first.** Every capability is a Zarr v3 codec that composes
   with the existing Zarr codec ecosystem (`transpose`, `numcodecs.delta`,
@@ -11,19 +15,19 @@
   decorrelation flows through the `nd_lift` array-to-array codec with a
   published specification — never JPEG 2000 Part 2 MCT syntax. This is a
   deliberate IP choice: it captures spatial correlation while staying clear of
-  Part 2 patents and tooling gaps (see [nd-transform.md](./nd-transform.md)).
+  Part 2 patents and tooling gaps (see [the cross-axis transform](./nd-transform.md)).
 - **Standards-only plane coding.** The `htj2k` codec emits only conforming
   JPEG 2000 Part 1 (T.800) + Part 15 (T.814) codestreams; any HTJ2K decoder can
   read a plane.
 - **Faithful ZFP.** The `nd_zfp` codec is a clean-room Rust port of
   [LLNL ZFP](https://github.com/LLNL/zfp) for 2D/3D/4D blocks that reproduces
   upstream's bitstreams and test vectors, verified against the C library via an
-  FFI reference lane (see [zfp.md](./zfp.md)).
+  FFI reference lane (see [the Rust ZFP port](./zfp.md)).
 - **Thumbnails from dumb storage.** With nd-lift-ht, 2D and low-resolution 3D
   thumbnails must be fetchable with plain HTTP Range requests against
   S3/GCS/any static server — no JPIP, no server-side smarts — using RPCL
   progression plus the coefficient-plane index (see
-  [range-access.md](./range-access.md)).
+  [byte-range access](./range-access.md)).
 - **Bit-exact losslessness.** The nd-delta family, the `nd_lift` 5/3 and haar
   paths, and ZFP reversible mode round-trip every supported dtype exactly;
   property tests enforce encode∘decode = identity.
@@ -41,7 +45,7 @@
   phase) written so both humans and coding agents can locate exactly the
   context they need.
 
-### Non-Goals
+## Non-Goals
 
 - **No JPEG 2000 Part 2 (MCT).** This is the central IP decision. We never emit
   or parse `MCT`/`MCC`/`MCO`/`CBD` markers; cross-axis decorrelation is the

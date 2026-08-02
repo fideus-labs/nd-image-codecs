@@ -1,12 +1,15 @@
-## Benchmarking
+---
+title: Benchmarking
+description: 'nd-image-codecs uses a driver-plus-registry benchmarking model: a driver CLI wraps a registry of workloads, writes per-benchmark JSON records, and diffs runs against committed baselines with a statistical regression gate.'
+---
 
 nd-image-codecs uses a driver-plus-registry benchmarking model: a driver CLI wraps a registry
 of benchmark workloads, writes per-benchmark JSON records, and diffs runs against
 committed baselines with a statistical regression gate. Full design:
-[`bench/docs/architecture.md`](../../bench/docs/architecture.md); day-to-day usage:
-[`bench/README.md`](../../bench/README.md).
+[`bench/docs/architecture.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/bench/docs/architecture.md); day-to-day usage:
+[`bench/README.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/bench/README.md).
 
-### The pieces
+## The pieces
 
 - **`bench/rs/ndic-bench-core`** — the shared layer: `BenchEntry` (an
   `inventory`-registered benchmark descriptor), `BenchConfig` (one point of the
@@ -30,7 +33,7 @@ committed baselines with a statistical regression gate. Full design:
 - **`bench/viewer/`** — a static-site viewer for record JSON (compare runs, plot
   history), served from `target/benchmarks/site/`.
 
-### The configuration matrix
+## The configuration matrix
 
 Every workload is swept across the **codec-configuration** matrix:
 
@@ -52,7 +55,7 @@ reference C ZFP library (`ref-zfp`, via `zfp-sys`), and Python `imagecodecs` on
 identical fixtures, so speed/ratio claims are grounded against the C/C++ state
 of the art.
 
-### Records & baselines
+## Records & baselines
 
 Each `(benchmark, config)` run writes one JSON `BenchRecord` to
 `target/benchmarks/<git-hash>/<config>/<module>__<name>.json` (gitignored):
@@ -60,7 +63,7 @@ median/min/max plus raw per-sample nanoseconds, and — for codec workloads —
 `bytes_in`/`bytes_out` so ratio is tracked alongside throughput. Refreshing a
 committed baseline is an explicit, reviewed act:
 
-```sh
+```bash
 python3 bench/py/run_nd_delta.py
 python3 bench/py/run_nd_lift.py
 cargo run -p ndic-bench-cli --release -- run
@@ -69,7 +72,7 @@ cp -r target/benchmarks/<hash>/* bench/baselines/main/   # + update manifest.jso
 
 (CI's `bench-baseline-refresh` workflow automates this on demand.)
 
-### The regression gate
+## The regression gate
 
 Two regression kinds, selected with `--gate time|ratio|both` (default `both`):
 
@@ -100,7 +103,7 @@ machine, so only the deterministic gate fails the build), posting a sticky PR
 comment with the markdown report. Exit codes: `0` clean, `1` regression (with
 the flag), `2` benchmark failure.
 
-### Adding a benchmark
+## Adding a benchmark
 
 In the workload crate (e.g. `ndic-htj2k`), register an entry returning a
 `BenchOutput` (per-sample nanoseconds, plus `bytes_in`/`bytes_out` for codec
@@ -120,6 +123,6 @@ Guidelines:
 - Benchmark the smallest meaningful unit (one pass over one code-block; one plane
   transform), plus one end-to-end encode/decode per crate.
 - Fixture data comes from `bench`-generated synthetic planes and the shared corpus in
-  [test-data.md](./test-data.md) — never generate randomness inside the timed region.
+  [test data](./test-data.md) — never generate randomness inside the timed region.
 - Any PR touching a hot path (block coder, transforms, packet assembly) must include or
   update a benchmark; reviewers hold the line.

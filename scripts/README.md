@@ -6,6 +6,7 @@ Helper scripts, created as their roadmap phases land:
 | --- | --- | --- |
 | `gen-series-fixtures.py` | 1 | Regenerate the `codec_series` cross-language fixture matrix (`fixtures/codec-series/matrix.json`) |
 | `ci/check-series-equality.py` | 1 | Assert Rust / Python / TypeScript `codec_series` output is byte-identical across the fixture matrix (the `series-equality` CI job) |
+| `ci/check-docs-links.py` | 1 | Check the outbound `http(s)` links cited by `docs/` — manual/pre-release, deliberately not a CI gate (external specification hosts are too flaky) |
 | `fetch-conformance.sh` | 3 | Fetch + cache the OpenJPH conformance corpus (Tier 2 test data) |
 | `fetch-bench-data.sh` | 5 | Fetch + pin Tier 3 benchmark volumes (`bench-data.lock.toml`) |
 | `range-demo.sh` | 2 | Execute an `ndic index` plan with curl against a static server |

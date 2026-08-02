@@ -1,32 +1,38 @@
+---
+title: Architecture
+description: 'The top-level map of the nd-image-codecs architecture documentation: start with the overview and goals, then open the topic section that matches the code you are working on.'
+---
+
 # Architecture
 
-> **Version:** 0.1
-> **Status:** Draft
+:::{note} Document status
+**Version:** 0.1 · **Status:** Draft
+:::
 
 This index is the top-level map of the nd-image-codecs architecture documentation. Start with
 the overview and goals, then open the topic section that matches the code you are
-working on. Every roadmap phase document under
-[../development/roadmap/](../development/roadmap/index.md) links back into these topics.
+working on. Every phase document in the
+[roadmap](../development/roadmap/index.md) links back into these topics.
 
 ## Start here
 
 | Document | What it covers |
 | --- | --- |
-| [overview.md](./overview.md) | The whole design in one page: axis metadata → codec-series builder → the three families (nd-delta, nd-lift-ht, nd-zfp) |
-| [goals.md](./goals.md) | Design goals and explicit non-goals |
+| [Overview](./overview.md) | The whole design in one page: axis metadata → codec-series builder → the three families (nd-delta, nd-lift-ht, nd-zfp) |
+| [Goals & Non-Goals](./goals.md) | Design goals and explicit non-goals |
 
 ## Topic sections
 
 | Section | What's inside | Open |
 | --- | --- | --- |
-| Codec series | The builder: axis roles, transpose rules, decorrelation-axis defaults and overrides, the three families' pipelines, JSON output | [codec-series.md](./codec-series.md) |
-| nd_lift transform | The explicit array-to-array cross-axis transform: lifting math (delta / haar / 5/3), axis roles, boundary handling, versioning | [nd-transform.md](./nd-transform.md) |
-| HT block coder | FBCOT cleanup/SigProp/MagRef passes, MEL + VLC + MagSgn sub-streams, HT Sets, SIMD strategy | [ht-block-coder.md](./ht-block-coder.md) |
-| Wavelet transform | Reversible 5/3 and irreversible 9/7 lifting, 2D in-plane geometry, boundary extension, fixed-point choices | [wavelet-transform.md](./wavelet-transform.md) |
-| ZFP codec | The clean-room Rust ZFP port: 2D/3D/4D blocks, the four modes, brick index, upstream parity strategy | [zfp.md](./zfp.md) |
-| Codestream | Part 1 / Part 15 marker segments (`SIZ`/`COD`/`CAP`/`QCD`/`TLM`/`PLT`), progression orders, tile/precinct/packet anatomy, `.jph` boxes | [codestream.md](./codestream.md) |
-| Range access | How RPCL + `TLM`/`PLT` and the coefficient-plane index yield a byte-offset index; thumbnail fetch plans over HTTP Range | [range-access.md](./range-access.md) |
-| Zarr codecs | The Zarr v3 codec model, the three registered/composed codecs, `zarrs`/numcodecs/numcodecs.js integration, OME-Zarr fit | [zarr-codec.md](./zarr-codec.md) |
+| Codec series | The builder: axis roles, transpose rules, decorrelation-axis defaults and overrides, the three families' pipelines, JSON output | [Codec Series](./codec-series.md) |
+| nd_lift transform | The explicit array-to-array cross-axis transform: lifting math (delta / haar / 5/3), axis roles, boundary handling, versioning | [nd_lift Transform](./nd-transform.md) |
+| HT block coder | FBCOT cleanup/SigProp/MagRef passes, MEL + VLC + MagSgn sub-streams, HT Sets, SIMD strategy | [HT Block Coder](./ht-block-coder.md) |
+| Wavelet transform | Reversible 5/3 and irreversible 9/7 lifting, 2D in-plane geometry, boundary extension, fixed-point choices | [Wavelet Transform](./wavelet-transform.md) |
+| ZFP codec | The clean-room Rust ZFP port: 2D/3D/4D blocks, the four modes, brick index, upstream parity strategy | [nd_zfp Codec](./zfp.md) |
+| Codestream | Part 1 / Part 15 marker segments (`SIZ`/`COD`/`CAP`/`QCD`/`TLM`/`PLT`), progression orders, tile/precinct/packet anatomy, `.jph` boxes | [Codestream Syntax](./codestream.md) |
+| Range access | How RPCL + `TLM`/`PLT` and the coefficient-plane index yield a byte-offset index; thumbnail fetch plans over HTTP Range | [Byte-Range Access](./range-access.md) |
+| Zarr codecs | The Zarr v3 codec model, the three registered/composed codecs, `zarrs`/numcodecs/numcodecs.js integration, OME-Zarr fit | [Zarr Codecs](./zarr-codec.md) |
 
 ## The IP posture
 

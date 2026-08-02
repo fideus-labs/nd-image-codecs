@@ -1,7 +1,11 @@
-## The `nd_lift` Cross-Axis Transform
+---
+title: The nd_lift Cross-Axis Transform
+short_title: nd_lift Transform
+description: nd_lift is a registered Zarr v3 array-to-array codec that captures correlation along the z, time, and channel axes of a scientific volume without JPEG 2000 Part 2.
+---
 
-> Crate: [`ndic-lift`](../../crates/ndic-lift/) · Roadmap:
-> [Phase 2](../development/roadmap/phase-2-nd-lift.md) · Codec version: `0.1`
+**Crate:** [`ndic-lift`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-lift) · **Roadmap:**
+[Phase 2](../development/roadmap/phase-2-nd-lift.md) · **Codec version:** `0.1`
 
 `nd_lift` is the codec that lets nd-image-codecs capture correlation along the
 non-spatial axes (z, time, channel) of a scientific volume **without JPEG 2000
@@ -10,7 +14,7 @@ a series, decorrelating chosen axes in place, and hands the transformed array to
 an ordinary array-to-bytes codec (`htj2k`) that compresses the trailing 2D
 `(y, x)` planes.
 
-### Why an explicit codec instead of MCT
+## Why an explicit codec instead of MCT
 
 A Part 2 Multiple Component Transformation can express a wavelet-across-slices,
 but it does so inside JPEG 2000 codestream syntax (`MCT`/`MCC`/`MCO` markers)
@@ -19,9 +23,9 @@ achieves the same *effect* — decorrelate z/t/c before 2D coding — as a
 standalone, fully specified Zarr codec built from long-published lifting and
 differencing primitives. The 2D codec downstream then only ever sees Part 1 /
 Part 15 syntax. This is the project's central IP posture (see
-[goals.md](./goals.md)).
+[design goals](./goals.md)).
 
-### Configuration
+## Configuration
 
 ```json
 {
@@ -48,7 +52,7 @@ Each entry in `transforms` is one 1D transform applied along one axis:
 
 Transforms are applied in listed order on encode and in reverse on decode.
 
-### Transform kinds
+## Transform kinds
 
 | Kind | Rule | Reversible | Notes |
 | --- | --- | --- | --- |
@@ -57,7 +61,7 @@ Transforms are applied in listed order on encode and in reverse on decode.
 | `lift53` | Le Gall 5/3 integer lifting (predict + update), T.800 rounding | Yes (integers) | Better smooth-signal decorrelation; needs symmetric boundary handling. |
 | `lift97` *(Phase 4)* | CDF 9/7 float lifting + per-band quantization | No | Lossy; higher ratio; pairs with lossy `htj2k`. |
 
-### Lifting math (5/3)
+## Lifting math (5/3)
 
 For an axis signal `x[0…n−1]`, one 5/3 level computes odd (detail) then even
 (approx) samples with integer rounding:
@@ -71,7 +75,7 @@ Multiple `levels` recurse on the approximation band `s`. The `haar` kernel is
 the degenerate 2-tap case. All integer kinds are exactly invertible for every
 supported integer dtype.
 
-### Boundary handling
+## Boundary handling
 
 - **Symmetric (mirror) extension** at group and chunk boundaries, matching
   T.800 Annex F, so the transform is well-defined at the edges without storing
@@ -82,7 +86,7 @@ supported integer dtype.
 - **Singleton axes** (extent 1) are a no-op — the builder never places a
   transform on a size-1 axis, but the codec tolerates one defensively.
 
-### Overflow and precision
+## Overflow and precision
 
 - Integer coefficients live in `i32` planes (`ndic_core::CoeffPlane`). For
   16-bit input, 5/3 growth over a handful of levels stays well within `i32`; the
@@ -101,7 +105,7 @@ supported integer dtype.
 - The lossy `lift97` path documents its Q-format per lifting step; overflow
   behavior is checked by proptest with extreme-value inputs.
 
-### Grouping and chunk independence
+## Grouping and chunk independence
 
 A transform's `group` bounds how many samples along the axis are coupled. The
 codec-series builder sets grouping so coupling never crosses a Zarr chunk
@@ -109,14 +113,14 @@ boundary — chunk independence is what keeps Zarr's parallel read/write model
 intact. A `group` of 0 means "the whole chunk extent along this axis", which is
 the common case for a chunk that holds a bounded z/t block.
 
-### Versioning
+## Versioning
 
 The `version` field pins the transform semantics. `0.1` is the initial integer
 lifting spec (`delta`/`haar`/`lift53`). Any change to predictor, update,
 rounding, boundary rule, or coefficient ordering bumps the version; decoders
 refuse unknown major versions rather than silently mis-decoding.
 
-### Testing
+## Testing
 
 - Round-trip identity on `delta`/`haar`/`lift53` for random volumes and every
   integer dtype (proptest).

@@ -1,10 +1,17 @@
+---
+title: Python
+description: 'Using nd-image-codecs from Python: the maturin-built nd_image_codecs package, the pure-Python codec_series builder, and the zarr-python codec entry points.'
+---
+
 # Python
 
-> **Status:** Skeleton — the package builds today (maturin) and the
-> `codec_series` builder works; codec behavior lands per the
-> [roadmap](../development/roadmap/index.md).
+:::{caution} Status: Skeleton
+The package builds today (maturin) and the
+`codec_series` builder works; codec behavior lands per the
+[roadmap](../development/roadmap/index.md).
+:::
 
-```sh
+```bash
 pip install nd-image-codecs          # wheels: manylinux, macOS, Windows (post-Phase 4)
 # from source:
 cd bindings/python/nd-image-codecs && maturin develop --release
@@ -34,7 +41,7 @@ arr[:] = volume
 
 Override which axes get decorrelated with `decorrelate=` (an exact dimension
 index list) or adjust the defaults with `add_decorrelate=` /
-`remove_decorrelate=`; see [zarr.md](./zarr.md) for the rules.
+`remove_decorrelate=`; see [Zarr & OME-Zarr](./zarr.md) for the rules.
 
 ## Codec classes and entry points
 

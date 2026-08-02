@@ -1,9 +1,17 @@
+---
+title: TypeScript / Browser
+short_title: TypeScript
+description: 'Using nd-image-codecs from TypeScript and the browser: the codecSeries builder and the WASM codec cores for zarrita.js.'
+---
+
 # TypeScript / Browser
 
-> **Status:** Skeleton — the package scaffolding and the `codecSeries` builder
-> exist; the WASM cores land per the [roadmap](../development/roadmap/index.md).
+:::{caution} Status: Skeleton
+The package scaffolding and the `codecSeries` builder
+exist; the WASM cores land per the [roadmap](../development/roadmap/index.md).
+:::
 
-```sh
+```bash
 npm install @fideus-labs/nd-image-codecs
 ```
 
@@ -12,7 +20,7 @@ npm install @fideus-labs/nd-image-codecs
 Works today — the builder is pure TypeScript (mirrors the Rust implementation
 byte-for-byte):
 
-```ts
+```typescript
 import { codecSeries } from "@fideus-labs/nd-image-codecs";
 
 const codecs = codecSeries(
@@ -26,7 +34,7 @@ const codecs = codecSeries(
 
 ## Decode a chunk
 
-```ts
+```typescript
 import { Htj2k, NdLift, NdZfp } from "@fideus-labs/nd-image-codecs";
 
 const codec = Htj2k.fromConfig({
@@ -43,7 +51,7 @@ module (SIMD128).
 
 ## zarrita.js registration
 
-```ts
+```typescript
 import * as zarrita from "zarrita";
 import { Htj2k, NdLift, NdZfp } from "@fideus-labs/nd-image-codecs";
 
@@ -62,7 +70,7 @@ already ships (`transpose`, `blosc`, …).
 Combine the `htj2k` codec with Range requests against `.jph` files or Zarr
 chunks — the byte plans from `ndic index` are plain JSON your app (or a service
 worker) can execute with `fetch(url, { headers: { Range: "bytes=…" } })`. See
-[thumbnails-and-streaming.md](./thumbnails-and-streaming.md).
+[thumbnails & streaming](./thumbnails-and-streaming.md).
 
 ## Bundler notes
 

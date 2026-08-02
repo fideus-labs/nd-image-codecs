@@ -1,7 +1,12 @@
+---
+title: Phase 2 — The nd_lift Cross-Axis Transform
+short_title: Phase 2 — nd_lift
+description: Phase 2 implements nd_lift, the explicit array-to-array codec that captures z/t/c correlation without JPEG 2000 Part 2, validated behind a stock Blosc-Zstd backend.
+---
+
 # Phase 2 — The `nd_lift` Cross-Axis Transform
 
-> **Depends on:** Phase 1 · **Gates:** Phase 4
-> **Architecture:** [nd-transform.md](../../architecture/nd-transform.md)
+**Depends on:** Phase 1 · **Gates:** Phase 4 · **Architecture:** [nd_lift Transform](../../architecture/nd-transform.md)
 
 Phase 2 implements `nd_lift` (`ndic-lift`), the explicit array-to-array codec
 that captures z/t/c correlation without JPEG 2000 Part 2. It is validated on its

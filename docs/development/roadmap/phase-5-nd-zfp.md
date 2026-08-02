@@ -1,7 +1,12 @@
+---
+title: Phase 5 — The nd_zfp Codec (Rust ZFP Port)
+short_title: Phase 5 — nd_zfp
+description: Phase 5 delivers a clean-room Rust port of LLNL ZFP for 2D/3D/4D data that reproduces the C implementation's tests, plus the brick index and the Zarr codec wrapper.
+---
+
 # Phase 5 — The `nd_zfp` Codec (Rust ZFP Port)
 
-> **Depends on:** Phase 1 · **Gates:** Phase 6
-> **Architecture:** [zfp.md](../../architecture/zfp.md)
+**Depends on:** Phase 1 · **Gates:** Phase 6 · **Architecture:** [nd_zfp Codec](../../architecture/zfp.md)
 
 Phase 5 delivers a clean-room Rust port of [LLNL ZFP](https://github.com/LLNL/zfp)
 for 2D/3D/4D data that **reproduces the C implementation's tests**, plus the
@@ -14,7 +19,7 @@ what gives GPU volume renderers O(1) random brick access and predictable memory.
    the ground-truth oracle for every differential test until parity is proven.
 2. **Upstream test vectors**: extract the C test suite's per-configuration
    checksums (dimension × type × mode × rate matrix) into committed fixtures
-   (see [test-data.md](../test-data.md)).
+   (see [test data](../test-data.md)).
 3. **2D core, scalar**: block-float alignment, the reversible decorrelating
    block transform, total-sequency reordering, negabinary + bit-plane group
    coding; fixed-rate first, then fixed-accuracy, fixed-precision, reversible.

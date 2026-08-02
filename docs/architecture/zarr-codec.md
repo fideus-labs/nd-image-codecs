@@ -1,7 +1,10 @@
-## Zarr Codecs
+---
+title: Zarr Codecs
+description: 'How nd-image-codecs plugs into the Zarr v3 codec pipeline across three ecosystems: Rust zarrs, Python zarr-python, and TypeScript/WASM zarrita.js.'
+---
 
-> Crate: [`ndic-zarr`](../../crates/ndic-zarr/) + bindings · Roadmap:
-> Phases [1](../development/roadmap/phase-1-baselines-and-series.md)–[5](../development/roadmap/phase-5-nd-zfp.md)
+**Crate:** [`ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) + bindings · **Roadmap:**
+Phases [1](../development/roadmap/phase-1-baselines-and-series.md)–[5](../development/roadmap/phase-5-nd-zfp.md)
 
 nd-image-codecs contributes to the Zarr v3 codec pipeline in three ecosystems:
 Rust ([`zarrs`](https://docs.rs/zarrs)), Python
@@ -11,7 +14,7 @@ zarrita.js). It ships **two new codecs** and **composes a third family** from
 existing codecs, all wired together by the [codec-series](./codec-series.md)
 builder.
 
-### The Zarr v3 codec model
+## The Zarr v3 codec model
 
 Zarr v3 splits a codec pipeline into array→array, array→bytes, and bytes→bytes
 stages ([Zarr v3 core spec](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html)).
@@ -20,10 +23,10 @@ nd-image-codecs uses each stage deliberately:
 | Codec | Kind | Role |
 | --- | --- | --- |
 | `transpose` (stock) | array → array | Put the fastest/decorrelation axes where the tail codec expects them |
-| `nd_lift` (**new**) | array → array | Explicit cross-axis (z/t/c) lifting decorrelation — see [nd-transform.md](./nd-transform.md) |
+| `nd_lift` (**new**) | array → array | Explicit cross-axis (z/t/c) lifting decorrelation — see [the cross-axis transform](./nd-transform.md) |
 | `numcodecs.delta` (stock) | array → array | Single-axis differencing (nd-delta family) |
 | `htj2k` (**new**) | array → bytes | Compress each trailing 2D plane as an independent Part 1/15 codestream + coefficient-plane index |
-| `nd_zfp` (**new**) | array → bytes | ZFP 2D/3D/4D blocks + brick index — see [zfp.md](./zfp.md) |
+| `nd_zfp` (**new**) | array → bytes | ZFP 2D/3D/4D blocks + brick index — see [the Rust ZFP port](./zfp.md) |
 | `bytes`, `blosc`, `crc32c` (stock) | array→bytes / bytes→bytes | Endianness, entropy backend, checksums |
 
 A JPEG 2000 or ZFP codec **must be the array→bytes stage**: it needs the chunk's
@@ -31,7 +34,7 @@ shape and dtype, and its output is an opaque byte stream. This matches how
 existing image codecs slot into Zarr (cf. glencoesoftware's 2D
 [zarr-jpeg2k](https://github.com/glencoesoftware/zarr-jpeg2k)).
 
-### Chunk mapping
+## Chunk mapping
 
 A Zarr chunk of shape `[…, z, y, x]` maps onto the series as follows:
 
@@ -45,9 +48,9 @@ A Zarr chunk of shape `[…, z, y, x]` maps onto the series as follows:
   integer paths, plus `float32/float64` for nd-zfp.
 
 Codec configurations are produced by the builder; see
-[codec-series.md](./codec-series.md) for the JSON.
+[codec series](./codec-series.md) for the JSON.
 
-### Why this fills a real gap
+## Why this fills a real gap
 
 Surveyed OME-Zarr practice uses general-purpose bytes compressors
 (blosc/zstd/gzip) — no cross-axis decorrelation, no progressive access, no
@@ -59,7 +62,7 @@ classic JPEG 2000 and ZFP but not HTJ2K encode
 nd-image-codecs brings (a) explicit z/t/c decorrelation, (b) fast, SIMD-friendly
 HTJ2K decode in browsers via WASM, and (c) a random-access ZFP path.
 
-### Per-ecosystem integration
+## Per-ecosystem integration
 
 | Ecosystem | Mechanism |
 | --- | --- |
@@ -71,7 +74,7 @@ The `codec_series` builder itself is pure metadata and is implemented natively
 in all three languages (no WASM needed) so pipeline authoring works everywhere,
 byte-identically.
 
-### Registration and naming
+## Registration and naming
 
 The new codec names (`nd_lift`, `htj2k`, `nd_zfp`) follow the Zarr v3 extension
 naming convention pending a formal registration
@@ -80,16 +83,16 @@ naming convention pending a formal registration
 nd-delta family uses only already-registered names (`transpose`,
 `numcodecs.delta`, `bytes`, `blosc`).
 
-### Partial-read synergy
+## Partial-read synergy
 
 Because each nd-lift-ht plane is an RPCL codestream with `TLM`/`PLT`, and each
 nd-zfp chunk carries a brick index, a reader holding only *part* of a chunk's
 bytes can still produce a low-resolution or single-brick result — the
-[range-access](./range-access.md) machinery applies within chunks, enabling
+[byte-range access](./range-access.md) machinery applies within chunks, enabling
 multiscale-on-demand for viewers even before OME-Zarr pyramid levels are
 consulted.
 
-### Testing
+## Testing
 
 - Tri-ecosystem builder equality: the shared fixture matrix through Rust,
   Python, and TS asserts byte-identical pipelines.

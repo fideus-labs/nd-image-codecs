@@ -1,3 +1,8 @@
+---
+title: Publishing
+description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand, including the 0.0.1 name-reservation release.
+---
+
 # Publishing
 
 How to publish nd-image-codecs to crates.io, PyPI, and npm **by hand**. There is
@@ -14,16 +19,16 @@ squat.
 
 | Registry | Package | Source | Publishes |
 | --- | --- | --- | --- |
-| crates.io | `ndic-core` | [`crates/ndic-core`](../../crates/ndic-core/) | library |
-| crates.io | `ndic-htj2k` | [`crates/ndic-htj2k`](../../crates/ndic-htj2k/) | library |
-| crates.io | `ndic-lift` | [`crates/ndic-lift`](../../crates/ndic-lift/) | library |
-| crates.io | `ndic-zfp` | [`crates/ndic-zfp`](../../crates/ndic-zfp/) | library |
-| crates.io | `ndic-codestream` | [`crates/ndic-codestream`](../../crates/ndic-codestream/) | library |
-| crates.io | `ndic-zarr` | [`crates/ndic-zarr`](../../crates/ndic-zarr/) | library |
-| crates.io | `ndic-cli` | [`crates/ndic-cli`](../../crates/ndic-cli/) | `ndic` binary |
-| PyPI | `nd-image-codecs` | [`bindings/python/nd-image-codecs`](../../bindings/python/nd-image-codecs/) | sdist + abi3 wheels |
-| npm | `@fideus-labs/nd-image-codecs` | [`bindings/typescript`](../../bindings/typescript/) | ESM + `.d.ts` |
-| npm | `nd-image-codecs` | [`bindings/javascript`](../../bindings/javascript/) | name placeholder, README only |
+| crates.io | `ndic-core` | [`crates/ndic-core`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-core) | library |
+| crates.io | `ndic-htj2k` | [`crates/ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) | library |
+| crates.io | `ndic-lift` | [`crates/ndic-lift`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-lift) | library |
+| crates.io | `ndic-zfp` | [`crates/ndic-zfp`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zfp) | library |
+| crates.io | `ndic-codestream` | [`crates/ndic-codestream`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-codestream) | library |
+| crates.io | `ndic-zarr` | [`crates/ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) | library |
+| crates.io | `ndic-cli` | [`crates/ndic-cli`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-cli) | `ndic` binary |
+| PyPI | `nd-image-codecs` | [`bindings/python/nd-image-codecs`](https://github.com/fideus-labs/nd-image-codecs/tree/main/bindings/python/nd-image-codecs) | sdist + abi3 wheels |
+| npm | `@fideus-labs/nd-image-codecs` | [`bindings/typescript`](https://github.com/fideus-labs/nd-image-codecs/tree/main/bindings/typescript) | ESM + `.d.ts` |
+| npm | `nd-image-codecs` | [`bindings/javascript`](https://github.com/fideus-labs/nd-image-codecs/tree/main/bindings/javascript) | name placeholder, README only |
 
 **Not published.** Three workspace members carry `publish = false` and are
 skipped automatically by `cargo publish --workspace`:
@@ -34,7 +39,7 @@ skipped automatically by `cargo publish --workspace`:
 All ten names above were confirmed unregistered on 2026-08-01. Check again
 immediately before you publish:
 
-```sh
+```bash
 curl -s -H "User-Agent: nd-image-codecs (matt@fideus.io)" \
   -o /dev/null -w '%{http_code}\n' https://crates.io/api/v1/crates/ndic-core   # 404 = free
 curl -s -o /dev/null -w '%{http_code}\n' https://pypi.org/pypi/nd-image-codecs/json
@@ -51,7 +56,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://registry.npmjs.org/nd-image-cod
 | crates.io account + token | <https://crates.io/settings/tokens>, then `cargo login` |
 | PyPI account + API token | <https://pypi.org/manage/account/token/> (scope it to the project after first upload) |
 | npm account, member of the `fideus-labs` org | `npm login`; create the org at <https://www.npmjs.com/org/create> if it does not exist yet — the scope must exist before the scoped package can be published |
-| Rust 1.91 | pinned by [`rust-toolchain.toml`](../../rust-toolchain.toml) |
+| Rust 1.91 | pinned by [`rust-toolchain.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/rust-toolchain.toml) |
 | maturin ≥ 1.7 | `pipx install maturin` or `uv tool install maturin` |
 | twine | `pipx install twine` |
 | Node 20+ | for `npm publish` |
@@ -64,7 +69,7 @@ required once the WASM codec cores land (Phases 2–5).
 
 Run from the repository root.
 
-```sh
+```bash
 # 1. The tree must be clean and pushed — cargo embeds the git revision.
 git status --porcelain          # must be empty
 git switch main && git pull
@@ -107,7 +112,7 @@ published (and indexed) before its dependents. `cargo publish --workspace`
 computes the order, skips `publish = false` members, and waits for the index
 between uploads — use it rather than publishing by hand.
 
-```sh
+```bash
 # Dry run: packages every crate and verifies each builds from its own tarball.
 cargo publish --workspace --dry-run
 ```
@@ -115,14 +120,14 @@ cargo publish --workspace --dry-run
 Expected: seven `Packaging …` lines, seven `Uploading …` lines, each followed by
 `warning: aborting upload due to dry run`. Then:
 
-```sh
+```bash
 cargo login                 # once; or export CARGO_REGISTRY_TOKEN
 cargo publish --workspace
 ```
 
 The resolved order is:
 
-```
+```text
 ndic-core
   ├─ ndic-htj2k ─┐
   ├─ ndic-lift ──┼─ ndic-codestream ─┐
@@ -136,7 +141,7 @@ If `--workspace` fails partway through, publish the remainder individually in
 the order above. crates.io serves a crate to the resolver a few seconds after
 upload, so pause between them:
 
-```sh
+```bash
 for c in ndic-core ndic-htj2k ndic-lift ndic-zfp ndic-codestream ndic-zarr ndic-cli; do
   cargo publish -p "$c" || break
   sleep 30
@@ -157,7 +162,7 @@ GitHub team works if `fideus-labs` has one (create it first — crates.io requir
 the team to already exist and you to be a member); otherwise add individual
 crates.io usernames.
 
-```sh
+```bash
 for c in ndic-core ndic-htj2k ndic-lift ndic-zfp ndic-codestream ndic-zarr ndic-cli; do
   cargo owner --add github:fideus-labs:publishers "$c"   # or: cargo owner --add <username> "$c"
 done
@@ -165,7 +170,7 @@ done
 
 Verify:
 
-```sh
+```bash
 cargo search ndic-
 cargo install ndic-cli --version 0.0.1 && ndic --help
 ```
@@ -181,7 +186,7 @@ The Python distribution is built by maturin from
 project: pure-Python sources under `python/`, plus the `ndic-py` cdylib built as
 a stable-ABI (`abi3-py311`) extension module.
 
-```sh
+```bash
 SP=$(mktemp -d)
 
 # sdist — the important artifact for a name reservation: anyone can build from it.
@@ -195,7 +200,7 @@ twine check "$SP"/*
 
 Smoke-test the wheel before uploading:
 
-```sh
+```bash
 uv venv "$SP/venv" --python 3.12
 uv pip install --python "$SP/venv/bin/python" "$SP"/*.whl
 "$SP/venv/bin/python" -c "import nd_image_codecs as m; print(m.__version__)"   # 0.0.1
@@ -203,7 +208,7 @@ uv pip install --python "$SP/venv/bin/python" "$SP"/*.whl
 
 Upload — TestPyPI first, then the real index:
 
-```sh
+```bash
 twine upload --repository testpypi "$SP"/*
 twine upload "$SP"/*     # username: __token__ , password: the pypi-… token
 ```
@@ -235,7 +240,7 @@ when there is real code to ship.
 type declarations from `dist/`, and the TypeScript sources so the shipped source
 maps resolve.
 
-```sh
+```bash
 cd bindings/typescript
 npm install
 npm run build            # tsc -p tsconfig.json → dist/
@@ -250,7 +255,7 @@ npm pack --dry-run       # inspect the file list
 Expected tarball: `README.md`, `package.json`, `dist/index.{js,d.ts,js.map,d.ts.map}`,
 `src/index.ts`.
 
-```sh
+```bash
 npm login
 npm publish --access public
 ```
@@ -266,12 +271,12 @@ list in `package.json`.
 
 ## 4. JavaScript placeholder → npm
 
-[`bindings/javascript`](../../bindings/javascript/) reserves the **unscoped**
+[`bindings/javascript`](https://github.com/fideus-labs/nd-image-codecs/tree/main/bindings/javascript) reserves the **unscoped**
 `nd-image-codecs` name on npm. It contains a README pointing at the scoped
 package and nothing else — no code, no dependency on the scoped package, so it
 never needs to be kept in version lockstep beyond whatever you choose to publish.
 
-```sh
+```bash
 cd bindings/javascript
 npm pack --dry-run       # README.md + package.json only
 npm publish              # unscoped packages are public by default
@@ -280,13 +285,13 @@ npm publish              # unscoped packages are public by default
 If the unscoped name is later wanted as the real package, publish the TypeScript
 build under it and deprecate the scope — or the reverse:
 
-```sh
+```bash
 npm deprecate nd-image-codecs@0.0.1 "Use @fideus-labs/nd-image-codecs instead"
 ```
 
 ## 5. Verify, tag, record
 
-```sh
+```bash
 # crates.io
 curl -s -H "User-Agent: nd-image-codecs (matt@fideus.io)" \
   https://crates.io/api/v1/crates/ndic-zarr | head -c 200
@@ -301,7 +306,7 @@ npm view nd-image-codecs@0.0.1
 
 Then tag the commit that was published:
 
-```sh
+```bash
 git tag -a v0.0.1 -m "Release 0.0.1 — name reservation"
 git push origin v0.0.1
 ```

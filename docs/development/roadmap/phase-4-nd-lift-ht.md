@@ -1,9 +1,14 @@
+---
+title: Phase 4 — The nd-lift-ht Family
+short_title: Phase 4 — nd-lift-ht
+description: Phase 4 fuses the nd_lift transform and the HTJ2K core into the flagship transpose → nd_lift → htj2k family, with the byte-range index that makes thumbnails work.
+---
+
 # Phase 4 — The nd-lift-ht Family
 
-> **Depends on:** Phases 2 + 3 · **Gates:** Phase 6
-> **Architecture:** [zarr-codec.md](../../architecture/zarr-codec.md),
-> [range-access.md](../../architecture/range-access.md),
-> [nd-transform.md](../../architecture/nd-transform.md)
+**Depends on:** Phases 2 + 3 · **Gates:** Phase 6 · **Architecture:** [Zarr Codecs](../../architecture/zarr-codec.md),
+[Byte-Range Access](../../architecture/range-access.md),
+[nd_lift Transform](../../architecture/nd-transform.md)
 
 Phase 4 fuses the two preceding phases into the flagship family:
 `transpose → nd_lift → htj2k`. The `htj2k` **array-to-bytes** codec compresses

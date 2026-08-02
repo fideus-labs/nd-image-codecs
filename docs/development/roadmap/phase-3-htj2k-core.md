@@ -1,9 +1,14 @@
+---
+title: Phase 3 — HTJ2K Core in Rust
+short_title: Phase 3 — HTJ2K Core
+description: 'Phase 3 is the largest single build: a pure-Rust HTJ2K implementation modeled on OpenJPH — the FBCOT block coder, the 2D wavelet, and the codestream layer.'
+---
+
 # Phase 3 — HTJ2K Core in Rust
 
-> **Depends on:** Phase 1 · **Gates:** Phase 4
-> **Architecture:** [ht-block-coder.md](../../architecture/ht-block-coder.md),
-> [wavelet-transform.md](../../architecture/wavelet-transform.md),
-> [codestream.md](../../architecture/codestream.md)
+**Depends on:** Phase 1 · **Gates:** Phase 4 · **Architecture:** [HT Block Coder](../../architecture/ht-block-coder.md),
+[Wavelet Transform](../../architecture/wavelet-transform.md),
+[Codestream Syntax](../../architecture/codestream.md)
 
 Phase 3 is the largest single build: a pure-Rust HTJ2K implementation modeled on
 [OpenJPH](https://github.com/aous72/OpenJPH) — the FBCOT block coder, the 2D

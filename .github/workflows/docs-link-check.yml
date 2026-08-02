@@ -1,0 +1,55 @@
+name: Docs Link Check
+
+# Deliberately a separate workflow from ci.yml, and deliberately NOT on
+# `pull_request`.
+#
+# The documentation cites roughly 90 external specification and vendor URLs
+# (ISO, ITU, LLNL, JPEG, Frontiers, Kakadu) that rate-limit, bot-block, and go
+# offline for reasons that have nothing to do with this repository. As a pull
+# request check that would produce red builds no contributor can fix, and a
+# check that is routinely red for someone else's outage is one people learn to
+# ignore — at which point it stops catching the failures it exists for. So it
+# runs on a schedule: a monthly sweep whose output is read deliberately, never a
+# merge blocker.
+#
+# `scripts/ci/check-docs-links.py` is lenient by the same reasoning — it exits
+# non-zero only for a definitively dead target (404/410, or a hostname that does
+# not resolve, and only after probing the origin root to rule out a host that
+# blocks non-browser clients wholesale). Blocked, rate-limited, and unreachable
+# URLs are reported as warnings.
+#
+# Links *between* documentation pages are not checked here. The `docs` job in
+# ci.yml runs `npm run check` (`myst build --html --strict`), which already
+# fails on a broken relative link or an unresolved cross-reference — that is the
+# half of link integrity worth gating a pull request on, because it only ever
+# breaks for reasons inside this repository.
+
+on:
+  schedule:
+    # 05:37 UTC on the 1st of every month. The offset minute avoids the
+    # top-of-hour congestion GitHub warns scheduled workflows about.
+    #
+    # Scheduled runs fire only on the default branch, so this workflow cannot be
+    # exercised from a branch or a pull request — use the `workflow_dispatch`
+    # button (Actions → Docs Link Check → Run workflow) to run it on demand,
+    # e.g. before a release or after editing the reference lists.
+    - cron: "37 5 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  link-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Standard library only — no dependencies to install. The script's own
+      # defaults (20s timeout, 4 concurrent requests) are chosen to stay polite
+      # to the standards bodies being crawled; do not raise `--jobs` here.
+      - name: Check external documentation links
+        run: python3 scripts/ci/check-docs-links.py

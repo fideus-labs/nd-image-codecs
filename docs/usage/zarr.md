@@ -1,10 +1,17 @@
+---
+title: Zarr & OME-Zarr
+description: Choosing between the nd-delta, nd-lift-ht, and nd-zfp families and wiring the resulting codec series into a Zarr v3 or OME-Zarr array.
+---
+
 # Zarr & OME-Zarr
 
-> **Status:** Skeleton — the builder and nd-delta work in
-> [Phase 1](../development/roadmap/phase-1-baselines-and-series.md); nd-lift-ht
-> and nd-zfp land in Phases
-> [4](../development/roadmap/phase-4-nd-lift-ht.md) and
-> [5](../development/roadmap/phase-5-nd-zfp.md).
+:::{caution} Status: Skeleton
+The builder and nd-delta work in
+[Phase 1](../development/roadmap/phase-1-baselines-and-series.md); nd-lift-ht
+and nd-zfp land in Phases
+[4](../development/roadmap/phase-4-nd-lift-ht.md) and
+[5](../development/roadmap/phase-5-nd-zfp.md).
+:::
 
 ## The three families
 
@@ -38,7 +45,7 @@ arr = zarr.create_array(store, shape=..., chunks=..., dtype="uint16",
 ```
 
 Builder behavior (full spec:
-[codec-series.md](../architecture/codec-series.md)):
+[codec series](../architecture/codec-series.md)):
 
 - The fastest-moving dimensions are transposed into `(z-)yx` order; `t` is
   placed before `z`/`y` when its chunk extent is > 1.
