@@ -8,13 +8,14 @@ requests each one — `HEAD` first, falling back to `GET` when a server rejects
 on. Internal links between pages are *not* checked here: `myst build --strict`
 (`cd docs && npm run check`) already fails on a broken internal cross-reference.
 
-**This is a manual, pre-release check — deliberately not part of the CI gate.**
-The docs cite roughly 90 external specification and vendor URLs (ISO, ITU,
-LLNL, frontiersin, kakadusoftware) that rate-limit, bot-block, and go down
-entirely independently of this repository. Wiring that into CI would produce a
-gate that fails for reasons no contributor can fix, and a flaky gate is worse
-than no gate. Run it by hand before a release, or when the reference list
-changes.
+**Deliberately not part of the pull request gate.** The docs cite roughly 90
+external specification and vendor URLs (ISO, ITU, LLNL, frontiersin,
+kakadusoftware) that rate-limit, bot-block, and go down entirely independently
+of this repository. Wiring that into CI would produce a gate that fails for
+reasons no contributor can fix, and a flaky gate is worse than no gate. It runs
+monthly instead, from `.github/workflows/docs-link-check.yml`, which also
+carries a `workflow_dispatch` trigger; run it by hand from there or from a
+terminal before a release, or when the reference list changes.
 
 Only a definitively dead target — 404, 410, or a hostname that does not
 resolve — makes this script exit non-zero. Blocked (401/403), rate-limited

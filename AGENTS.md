@@ -102,7 +102,11 @@ consult the roadmap before implementing anything.
   `typescript`, `json`, `toml`, `yaml` — and `text` deliberately, for ASCII
   diagrams and literal strings that are not code.
 - Run `cd docs && npm run check` (strict build, fails on any warning) before
-  pushing documentation changes.
+  pushing documentation changes. The `docs` job in CI runs that same script on
+  every pull request, so a broken link or an unresolved cross-reference will
+  block the merge; the rendered site is downloadable from the run as the
+  `docs-site` artifact. External links are checked by a separate monthly
+  workflow that is deliberately not a PR gate.
 
 ## Key dependencies
 
