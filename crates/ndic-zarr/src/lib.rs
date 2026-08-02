@@ -18,6 +18,8 @@
 //! `zarrs` feature is enabled (roadmap Phases 2–5); `nd_lift` (Phase 2) is
 //! implemented in the feature-gated `lift_codec` module.
 
+#[cfg(feature = "bench")]
+mod bench;
 #[cfg(feature = "zarrs")]
 pub mod lift_codec;
 pub mod series;

@@ -161,6 +161,33 @@ fn u32_values_beyond_the_i32_plane_error_cleanly() {
     );
 }
 
+#[test]
+fn coefficients_that_do_not_narrow_error_cleanly() {
+    use zarrs::array::FillValue;
+    use zarrs::array::codec::api::{ArrayBytes, ArrayToArrayCodecTraits, CodecOptions};
+
+    let codec = std::sync::Arc::new(
+        NdLiftCodec::new_with_configuration(
+            &serde_json::from_value(json!({ "version": "0.1", "transforms": [] })).unwrap(),
+        )
+        .unwrap(),
+    );
+    let shape = [std::num::NonZeroU64::new(4).unwrap()];
+    let fill = FillValue::new(vec![0u8; 2]);
+    let options = CodecOptions::default();
+    // An int32 coefficient plane holding 70 000 cannot narrow back to uint16.
+    let coeffs: Vec<i32> = vec![1, 70_000, 2, 3];
+    let bytes = ArrayBytes::from(bytemuck::cast_slice::<i32, u8>(&coeffs).to_vec());
+    let (dtype, _) = named_data_type("uint16");
+    let err = codec
+        .decode(bytes, &shape, &dtype, &fill, &options)
+        .expect_err("out-of-range coefficients must refuse to narrow");
+    assert!(
+        err.to_string().contains("does not narrow back to u16"),
+        "unexpected error: {err}"
+    );
+}
+
 /// Every `nd_lift` configuration the cross-language `codec_series` builders
 /// emit (the committed fixture matrix) must construct through the registry:
 /// the Python/TS `NdLift` config classes serialize configs the Rust codec

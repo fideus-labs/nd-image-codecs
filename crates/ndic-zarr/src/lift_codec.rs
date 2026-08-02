@@ -113,8 +113,134 @@ fn shape_usize(shape: &[NonZeroU64]) -> Result<Vec<usize>, CodecError> {
         .collect()
 }
 
-/// Reinterpret little-endian-ordered native chunk bytes as `In` elements,
-/// widen to the plane type `P`, transform, and emit the plane's bytes.
+/// Bulk conversion between an array element type and its widened coefficient
+/// plane.
+///
+/// Whole-slice operations so they compile to vectorized loops: the
+/// infallible directions are straight casts, and the only value checks that
+/// exist — `u32`/`u64` widening into the signed plane, and every narrow on
+/// decode — run as min/max reductions *before* a bulk cast, never as a
+/// branch per element.
+trait PlaneConvert<P>: Sized {
+    /// Read native-endian samples from `bytes`, widened into the plane.
+    ///
+    /// # Errors
+    /// [`CodecError`] when a sample does not fit the plane (unsigned input
+    /// at or above the plane's sign bit) — the overflow-budget refusal.
+    fn widen_bytes(bytes: &[u8]) -> Result<Vec<P>, CodecError>;
+
+    /// Narrow the plane back to samples.
+    ///
+    /// # Errors
+    /// [`CodecError`] when a coefficient is outside the element type's range
+    /// (a corrupt or mismatched chunk).
+    fn narrow(plane: &[P]) -> Result<Vec<Self>, CodecError>;
+}
+
+/// The elements the identity pairs (`i32 → i32`, `i64 → i64`) memcpy.
+macro_rules! plane_convert_identity {
+    ($t:ty) => {
+        impl PlaneConvert<$t> for $t {
+            fn widen_bytes(bytes: &[u8]) -> Result<Vec<$t>, CodecError> {
+                Ok(bytemuck::pod_collect_to_vec(bytes))
+            }
+            fn narrow(plane: &[$t]) -> Result<Vec<$t>, CodecError> {
+                Ok(plane.to_vec())
+            }
+        }
+    };
+}
+
+/// Element types strictly narrower than the plane: widening cannot fail;
+/// narrowing range-checks via one min/max scan, then bulk-casts.
+macro_rules! plane_convert_narrower {
+    ($in:ty => $p:ty) => {
+        impl PlaneConvert<$p> for $in {
+            fn widen_bytes(bytes: &[u8]) -> Result<Vec<$p>, CodecError> {
+                Ok(bytes
+                    .chunks_exact(size_of::<$in>())
+                    .map(|c| <$p>::from(bytemuck::pod_read_unaligned::<$in>(c)))
+                    .collect())
+            }
+            fn narrow(plane: &[$p]) -> Result<Vec<$in>, CodecError> {
+                const LO: $p = <$in>::MIN as $p;
+                const HI: $p = <$in>::MAX as $p;
+                let lo = plane.iter().copied().min().unwrap_or(LO);
+                let hi = plane.iter().copied().max().unwrap_or(HI);
+                if lo < LO || hi > HI {
+                    return Err(narrow_error(lo.into(), hi.into(), stringify!($in)));
+                }
+                // Range-checked above, so the truncating cast is exact.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let out = plane.iter().map(|&v| v as $in).collect();
+                Ok(out)
+            }
+        }
+    };
+}
+
+/// Unsigned element types as wide as the plane (`u32 → i32`, `u64 → i64`):
+/// both directions range-check via one min/max scan, then bulk-cast.
+macro_rules! plane_convert_unsigned_full_width {
+    ($in:ty => $p:ty) => {
+        impl PlaneConvert<$p> for $in {
+            fn widen_bytes(bytes: &[u8]) -> Result<Vec<$p>, CodecError> {
+                #[allow(clippy::cast_sign_loss)]
+                const PLANE_MAX: $in = <$p>::MAX as $in;
+                let decode = |c| bytemuck::pod_read_unaligned::<$in>(c);
+                let max = bytes
+                    .chunks_exact(size_of::<$in>())
+                    .map(decode)
+                    .max()
+                    .unwrap_or(0);
+                if max > PLANE_MAX {
+                    return Err(CodecError::Other(format!(
+                        "nd_lift overflow budget: input value {max} does not fit the widened \
+                         {} coefficient plane",
+                        stringify!($p),
+                    )));
+                }
+                // Range-checked above, so the wrapping cast is exact.
+                #[allow(clippy::cast_possible_wrap)]
+                let out = bytes
+                    .chunks_exact(size_of::<$in>())
+                    .map(|c| decode(c) as $p)
+                    .collect();
+                Ok(out)
+            }
+            fn narrow(plane: &[$p]) -> Result<Vec<$in>, CodecError> {
+                let lo = plane.iter().copied().min().unwrap_or(0);
+                if lo < 0 {
+                    let hi = plane.iter().copied().max().unwrap_or(0);
+                    return Err(narrow_error(lo.into(), hi.into(), stringify!($in)));
+                }
+                // Non-negative per the check above, so the cast is exact.
+                #[allow(clippy::cast_sign_loss)]
+                let out = plane.iter().map(|&v| v as $in).collect();
+                Ok(out)
+            }
+        }
+    };
+}
+
+plane_convert_identity!(i32);
+plane_convert_identity!(i64);
+plane_convert_narrower!(u8 => i32);
+plane_convert_narrower!(i8 => i32);
+plane_convert_narrower!(u16 => i32);
+plane_convert_narrower!(i16 => i32);
+plane_convert_unsigned_full_width!(u32 => i32);
+plane_convert_unsigned_full_width!(u64 => i64);
+
+fn narrow_error(lo: i128, hi: i128, dtype: &str) -> CodecError {
+    CodecError::Other(format!(
+        "nd_lift decode: coefficient range [{lo}, {hi}] does not narrow back to {dtype} \
+         (corrupt or mismatched chunk)"
+    ))
+}
+
+/// Reinterpret native-endian chunk bytes as `In` elements, widen to the
+/// plane type `P`, transform, and emit the plane's bytes (or the reverse).
 fn transform_bytes<In, P>(
     bytes: &[u8],
     shape: &[usize],
@@ -122,8 +248,8 @@ fn transform_bytes<In, P>(
     forward: bool,
 ) -> Result<Vec<u8>, CodecError>
 where
-    In: bytemuck::Pod + TryFrom<P> + std::fmt::Display + Copy,
-    P: ndic_lift::PlaneSample + bytemuck::Pod + TryFrom<In>,
+    In: bytemuck::Pod + PlaneConvert<P>,
+    P: ndic_lift::PlaneSample + bytemuck::Pod,
 {
     let n: usize = shape.iter().product();
     if forward {
@@ -134,16 +260,7 @@ where
                 size_of::<In>()
             )));
         }
-        let input: Vec<In> = bytemuck::pod_collect_to_vec(bytes);
-        let mut plane: Vec<P> = Vec::with_capacity(n);
-        for v in input {
-            plane.push(P::try_from(v).map_err(|_| {
-                CodecError::Other(format!(
-                    "nd_lift overflow budget: input value {v} does not fit the widened \
-                     coefficient plane"
-                ))
-            })?);
-        }
+        let mut plane = In::widen_bytes(bytes)?;
         ndic_lift::forward(&mut plane, shape, &config.transforms)
             .map_err(|err| CodecError::Other(err.to_string()))?;
         Ok(bytemuck::cast_slice(&plane).to_vec())
@@ -158,16 +275,7 @@ where
         let mut plane: Vec<P> = bytemuck::pod_collect_to_vec(bytes);
         ndic_lift::inverse(&mut plane, shape, &config.transforms)
             .map_err(|err| CodecError::Other(err.to_string()))?;
-        let mut output: Vec<In> = Vec::with_capacity(n);
-        for v in plane {
-            output.push(In::try_from(v).map_err(|_| {
-                CodecError::Other(
-                    "nd_lift decode: coefficient does not narrow back to the array data type \
-                     (corrupt or mismatched chunk)"
-                        .to_string(),
-                )
-            })?);
-        }
+        let output = In::narrow(&plane)?;
         Ok(bytemuck::cast_slice(&output).to_vec())
     }
 }

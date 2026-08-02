@@ -36,6 +36,8 @@ mod _anchors {
     pub use ndic_htj2k as _htj2k;
     #[allow(unused_imports)]
     pub use ndic_lift as _transform;
+    #[allow(unused_imports)]
+    pub use ndic_zarr as _zarr;
 }
 
 /// Output format for reports.
