@@ -16,10 +16,13 @@ if [ ! -d "$OJPH" ]; then
   git clone --depth 1 https://github.com/aous72/OpenJPH.git "$OJPH"
 fi
 if [ ! -f "$OJPH/build/src/core/libopenjph.so" ]; then
-  # Prefer Ninja when available; fall back to the default generator.
-  GEN=""
-  command -v ninja >/dev/null 2>&1 && GEN="-G Ninja"
-  cmake -S "$OJPH" -B "$OJPH/build" $GEN -DCMAKE_BUILD_TYPE=Release \
+  # Prefer Ninja for fresh build trees; an existing tree keeps whatever
+  # generator configured it (a -G override there would make cmake fail).
+  GEN=()
+  if [ ! -f "$OJPH/build/CMakeCache.txt" ] && command -v ninja >/dev/null 2>&1; then
+    GEN=(-G Ninja)
+  fi
+  cmake -S "$OJPH" -B "$OJPH/build" "${GEN[@]}" -DCMAKE_BUILD_TYPE=Release \
     -DOJPH_ENABLE_TIFF_SUPPORT=OFF
   cmake --build "$OJPH/build"
 fi
