@@ -27,6 +27,11 @@ every non-browser request with 404 rather than 403. Before calling a URL dead,
 the origin's own root is probed once — if `https://host/` is equally unhappy,
 the host is blocking us and the result is downgraded to a warning.
 
+Every destination is checked before it is requested, and again at each redirect
+hop: `http`/`https` only, and only to a globally routable address. A markdown
+link is scraped input, and this runs unattended on a runner that can reach a
+private network and a cloud metadata service; see `unroutable`.
+
 Usage:
 
     python3 scripts/ci/check-docs-links.py
@@ -39,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import ipaddress
 import pathlib
 import re
 import socket
@@ -65,7 +71,9 @@ AUTOLINK = re.compile(r"<(https?://[^<>\s]+)>")
 FENCE = re.compile(r"^\s*(```|~~~)")
 
 # Hosts whose URLs are examples of a local server, not outbound references.
-LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "[::1]")
+# Matched against `urlparse(...).hostname`, which strips the brackets from an
+# IPv6 literal — so the loopback entry is `::1`, never `[::1]`.
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
 
 # A dead target, as opposed to a server that is merely unhappy with us.
 DEAD_STATUS = (404, 410)
@@ -73,10 +81,99 @@ DEAD_STATUS = (404, 410)
 # Statuses that mean "this server dislikes HEAD", not "this URL is broken".
 RETRY_WITH_GET = (400, 403, 405, 406, 501)
 
+# Prefix on `request`'s detail string for a URL that was never sent.
+BLOCKED = "blocked: "
+
+
+class BlockedURL(Exception):
+    """A destination this script refuses to request. See `unroutable`."""
+
 
 def is_local(url: str) -> bool:
-    host = urllib.parse.urlparse(url).hostname or ""
-    return host in LOCAL_HOSTS
+    """Is this a documentation example of a local server?
+
+    A readability filter, resolving nothing: it keeps `http://localhost:8080`
+    out of a report about link rot. The security guard is `unroutable`, which
+    runs later and does resolve.
+    """
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    if host in LOCAL_HOSTS:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def resolved_addresses(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Every address `host` resolves to; empty when it does not resolve at all.
+
+    IPv4-mapped IPv6 results are unwrapped, so `::ffff:169.254.169.254` is
+    judged as the IPv4 address it actually reaches.
+    """
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except (socket.gaierror, UnicodeError, ValueError):
+        return []
+    addresses = []
+    for info in infos:
+        addr = ipaddress.ip_address(info[4][0])
+        addresses.append(getattr(addr, "ipv4_mapped", None) or addr)
+    return addresses
+
+
+def unroutable(url: str) -> str | None:
+    """Why this URL must not be requested, or `None` if it may be.
+
+    The link list is scraped from markdown, so it is input rather than
+    configuration, and this runs unattended on a runner that can see things the
+    public internet cannot. Two rules: `http`/`https` only — a redirect to
+    `file:///etc/passwd` is a request urllib would otherwise make — and only to
+    a globally routable address, which rules out the loopback interface, the
+    private ranges behind the runner, and the `169.254.169.254` cloud metadata
+    service.
+
+    A host that does not resolve is *not* blocked here; a dead hostname is what
+    this script exists to report, and `check` classifies it.
+
+    Residual gap: the name is resolved here and again by the socket layer, so a
+    server that answers the two lookups differently still gets through. Pinning
+    the connection to the address checked needs a custom connection class that
+    urllib does not expose, which is out of proportion to the input being this
+    repository's own documentation.
+    """
+    parts = urllib.parse.urlparse(url)
+    if parts.scheme not in ("http", "https"):
+        return f"scheme {parts.scheme or '(none)'} is not http/https"
+    host = parts.hostname
+    if not host:
+        return "no hostname"
+    for addr in resolved_addresses(host):
+        if not addr.is_global or addr.is_private or addr.is_reserved:
+            return f"{host} resolves to non-public address {addr}"
+    return None
+
+
+class GuardedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Apply `unroutable` to every redirect hop, not just the URL in the docs.
+
+    Checking the documented URL alone is checkable-but-useless: a public host
+    is free to answer 302 with `http://127.0.0.1:5000/` or a metadata address,
+    and urllib follows that without asking. `BlockedURL` propagates out of
+    `open` rather than becoming an `HTTPError`, so a blocked hop cannot be
+    mistaken for the 3xx that carried it — which `check` would score as `ok`.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+        reason = unroutable(newurl)
+        if reason:
+            raise BlockedURL(f"redirect to {newurl}: {reason}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# Replaces the stock redirect handler; `build_opener` drops a default whose
+# class has been subclassed here.
+OPENER = urllib.request.build_opener(GuardedRedirectHandler)
 
 
 def display(path: pathlib.Path) -> pathlib.Path:
@@ -112,14 +209,22 @@ def collect_urls(docs: pathlib.Path) -> dict[str, list[tuple[pathlib.Path, int]]
 
 
 def request(url: str, method: str, timeout: float) -> tuple[int, str]:
-    """Issue one request. Returns (status, detail); status 0 means no response."""
+    """Issue one request. Returns (status, detail); status 0 means no response.
+
+    A detail starting with `BLOCKED` means nothing was sent at all.
+    """
+    reason = unroutable(url)
+    if reason:
+        return 0, f"{BLOCKED}{reason}"
     req = urllib.request.Request(url, method=method, headers={
         "User-Agent": USER_AGENT,
         "Accept": "*/*",
     })
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with OPENER.open(req, timeout=timeout) as resp:
             return resp.status, ""
+    except BlockedURL as exc:
+        return 0, f"{BLOCKED}{exc}"
     except urllib.error.HTTPError as exc:
         return exc.code, exc.reason or ""
     except urllib.error.URLError as exc:
@@ -145,6 +250,8 @@ def check(url: str, timeout: float) -> tuple[str, int, str]:
     provisional — `confirm_dead` gets the final say.
     """
     status, detail = request(url, "HEAD", timeout)
+    if detail.startswith(BLOCKED):
+        return "warn", 0, detail  # retrying with GET would block identically
     if status in RETRY_WITH_GET or status == 0:
         get_status, get_detail = request(url, "GET", timeout)
         # Trust GET over HEAD: a server that refuses HEAD still answers GET.
