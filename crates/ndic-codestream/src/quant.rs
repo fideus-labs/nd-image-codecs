@@ -112,7 +112,7 @@ impl Quant {
         let mut b = 0u32;
         for (idx, &v) in self.values.iter().enumerate() {
             let t = if self.style == 0 {
-                u32::from(v) + u32::from(self.guard_bits) - 1
+                (u32::from(v) + u32::from(self.guard_bits)).saturating_sub(1)
             } else {
                 let num_decomps = (self.values.len() - 1) / 3;
                 let nb = num_decomps - if idx > 0 { (idx - 1) / 3 } else { 0 };
@@ -174,11 +174,31 @@ impl Quant {
                 });
             }
         };
-        Ok(Self {
+        let quant = Self {
             guard_bits,
             style,
             values,
-        })
+        };
+        if quant.values.is_empty() {
+            return Err(Error::Codestream {
+                offset,
+                message: "QCD with no subband step sizes".into(),
+            });
+        }
+        // Every accessor derives shift amounts from K_max; bound it to the
+        // 31-bit magnitude datapath here so no consumer can underflow.
+        let max_band = quant.values.len().div_ceil(3);
+        for r in 0..=u8::try_from(max_band).unwrap_or(u8::MAX) {
+            for b in u8::from(r > 0)..=if r > 0 { 3 } else { 0 } {
+                if quant.k_max(r, b) > 31 {
+                    return Err(Error::Codestream {
+                        offset,
+                        message: "QCD K_max exceeds the 31-bit magnitude datapath".into(),
+                    });
+                }
+            }
+        }
+        Ok(quant)
     }
 
     /// Irreversible step size for (`res`, `band`), including the band gain

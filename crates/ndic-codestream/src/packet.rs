@@ -207,7 +207,7 @@ pub fn parse_packet_header(
     if uses_sop && data.len() >= 6 && data[0] == 0xFF && data[1] == 0x91 {
         start = 6; // SOP marker + Lsop(4) + Nsop covered by Lsop = 4
     }
-    let mut bb = HeaderBitReader::new(&data[start..]);
+    let mut bb = HeaderBitReader::new_at(&data[start..], offset + start);
     let mut blocks = Vec::new();
 
     let mut empty_packet = true;
@@ -307,6 +307,14 @@ pub fn parse_packet_header(
                 let mut lblock = 3u32;
                 while bb.read_bit()? == 1 {
                     lblock += 1;
+                    // Segment lengths are < 2^16, so a conforming Lblock
+                    // stays tiny; cap it before it becomes a shift amount.
+                    if lblock > 24 {
+                        return Err(Error::Codestream {
+                            offset,
+                            message: "packet header Lblock exceeds the length bound".into(),
+                        });
+                    }
                 }
                 let bits = lblock + 31 - (num_phld * 3 + 1).leading_zeros();
                 let len1 = bb.read_bits(bits)?;

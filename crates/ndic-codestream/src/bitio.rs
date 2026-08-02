@@ -82,6 +82,8 @@ pub struct HeaderBitReader<'a> {
     data: &'a [u8],
     /// Next read position within `data`.
     pub pos: usize,
+    /// Offset added to `pos` in reported errors.
+    base: usize,
     tmp: u32,
     avail: u32,
     unstuff: bool,
@@ -91,9 +93,17 @@ impl<'a> HeaderBitReader<'a> {
     /// Creates a reader over `data`.
     #[must_use]
     pub fn new(data: &'a [u8]) -> Self {
+        Self::new_at(data, 0)
+    }
+
+    /// Creates a reader whose errors report `base + position`, so callers
+    /// can surface offsets in their own coordinate space.
+    #[must_use]
+    pub fn new_at(data: &'a [u8], base: usize) -> Self {
         Self {
             data,
             pos: 0,
+            base,
             tmp: 0,
             avail: 0,
             unstuff: false,
@@ -103,7 +113,7 @@ impl<'a> HeaderBitReader<'a> {
     fn fill(&mut self) -> Result<()> {
         let Some(&t) = self.data.get(self.pos) else {
             return Err(Error::Codestream {
-                offset: self.pos,
+                offset: self.base + self.pos,
                 message: "packet header truncated".into(),
             });
         };

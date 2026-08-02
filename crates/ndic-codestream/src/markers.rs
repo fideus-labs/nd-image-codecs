@@ -47,11 +47,18 @@ fn err(offset: usize, message: &str) -> Error {
 }
 
 /// Appends a marker with its 16-bit length (payload length + 2).
-pub fn push_segment(out: &mut Vec<u8>, marker: u16, payload: &[u8]) {
+///
+/// # Errors
+/// [`Error::InvalidArgument`] when the payload exceeds the 16-bit segment
+/// length bound (65 533 bytes).
+pub fn push_segment(out: &mut Vec<u8>, marker: u16, payload: &[u8]) -> Result<()> {
+    let len = u16::try_from(payload.len() + 2).map_err(|_| Error::InvalidArgument {
+        message: "marker segment payload exceeds 65533 bytes".into(),
+    })?;
     out.extend_from_slice(&marker.to_be_bytes());
-    #[allow(clippy::cast_possible_truncation)] // payloads are < 65534 by construction
-    out.extend_from_slice(&((payload.len() as u16) + 2).to_be_bytes());
+    out.extend_from_slice(&len.to_be_bytes());
     out.extend_from_slice(payload);
+    Ok(())
 }
 
 /// One component's signal properties in `SIZ`.
@@ -136,14 +143,18 @@ impl Siz {
         let mut comps = Vec::with_capacity(csiz);
         for c in 0..csiz {
             let ssiz = p[36 + 3 * c];
+            let depth = (ssiz & 0x7F) + 1;
+            if !(1..=38).contains(&depth) {
+                return Err(err(offset, "SIZ component depth outside 1..=38"));
+            }
             comps.push(ComponentSiz {
-                depth: (ssiz & 0x7F) + 1,
+                depth,
                 signed: ssiz & 0x80 != 0,
                 xr: p[37 + 3 * c],
                 yr: p[38 + 3 * c],
             });
         }
-        Ok(Self {
+        let siz = Self {
             rsiz: u16::from_be_bytes([p[0], p[1]]),
             xsiz: rd32(2),
             ysiz: rd32(6),
@@ -154,7 +165,20 @@ impl Siz {
             xtosiz: rd32(26),
             ytosiz: rd32(30),
             comps,
-        })
+        };
+        // Geometry sanity (T.800 A.5.1): a non-empty canvas, non-zero tiles,
+        // and a tile origin inside the canvas — `tile_grid` divides by the
+        // tile size and subtracts the origin, so these must hold.
+        if siz.xtsiz == 0 || siz.ytsiz == 0 {
+            return Err(err(offset, "SIZ with a zero tile dimension"));
+        }
+        if siz.xsiz <= siz.xosiz || siz.ysiz <= siz.yosiz {
+            return Err(err(offset, "SIZ canvas origin at or past its size"));
+        }
+        if siz.xtosiz > siz.xosiz || siz.ytosiz > siz.yosiz {
+            return Err(err(offset, "SIZ tile origin past the canvas origin"));
+        }
+        Ok(siz)
     }
 
     /// Number of tiles horizontally and vertically.
@@ -251,14 +275,28 @@ impl Cod {
         }
         let scod = p[0];
         let decomps = p[5];
+        if decomps > 32 {
+            return Err(err(offset, "COD with more than 32 decomposition levels"));
+        }
+        // Code-block exponents are `value + 2` with sides 4..=1024 and area
+        // <= 4096 (T.800 B.7); consumers shift by them unguarded.
+        if p[6] > 8 || p[7] > 8 || p[6] + p[7] > 8 {
+            return Err(err(offset, "COD code-block exponents out of range"));
+        }
         let mut precincts = Vec::new();
         if scod & 1 != 0 {
             let need = usize::from(decomps) + 1;
             if p.len() < 10 + need {
                 return Err(err(offset, "COD precinct list truncated"));
             }
-            for i in 0..need {
-                precincts.push((p[10 + i] & 0xF, p[10 + i] >> 4));
+            for (i, &b) in p[10..10 + need].iter().enumerate() {
+                let pp = (b & 0xF, b >> 4);
+                // T.800 forbids zero precinct exponents above resolution 0;
+                // band-coordinate sizes halve them, so 0 would underflow.
+                if i > 0 && (pp.0 == 0 || pp.1 == 0) {
+                    return Err(err(offset, "COD precinct exponent 0 above resolution 0"));
+                }
+                precincts.push(pp);
             }
         }
         Ok(Self {

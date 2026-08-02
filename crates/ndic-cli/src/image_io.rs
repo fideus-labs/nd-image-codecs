@@ -64,7 +64,7 @@ pub fn save(path: &Path, image: &Image) -> anyhow::Result<()> {
     let bytes = match format_of(path)? {
         Format::Pnm => save_pnm(image)?,
         Format::Png => save_png(image)?,
-        Format::Raw => save_raw(image),
+        Format::Raw => save_raw(image)?,
     };
     std::fs::write(path, bytes).with_context(|| format!("writing {}", path.display()))
 }
@@ -90,7 +90,10 @@ fn load_pnm(data: &[u8]) -> anyhow::Result<Image> {
         }
         fields.push(std::str::from_utf8(&data[start..pos])?.to_owned());
     }
-    pos += 1; // single whitespace after maxval
+    if fields.len() < 4 {
+        bail!("truncated PNM header (need magic, width, height, maxval)");
+    }
+    pos += 1; // exactly one whitespace byte after maxval (netpbm raw format)
     let ncomp = match fields.first().map(String::as_str) {
         Some("P5") => 1usize,
         Some("P6") => 3,
@@ -235,8 +238,12 @@ fn save_png(image: &Image) -> anyhow::Result<Vec<u8>> {
 }
 
 fn load_raw(data: &[u8], width: usize, height: usize, dtype: SampleType) -> anyhow::Result<Image> {
-    let n = width * height;
-    let need = n * dtype.size_bytes();
+    let n = width
+        .checked_mul(height)
+        .context("raw dimensions overflow")?;
+    let need = n
+        .checked_mul(dtype.size_bytes())
+        .context("raw size overflows")?;
     if data.len() < need {
         bail!("raw file holds {} bytes, need {need}", data.len());
     }
@@ -266,18 +273,25 @@ fn load_raw(data: &[u8], width: usize, height: usize, dtype: SampleType) -> anyh
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // masked casts
-fn save_raw(image: &Image) -> Vec<u8> {
+fn save_raw(image: &Image) -> anyhow::Result<Vec<u8>> {
+    // Raw output is single-component only: `load_raw` reads exactly one
+    // plane, so a multi-component dump would not round-trip. Use PNG or
+    // PPM for colour images.
+    if image.comps.len() != 1 {
+        bail!(
+            "raw output supports 1 component, image has {} (use png/ppm)",
+            image.comps.len()
+        );
+    }
     let mut out = Vec::new();
-    for comp in &image.comps {
-        for &v in comp {
-            match image.dtype {
-                SampleType::U8 | SampleType::I8 => out.push((v & 0xFF) as u8),
-                SampleType::U16 | SampleType::I16 => {
-                    out.extend_from_slice(&((v & 0xFFFF) as u16).to_le_bytes());
-                }
-                _ => out.extend_from_slice(&v.to_le_bytes()),
+    for &v in &image.comps[0] {
+        match image.dtype {
+            SampleType::U8 | SampleType::I8 => out.push((v & 0xFF) as u8),
+            SampleType::U16 | SampleType::I16 => {
+                out.extend_from_slice(&((v & 0xFFFF) as u16).to_le_bytes());
             }
+            _ => out.extend_from_slice(&v.to_le_bytes()),
         }
     }
-    out
+    Ok(out)
 }

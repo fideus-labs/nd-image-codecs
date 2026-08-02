@@ -23,7 +23,10 @@ if [ "${1:-}" = "--with-tools" ]; then
     git clone --depth 1 https://github.com/aous72/OpenJPH.git "$OJPH"
   fi
   if [ ! -f "$OJPH/build/src/apps/ojph_expand/ojph_expand" ]; then
-    cmake -S "$OJPH" -B "$OJPH/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    # Prefer Ninja when available; fall back to the default generator.
+    GEN=""
+    command -v ninja >/dev/null 2>&1 && GEN="-G Ninja"
+    cmake -S "$OJPH" -B "$OJPH/build" $GEN -DCMAKE_BUILD_TYPE=Release \
       -DOJPH_ENABLE_TIFF_SUPPORT=OFF
     cmake --build "$OJPH/build"
   fi

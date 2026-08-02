@@ -165,7 +165,10 @@ impl<'a> Codestream<'a> {
             if lsot != 10 {
                 return Err(err(pos, "SOT with unexpected length"));
             }
-            let sot = Sot::parse(&data[pos + 4..pos + 12], pos)?;
+            let sot_payload = data
+                .get(pos + 4..pos + 12)
+                .ok_or_else(|| err(pos, "truncated SOT segment"))?;
+            let sot = Sot::parse(sot_payload, pos)?;
             pos += 12;
 
             // Tile-part header markers until SOD.
@@ -425,6 +428,8 @@ impl<'a> Codestream<'a> {
             let (ecbw, ecbh) = effective_cb(cbw_n, cbh_n, ppx, ppy, res);
             // Per band: the precinct's aligned code-block sub-grid
             // (origin bx0/by0 and extent nx/ny in the band's global grid).
+            // Cod::parse rejects zero exponents above resolution 0, so
+            // the saturation here is belt-and-braces only.
             let shift = u8::from(res > 0);
             let sub_grids: Vec<(usize, usize, usize, usize)> = bands
                 .iter()
@@ -432,8 +437,8 @@ impl<'a> Codestream<'a> {
                     precinct_block_range(
                         b.w,
                         b.h,
-                        ppx - shift,
-                        ppy - shift,
+                        ppx.saturating_sub(shift),
+                        ppy.saturating_sub(shift),
                         ppx_i,
                         ppy_i,
                         ecbw,

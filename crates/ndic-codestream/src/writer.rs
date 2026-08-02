@@ -172,7 +172,35 @@ pub fn encode_image(
     // ---- tile-part ----------------------------------------------------
     let mut plt = Vec::new();
     if params.emit_tlm_plt {
-        push_segment(&mut plt, markers::PLT, &plt_payload(0, &packet_lengths));
+        // A PLT payload is bounded by the 16-bit segment length; split the
+        // packet list across as many PLT segments (Zplt 0, 1, ...) as needed.
+        let mut zplt = 0u8;
+        let mut start = 0usize;
+        loop {
+            let mut end = start;
+            let mut payload_len = 1usize; // the Zplt byte
+            while end < packet_lengths.len() {
+                let bits = 32 - (packet_lengths[end] | 1).leading_zeros() as usize;
+                let vlen = bits.div_ceil(7);
+                if payload_len + vlen > 65_000 {
+                    break;
+                }
+                payload_len += vlen;
+                end += 1;
+            }
+            push_segment(
+                &mut plt,
+                markers::PLT,
+                &plt_payload(zplt, &packet_lengths[start..end]),
+            )?;
+            start = end;
+            if start >= packet_lengths.len() {
+                break;
+            }
+            zplt = zplt.checked_add(1).ok_or_else(|| Error::InvalidArgument {
+                message: "more than 256 PLT segments required".into(),
+            })?;
+        }
     }
     let psot = 12 + plt.len() + 2 + body.len(); // SOT seg + PLT + SOD + body
     let mut tile_part = Vec::with_capacity(psot);
@@ -187,7 +215,7 @@ pub fn encode_image(
             tnsot: 1,
         }
         .to_bytes(),
-    );
+    )?;
     tile_part.extend_from_slice(&plt);
     tile_part.extend_from_slice(&markers::SOD.to_be_bytes());
     tile_part.extend_from_slice(&body);
@@ -221,7 +249,7 @@ pub fn encode_image(
             })
             .collect(),
     };
-    push_segment(&mut out, markers::SIZ, &siz.to_bytes());
+    push_segment(&mut out, markers::SIZ, &siz.to_bytes())?;
     #[allow(clippy::cast_possible_truncation)] // cb sides are 4..=1024
     let (cbw_exp, cbh_exp) = (
         (cbw.trailing_zeros() - 2) as u8,
@@ -244,25 +272,25 @@ pub fn encode_image(
         wavelet: 1,
         precincts: Vec::new(),
     };
-    push_segment(&mut out, markers::COD, &cod.to_bytes());
-    push_segment(&mut out, markers::QCD, &quant.to_bytes());
+    push_segment(&mut out, markers::COD, &cod.to_bytes())?;
+    push_segment(&mut out, markers::QCD, &quant.to_bytes())?;
     push_segment(
         &mut out,
         markers::CAP,
         &Cap::new(false, quant.magb()).to_bytes(),
-    );
+    )?;
     push_segment(
         &mut out,
         markers::COM,
         &com_payload("nd-image-codecs ndic-codestream"),
-    );
+    )?;
     if params.emit_tlm_plt {
         #[allow(clippy::cast_possible_truncation)]
         push_segment(
             &mut out,
             markers::TLM,
             &tlm_payload(&[tile_part.len() as u32]),
-        );
+        )?;
     }
     out.extend_from_slice(&tile_part);
     out.extend_from_slice(&markers::EOC.to_be_bytes());
