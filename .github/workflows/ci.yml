@@ -50,10 +50,40 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check -p ndic-zarr -p ndic-core --target wasm32-unknown-unknown
 
+  # Two documentation builds: rustdoc for the API, mystmd for the prose site.
+  # The MyST half runs `npm run check` (docs/package.json) — the same script
+  # .readthedocs.yaml runs to deploy the site, so a green `docs` job means the
+  # Read the Docs build will succeed too. Keep the Node version here in step
+  # with `build.tools.nodejs` in .readthedocs.yaml.
   docs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
+      # MyST first: the site builds in well under a minute, so putting it ahead
+      # of the Rust toolchain install, the cache restore, and rustdoc means a
+      # broken link fails the job in about a tenth of the time.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: npm ci
+        working-directory: docs
+      - run: npm run check
+        working-directory: docs
+
+      # Lets a reviewer read the rendered site straight from the pull request
+      # instead of waiting on the Read the Docs preview. `if-no-files-found:
+      # error` is deliberate: it turns a change in mystmd's output directory
+      # into a loud failure rather than an empty artifact nobody notices.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-site
+          path: docs/_build/html
+          retention-days: 7
+          if-no-files-found: error
+
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --workspace --no-deps
