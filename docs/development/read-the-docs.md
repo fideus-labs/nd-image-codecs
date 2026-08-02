@@ -217,7 +217,8 @@ environment difference, not a content problem**. Check in this order:
 | --- | --- |
 | `npm ci` fails | `docs/package-lock.json` out of sync with `docs/package.json`; commit the regenerated lockfile |
 | `myst: not found` | The command did not run inside `docs/` — an entry lost its `cd` |
-| `Premature close` / template fetch error | Transient: mystmd downloads the `book-theme` template from GitHub on a cold build. Re-run the build |
+| `Premature close` / template fetch error | Transient: every build is a cold build, so mystmd downloads the pinned `book-theme` archive from GitHub each time. Re-run the build |
+| `404` fetching the template archive | The `site.template` sha in `docs/myst.yml` no longer exists upstream (a force-push or a deleted repository). Repin to a live release commit — see [ADR 001](./decisions/adr-001-documentation-toolchain.md) Decision 7 |
 | Strict-mode warnings | A real content problem. Reproduce locally with `cd docs && npm run check` — see [development commands](./commands.md) |
 | Site renders unstyled, assets 404 | `BASE_URL` was not exported, or was exported in a different `build.commands` entry than the build |
 

@@ -102,7 +102,21 @@ project:
         - file: development/roadmap/phase-6-validation-and-docs.md
 
 site:
-  template: book-theme
+  # Pinned to the commit upstream published as book-theme v1.3.1, not the bare
+  # name `book-theme`. That name resolves through api.mystmd.org to a `.git`
+  # download link, which mystmd turns into `archive/refs/heads/main.zip` — so a
+  # cold build renders this site with whatever the theme's `main` branch holds
+  # that morning. The theme is not decoration: it supplies the JavaScript,
+  # HTML, and CSS of every published page, which makes an unpinned `main` both
+  # a reproducibility hole and third-party code entering the site unreviewed.
+  # `mystmd` itself is pinned in package.json; this closes the other half.
+  #
+  # mystmd passes any `.zip` URL straight to the downloader (a `.git` one it
+  # rewrites to the branch archive), so a commit archive is the immutable form.
+  # Upstream mirrors jupyter-book/myst-theme releases into
+  # https://github.com/myst-templates/book-theme; to upgrade, swap the sha for
+  # the next release commit and rerun `npm run check`.
+  template: https://github.com/myst-templates/book-theme/archive/45706bcb9ac02b6713270785e3fc22eda348ed3b.zip
   # Header navigation: the four section landing pages. The sidebar already
   # lists every page, so this is a shortcut to the top of each section, not a
   # second table of contents.

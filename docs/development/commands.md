@@ -67,7 +67,11 @@ See [benchmarking](./benchmarking.md) for record layout, baselines, and the gate
 ## Documentation site
 
 The [mystmd](https://mystmd.org) site is a self-contained npm package under
-`docs/`, pinned by `docs/package-lock.json`. Run these from `docs/`.
+`docs/`, pinned by `docs/package-lock.json`. The `book-theme` that renders it is
+pinned separately, as a commit archive URL in `site.template` — mystmd fetches
+templates outside npm, so the lockfile does not cover it
+([ADR 001](./decisions/adr-001-documentation-toolchain.md) Decision 7). Run
+these from `docs/`.
 
 | Command | Purpose |
 | --- | --- |

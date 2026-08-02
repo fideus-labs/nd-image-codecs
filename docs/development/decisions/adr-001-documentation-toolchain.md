@@ -194,6 +194,39 @@ cost — a stale-but-readable label is a smaller failure than an invisible link,
 and page titles here are stable. The rule is recorded in `AGENTS.md` and
 [development commands](../commands.md).
 
+## Decision 7 — the site theme pinned to a commit, not to its `main` branch
+
+**Decision.** `site.template` in [`docs/myst.yml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/docs/myst.yml)
+is the URL of an immutable commit archive —
+`https://github.com/myst-templates/book-theme/archive/45706bc….zip`, the commit
+upstream published as book-theme v1.3.1 — rather than the bare name
+`book-theme`.
+
+**Why.** Decision 4 pins mystmd and leaves the larger half of the build
+unpinned. The bare name resolves through `api.mystmd.org` to a `.git` download
+link, which mystmd rewrites to `archive/refs/heads/main.zip`: a cold build takes
+whatever the theme's `main` branch holds that morning. The theme is not a colour
+scheme — it is the React application, the JavaScript, and the CSS of every
+published page — so an unpinned `main` is both a build that cannot be
+reproduced and third-party code reaching readers of this site without passing
+through a pull request here. Neither CI nor Read the Docs keeps a template
+cache, so every build is a cold build.
+
+mystmd passes any URL ending in `.zip` to the downloader verbatim, which is what
+makes a commit archive expressible at all; there is no version field for site
+templates, and vendoring is not a real option — the unpacked template is 134 MB
+once its own `npm ci` has run.
+
+**Consequences.** Theme fixes and improvements now arrive only when someone
+bumps the sha, in a pull request where the strict build proves the bump is
+clean — the same trade Decision 4 makes for mystmd itself. Upstream mirrors
+[jupyter-book/myst-theme](https://github.com/jupyter-book/myst-theme) releases
+into [myst-templates/book-theme](https://github.com/myst-templates/book-theme)
+one commit per release, so "the next release" is an unambiguous sha to move to.
+The pin also renames the download directory: mystmd keys a URL template by the
+SHA-256 of the URL, so it lands in `_build/templates/site/<hash>/` instead of
+`_build/templates/site/myst/book-theme/`. Both are ignored.
+
 ## Not in scope / follow-on
 
 Two things a reader might reasonably expect from a documentation site are
