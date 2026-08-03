@@ -235,14 +235,25 @@ impl ChunkHeader {
     }
 
     /// Serializes `[header | index]`.
+    ///
+    /// # Panics
+    /// When `dims` exceeds [`MAX_NDIM`] dimensions — such a header could
+    /// never [`ChunkHeader::parse`] back. Writers validate the chunk shape
+    /// before constructing the header (`htj2k`'s `encode_chunk` refuses
+    /// over-dimensioned chunks with an error).
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
+        assert!(
+            (2..=MAX_NDIM).contains(&self.dims.len()),
+            "chunk header ndim {} outside 2..={MAX_NDIM}",
+            self.dims.len()
+        );
         let mut out = Vec::with_capacity(self.header_len());
         out.extend_from_slice(&MAGIC);
         out.push(VERSION);
         out.push(if self.planes.is_some() { FLAG_INDEX } else { 0 });
         out.push(self.xy_levels);
-        #[allow(clippy::cast_possible_truncation)] // ndim <= MAX_NDIM
+        #[allow(clippy::cast_possible_truncation)] // asserted <= MAX_NDIM
         out.push(self.dims.len() as u8);
         for &d in &self.dims {
             out.extend_from_slice(&d.to_le_bytes());

@@ -390,6 +390,10 @@ impl RangeIndex {
         let levels = cs.cod.decomps;
         let max_res = level.min(levels);
         let spans = cs.packet_index()?;
+        // `rect` arrives from CLI arguments: sums may exceed u32, so the
+        // inclusive end coordinates are computed in u64.
+        let x_end = u64::from(rx) + u64::from(rw) - 1;
+        let y_end = u64::from(ry) + u64::from(rh) - 1;
 
         // Main header + every tile-part header.
         let mut ranges: Vec<ByteRange> = ByteRange::of(0, cs.first_tile_offset as u64)
@@ -417,8 +421,10 @@ impl RangeIndex {
             // rect mapped into this resolution (floor start, ceil end).
             let x0 = (rx as usize >> shift).min(res_w);
             let y0 = (ry as usize >> shift).min(res_h);
-            let x1 = ((rx + rw - 1) as usize >> shift).min(res_w.saturating_sub(1));
-            let y1 = ((ry + rh - 1) as usize >> shift).min(res_h.saturating_sub(1));
+            #[allow(clippy::cast_possible_truncation)] // clamped to plane dims
+            let x1 = ((x_end >> shift) as usize).min(res_w.saturating_sub(1));
+            #[allow(clippy::cast_possible_truncation)] // clamped to plane dims
+            let y1 = ((y_end >> shift) as usize).min(res_h.saturating_sub(1));
             let (px, py) = span.precinct;
             let pw = 1usize << pex.min(31);
             let ph = 1usize << pey.min(31);
@@ -428,14 +434,14 @@ impl RangeIndex {
             }
         }
 
-        let shift = usize::from(levels - max_res);
-        let x0 = rx as usize >> shift;
-        let y0 = ry as usize >> shift;
-        let x1 = ((rx + rw - 1) as usize >> shift) + 1;
-        let y1 = ((ry + rh - 1) as usize >> shift) + 1;
+        let shift = levels - max_res;
+        let x0 = u64::from(rx) >> shift;
+        let y0 = u64::from(ry) >> shift;
+        let x1 = (x_end >> shift) + 1;
+        let y1 = (y_end >> shift) + 1;
         Ok(plan(
             "region",
-            alloc::vec![(y1 - y0) as u64, (x1 - x0) as u64],
+            alloc::vec![y1 - y0, x1 - x0],
             max_res,
             Vec::new(),
             ranges,

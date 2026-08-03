@@ -27,10 +27,12 @@ fn run(args: &[&str]) -> String {
     String::from_utf8(out.stdout).expect("utf-8 stdout")
 }
 
-/// A gradient `.jph` fixture (128×96, 3 levels).
-fn make_jph() -> PathBuf {
-    let src = tmp("grad.pgm");
-    let jph = tmp("grad.jph");
+/// A gradient `.jph` fixture (128×96, 3 levels). `tag` keeps parallel
+/// tests off each other's files — the harness runs tests concurrently and
+/// `std::fs::write` truncates before writing.
+fn make_jph(tag: &str) -> PathBuf {
+    let src = tmp(&format!("grad-{tag}.pgm"));
+    let jph = tmp(&format!("grad-{tag}.jph"));
     let (w, h) = (128usize, 96usize);
     let mut pgm = format!("P5\n{w} {h}\n255\n").into_bytes();
     pgm.extend((0..w * h).map(|i| {
@@ -87,7 +89,7 @@ fn make_chunk() -> (PathBuf, String) {
 
 #[test]
 fn index_plans_and_curl_prefix_expand_partial() {
-    let jph = make_jph();
+    let jph = make_jph("curl");
     let file_len = std::fs::metadata(&jph).unwrap().len();
 
     let plan: serde_json::Value = serde_json::from_str(&run(&[
@@ -153,7 +155,7 @@ fn index_plans_and_curl_prefix_expand_partial() {
 
 #[test]
 fn thumbnail_decodes_locally_and_region_plans_emit() {
-    let jph = make_jph();
+    let jph = make_jph("local");
     let out = tmp("thumb.png");
     let stdout = run(&[
         "thumbnail",
@@ -294,7 +296,7 @@ fn serve_ranges(body: Vec<u8>) -> (String, std::thread::JoinHandle<()>) {
 
 #[test]
 fn thumbnail_over_http_range_requests() {
-    let jph = make_jph();
+    let jph = make_jph("http");
     let body = std::fs::read(&jph).unwrap();
     let total = body.len() as u64;
     let (url, _server) = serve_ranges(body);

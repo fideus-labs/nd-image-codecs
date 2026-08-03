@@ -188,10 +188,13 @@ fn bench_decode(cfg: &BenchConfig) -> BenchOutput {
         assert_eq!(decoded.len(), input.len());
         std::hint::black_box(&decoded);
     });
+    // Compression-direction bytes (matching the Python lanes and
+    // `bench_encode`), so the ratio gate treats better compression as an
+    // improvement on this record too — see `ht_decode` in `htj2k.rs`.
     BenchOutput {
         raw_ns,
-        bytes_in: Some(chunk.len() as u64),
-        bytes_out: Some(input.len() as u64),
+        bytes_in: Some(input.len() as u64),
+        bytes_out: Some(chunk.len() as u64),
     }
 }
 

@@ -87,10 +87,15 @@ fn ht_decode(config: &BenchConfig) -> BenchOutput {
         let dec = cs.decode().expect("decode");
         assert_eq!(dec.comps[0].len(), w * h);
     });
+    // Byte fields are compression-direction on every record (uncompressed
+    // in, compressed out — the Python lanes' convention), whatever the
+    // timed direction: `ratio()` is then always the compression ratio, so
+    // the ratio gate reads a *smaller* ratio as an improvement on decode
+    // records too instead of flagging it as a regression.
     BenchOutput {
         raw_ns,
-        bytes_in: Some(stream.len() as u64),
-        bytes_out: Some((w * h * 2) as u64),
+        bytes_in: Some((w * h * 2) as u64),
+        bytes_out: Some(stream.len() as u64),
     }
 }
 

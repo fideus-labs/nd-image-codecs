@@ -177,25 +177,35 @@ impl<'a> Codestream<'a> {
         // ---- tile-parts ------------------------------------------------
         let mut tile_parts: Vec<TilePart> = Vec::new();
         let total_len;
+        // The declared full-stream extent from the tile-parts on hand:
+        // `Psot`-carrying tile-parts end at a known byte and the last one is
+        // followed by `EOC`; an open-ended (`Psot == 0`) tile-part in a
+        // prefix declares nothing beyond the bytes present, so its extent
+        // is just what we hold (no phantom `EOC` accounting).
+        let declared_len = |tile_parts: &[TilePart]| {
+            tile_parts
+                .iter()
+                .map(|tp| {
+                    if tp.sot.psot == 0 {
+                        tp.body.end
+                    } else {
+                        tp.body.end + 2
+                    }
+                })
+                .max()
+                .unwrap_or(data.len())
+        };
         loop {
             if !strict && pos >= data.len() {
                 // The prefix ends inside (or exactly at the end of) a packet
                 // body; the declared extent still tells the full stream size.
-                total_len = tile_parts
-                    .iter()
-                    .map(|tp: &TilePart| tp.body.end + 2)
-                    .max()
-                    .unwrap_or(data.len());
+                total_len = declared_len(&tile_parts);
                 break;
             }
             let marker = match rd16(pos) {
                 Ok(marker) => marker,
                 Err(_) if !strict => {
-                    total_len = tile_parts
-                        .iter()
-                        .map(|tp: &TilePart| tp.body.end + 2)
-                        .max()
-                        .unwrap_or(data.len());
+                    total_len = declared_len(&tile_parts);
                     break;
                 }
                 Err(e) => return Err(e),

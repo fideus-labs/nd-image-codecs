@@ -110,8 +110,13 @@ fn invalid(message: String) -> Error {
     Error::InvalidArgument { message }
 }
 
-/// Chunk geometry checks shared by encode and decode: at least 2D, plane
-/// dims fit `u32`, element count fits the byte buffer.
+/// Chunk geometry checks shared by encode and decode: 2..=32 dimensions,
+/// all extents non-zero, element count fits the byte buffer.
+///
+/// The bindings (Python, WASM) pass shapes straight from the caller, so
+/// nothing upstream guarantees these — a zero extent would make the
+/// byte-length check vacuous while `num_planes` stays an unchecked product,
+/// and an over-dimensioned shape could not serialize a parseable header.
 fn plane_geometry(
     shape: &[usize],
     dtype: SampleType,
@@ -121,6 +126,18 @@ fn plane_geometry(
         return Err(invalid(format!(
             "htj2k needs a chunk with trailing 2D (y, x) planes; got {} dimension(s)",
             shape.len()
+        )));
+    }
+    if shape.len() > ndic_codestream::container::MAX_NDIM {
+        return Err(invalid(format!(
+            "htj2k chunks carry at most {} dimensions; got {}",
+            ndic_codestream::container::MAX_NDIM,
+            shape.len()
+        )));
+    }
+    if let Some(pos) = shape.iter().position(|&d| d == 0) {
+        return Err(invalid(format!(
+            "htj2k needs non-zero chunk extents; dimension {pos} of {shape:?} is 0"
         )));
     }
     let height = shape[shape.len() - 2];

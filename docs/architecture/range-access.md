@@ -97,11 +97,14 @@ ranges per plan.
 
 **Guidance:** stay with maximal precincts for chunked Zarr data — chunk
 planes (≤ 1024²) never accumulate enough high-resolution bytes for
-precincts to pay for their overhead. Reach for `EncodeParams::precincts`
-(256×256 at the finest two resolutions) only for monolithic planes ≳ 4k²
-served for deep-zoom viewports; the writer's precinct support lands with a
-later phase, and `RangeIndex::region` is already precinct-aware on the
-read side (the reader decodes explicit-precinct streams today).
+precincts to pay for their overhead, and maximal precincts are all the
+writer emits today (`EncodeParams::precincts` must be empty; writer-side
+precinct support lands with a later phase). The read side is already
+precinct-aware — the reader decodes explicit-precinct streams and
+`RangeIndex::region` plans tighten automatically over them — so once the
+writer lands, explicit precincts (256×256 at the finest two resolutions)
+will be the right choice for monolithic planes ≳ 4k² served for deep-zoom
+viewports.
 
 ## nd-zfp random access
 

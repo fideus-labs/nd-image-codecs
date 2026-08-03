@@ -422,7 +422,7 @@ pub fn thumbnail(args: &ThumbnailArgs) -> anyhow::Result<()> {
 
     // Decode each planned plane's prefix.
     let mut planes = Vec::with_capacity(plan.planes.len());
-    let mut siz = None;
+    let mut siz: Option<(u8, bool)> = None;
     for &p in &plan.planes {
         let entry = probed.index.plane_entry(p).context("plane in plan")?;
         let prefix_len =
@@ -430,7 +430,14 @@ pub fn thumbnail(args: &ThumbnailArgs) -> anyhow::Result<()> {
         let bytes = fetched.slice(shift + entry.offset, prefix_len)?;
         let cs = Codestream::parse_prefix(bytes)?;
         let decoded = cs.decode_to_resolution(plan.max_res)?;
-        siz.get_or_insert((cs.siz.comps[0].depth, cs.siz.comps[0].signed));
+        // Each plane declares its own `Ssiz` depth (the encoder sizes it
+        // from that plane's actual range), so the volume element must hold
+        // the widest of them, not plane 0's.
+        let (depth, signed) = (cs.siz.comps[0].depth, cs.siz.comps[0].signed);
+        siz = Some(match siz {
+            Some((d, s)) => (d.max(depth), s || signed),
+            None => (depth, signed),
+        });
         planes.push(decoded);
     }
     let (depth, signed) = siz.context("plan selected no planes")?;

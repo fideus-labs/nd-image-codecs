@@ -59,7 +59,12 @@ fn htj2k_encode<'py>(
         progression: progression.to_owned(),
         index,
     };
-    let out = encode_chunk(chunk, &shape, sample_type(dtype)?, &config)
+    let sample_type = sample_type(dtype)?;
+    // Release the GIL for the CPU-bound encode: the zarr codec calls this
+    // via `asyncio.to_thread`, and holding the GIL there would serialize
+    // every worker thread.
+    let out = py
+        .allow_threads(|| encode_chunk(chunk, &shape, sample_type, &config))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(PyBytes::new(py, &out))
 }
@@ -74,7 +79,10 @@ fn htj2k_decode<'py>(
     shape: Vec<usize>,
     dtype: &str,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let out = decode_chunk(chunk, &shape, sample_type(dtype)?)
+    let sample_type = sample_type(dtype)?;
+    // See `htj2k_encode`: GIL released for the CPU-bound decode.
+    let out = py
+        .allow_threads(|| decode_chunk(chunk, &shape, sample_type))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(PyBytes::new(py, &out))
 }

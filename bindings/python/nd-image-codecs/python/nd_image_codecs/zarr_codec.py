@@ -22,6 +22,7 @@ when the package was installed without it.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Self
 
@@ -203,7 +204,11 @@ class Htj2kCodec(ArrayBytesCodec):
 
     async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
         data = np.ascontiguousarray(chunk_array.as_numpy_array())
-        blob = _native().htj2k_encode(
+        # Off the event loop, like zarr's own Zstd/Blosc codecs: the native
+        # call is CPU-bound (and releases the GIL), so `to_thread` keeps
+        # chunk pipelining and other async I/O running during the encode.
+        blob = await asyncio.to_thread(
+            _native().htj2k_encode,
             data.tobytes(),
             list(data.shape),
             data.dtype.name,
@@ -216,8 +221,11 @@ class Htj2kCodec(ArrayBytesCodec):
 
     async def _decode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
         dtype = chunk_spec.dtype.to_native_dtype()
-        raw = _native().htj2k_decode(
-            chunk_bytes.to_bytes(), list(chunk_spec.shape), dtype.name
+        raw = await asyncio.to_thread(
+            _native().htj2k_decode,
+            chunk_bytes.to_bytes(),
+            list(chunk_spec.shape),
+            dtype.name,
         )
         data = np.frombuffer(raw, dtype=dtype).reshape(chunk_spec.shape)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(data)

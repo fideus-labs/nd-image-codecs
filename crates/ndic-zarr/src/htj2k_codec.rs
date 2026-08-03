@@ -329,6 +329,22 @@ impl ArrayPartialDecoderTraits for Htj2kPartialDecoder {
         let Some(header) = self.fetch_header(options)? else {
             return Ok(self.fill_bytes(indexer.len()));
         };
+        // A stored chunk declaring a different shape than the array
+        // metadata must error here exactly as `decode_chunk` does on the
+        // full-decode path — the leading-dimension strides below mix
+        // `self.shape` with the header's plane dims.
+        if header.dims.len() != self.shape.len()
+            || header
+                .dims
+                .iter()
+                .zip(&self.shape)
+                .any(|(&d, &s)| d as usize != s)
+        {
+            return Err(CodecError::Other(format!(
+                "htj2k partial decode: chunk header declares shape {:?}, array expects {:?}",
+                header.dims, self.shape
+            )));
+        }
         let Some(entries) = header.planes.as_ref() else {
             return self.decode_all(indexer, options);
         };

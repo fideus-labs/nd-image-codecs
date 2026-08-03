@@ -337,8 +337,15 @@ fn stored_chunks_serve_thumbnail_plans() {
                 .copied()
         })
         .collect();
-    // Thumbnail ranges are the contiguous chunk prefix; the plane starts
-    // right after the index.
+    // Slicing `fetched` below assumes the plan is one contiguous prefix
+    // from byte 0 (the plane starts right after the index) — assert that,
+    // so a future multi-range plan fails here instead of decoding a
+    // discontiguous concatenation.
+    assert_eq!(
+        plan.ranges.len(),
+        1,
+        "thumbnail plan must be contiguous: {plan:?}"
+    );
     assert_eq!(plan.ranges[0].start, 0);
     let plane_prefix = &fetched[header_len..];
     let thumb = Codestream::parse_prefix(plane_prefix)
