@@ -20,15 +20,19 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod bitio;
+pub mod container;
 pub mod geometry;
 pub mod jph;
 pub mod markers;
 pub mod packet;
 pub mod quant;
+pub mod range;
 pub mod reader;
 pub mod tagtree;
 pub mod writer;
 
+pub use container::{ChunkHeader, PlaneEntry};
+pub use range::{ByteRange, Plan, RangeIndex};
 pub use reader::{Codestream, Decoded, PacketSpan};
 
-pub use writer::encode_image;
+pub use writer::{encode_image, encode_image_with_depth};

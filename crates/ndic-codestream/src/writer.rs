@@ -29,10 +29,33 @@ use crate::quant::Quant;
 /// [`Error::InvalidArgument`] on inconsistent inputs, [`Error::Unsupported`]
 /// for parameter combinations outside the Phase-3 writer (9/7, multiple
 /// layers, custom precincts).
-#[allow(clippy::too_many_lines, clippy::similar_names)]
 pub fn encode_image(
     comps: &[CoeffPlane<'_>],
     dtype: SampleType,
+    params: &EncodeParams,
+) -> Result<Vec<u8>> {
+    encode_image_with_depth(comps, dtype.bit_depth(), dtype.is_signed(), params)
+}
+
+/// [`encode_image`] with an explicit `Ssiz` sample format instead of a
+/// [`SampleType`].
+///
+/// JPEG 2000 declares per-component precision freely (1–38 bits), so callers
+/// holding `i32` planes whose *actual* dynamic range is narrower — post
+/// `nd_lift` coefficient planes above all — declare just the bits they use.
+/// The 32-bit HT datapath admits declared depths up to `30 - X` bits, where
+/// `X` is the 5/3 ranging gain (2–4 bits); a full 32-bit declaration is
+/// rejected, values that *fit* a narrower declaration are not.
+///
+/// # Errors
+/// See [`encode_image`]; additionally [`Error::InvalidArgument`] when a
+/// sample falls outside the declared range and [`Error::Unsupported`] when
+/// `bit_depth` exceeds the HT datapath.
+#[allow(clippy::too_many_lines, clippy::similar_names)]
+pub fn encode_image_with_depth(
+    comps: &[CoeffPlane<'_>],
+    bit_depth: u8,
+    signed: bool,
     params: &EncodeParams,
 ) -> Result<Vec<u8>> {
     let Some(first) = comps.first() else {
@@ -81,15 +104,17 @@ pub fn encode_image(
         });
     }
 
-    // Validate the sample range against the declared dtype; out-of-range
+    if !(1..=38).contains(&bit_depth) {
+        return Err(Error::InvalidArgument {
+            message: "declared bit depth must be in 1..=38".into(),
+        });
+    }
+    // Validate the sample range against the declared format; out-of-range
     // values would overflow the ranging bounds.
-    let (lo, hi) = if dtype.is_signed() {
-        (
-            -(1i64 << (dtype.bit_depth() - 1)),
-            (1i64 << (dtype.bit_depth() - 1)) - 1,
-        )
+    let (lo, hi) = if signed {
+        (-(1i64 << (bit_depth - 1)), (1i64 << (bit_depth - 1)) - 1)
     } else {
-        (0, (1i64 << dtype.bit_depth()) - 1)
+        (0, (1i64 << bit_depth) - 1)
     };
     for comp in comps {
         if comp
@@ -104,7 +129,7 @@ pub fn encode_image(
     }
 
     let levels = params.xy_levels;
-    let quant = Quant::reversible(levels, dtype.bit_depth(), false)?;
+    let quant = Quant::reversible(levels, bit_depth, false)?;
     // The scalar HT coder uses a 32-bit datapath: K_max <= 30.
     let k_max_max = (0..=levels)
         .flat_map(|r| (u8::from(r > 0)..=if r > 0 { 3 } else { 0 }).map(move |b| (r, b)))
@@ -120,7 +145,7 @@ pub fn encode_image(
     // ---- per-component wavelet transform + block coding ---------------
     let mut resolutions: Vec<Vec<Vec<BandBlocks>>> = Vec::new(); // [comp][res][band]
     for comp in comps {
-        let mut plane = level_shifted(comp, dtype);
+        let mut plane = level_shifted(comp, bit_depth, signed);
         // The SIMD lane is bit-identical to the scalar reference
         // (differential-tested) and substantially faster.
         dwt::simd::forward_53(&mut plane, width, height, levels)?;
@@ -242,8 +267,8 @@ pub fn encode_image(
         comps: comps
             .iter()
             .map(|_| ComponentSiz {
-                depth: dtype.bit_depth(),
-                signed: dtype.is_signed(),
+                depth: bit_depth,
+                signed,
                 xr: 1,
                 yr: 1,
             })
@@ -309,10 +334,10 @@ fn progression_code(p: ProgressionOrder) -> u8 {
 }
 
 /// Applies the DC level shift and returns an owned working plane.
-fn level_shifted(comp: &CoeffPlane<'_>, dtype: SampleType) -> Vec<i32> {
+fn level_shifted(comp: &CoeffPlane<'_>, bit_depth: u8, signed: bool) -> Vec<i32> {
     let mut v = comp.samples.to_vec();
-    if !dtype.is_signed() {
-        let half = 1i32 << (dtype.bit_depth() - 1);
+    if !signed {
+        let half = 1i32 << (bit_depth - 1);
         for s in &mut v {
             *s -= half;
         }
