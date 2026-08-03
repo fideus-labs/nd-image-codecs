@@ -274,13 +274,6 @@ pub fn parse_packet_header(
                         mmsb.set_flag(x >> cur_lev, y >> cur_lev, cur_lev);
                     }
                 }
-                if mmsbs > u32::from(band.k_max) {
-                    return Err(Error::Codestream {
-                        offset,
-                        message: "missing MSBs exceed the QCD K_max bound".into(),
-                    });
-                }
-
                 // Number of passes.
                 let mut num_passes = 1u32;
                 if bb.read_bit()? == 1 {
@@ -298,10 +291,17 @@ pub fn parse_packet_header(
                     }
                 }
 
-                // Placeholder passes shift the cleanup bitplane down.
+                // Placeholder passes shift the cleanup bitplane down; bound
+                // the *adjusted* value — it is what sets the cleanup bitplane.
                 let num_phld = (num_passes - 1) / 3;
                 let mmsbs = mmsbs + num_phld;
                 let num_passes = num_passes - num_phld * 3;
+                if mmsbs > u32::from(band.k_max) {
+                    return Err(Error::Codestream {
+                        offset,
+                        message: "missing MSBs exceed the QCD K_max bound".into(),
+                    });
+                }
 
                 // Lblock, then the segment lengths.
                 let mut lblock = 3u32;
