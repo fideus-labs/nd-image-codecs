@@ -5,12 +5,13 @@ description: Choosing between the nd-delta, nd-lift-ht, and nd-zfp families and 
 
 # Zarr & OME-Zarr
 
-:::{caution} Status: Skeleton
-The builder and nd-delta work in
-[Phase 1](../development/roadmap/phase-1-baselines-and-series.md); nd-lift-ht
-and nd-zfp land in Phases
-[4](../development/roadmap/phase-4-nd-lift-ht.md) and
-[5](../development/roadmap/phase-5-nd-zfp.md).
+:::{note} Status
+The builder and nd-delta work since
+[Phase 1](../development/roadmap/phase-1-baselines-and-series.md); the
+nd-lift-ht family (`transpose → nd_lift → htj2k`) round-trips across zarrs
+and zarr-python since
+[Phase 4](../development/roadmap/phase-4-nd-lift-ht.md). nd-zfp lands in
+[Phase 5](../development/roadmap/phase-5-nd-zfp.md).
 :::
 
 ## The three families

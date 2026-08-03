@@ -83,7 +83,10 @@ fn thumbnail_prefix_is_small() {
 fn plans_from_header_only_prefix_match_full_stream_plans() {
     let bytes = encode(190, 121, 4);
     let cs = Codestream::parse(&bytes).unwrap();
-    let full_plan = RangeIndex::from_codestream(&cs).unwrap().thumbnail(48).unwrap();
+    let full_plan = RangeIndex::from_codestream(&cs)
+        .unwrap()
+        .thumbnail(48)
+        .unwrap();
 
     let header_len = cs.tile_parts[0].body.start;
     let header = Codestream::parse_prefix(&bytes[..header_len]).unwrap();
@@ -130,8 +133,7 @@ fn narrow_declared_depth_round_trips_signed_planes() {
         .collect();
     let plane = CoeffPlane::new(&samples, width, height).unwrap();
     // Values span [-1015, 345]: 11 signed bits.
-    let bytes =
-        encode_image_with_depth(&[plane], 11, true, &EncodeParams::default()).unwrap();
+    let bytes = encode_image_with_depth(&[plane], 11, true, &EncodeParams::default()).unwrap();
     let decoded = Codestream::parse(&bytes).unwrap().decode().unwrap();
     assert_eq!(decoded.comps[0], samples);
 

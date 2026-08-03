@@ -112,7 +112,11 @@ fn invalid(message: String) -> Error {
 
 /// Chunk geometry checks shared by encode and decode: at least 2D, plane
 /// dims fit `u32`, element count fits the byte buffer.
-fn plane_geometry(shape: &[usize], dtype: SampleType, byte_len: usize) -> Result<(usize, usize, usize)> {
+fn plane_geometry(
+    shape: &[usize],
+    dtype: SampleType,
+    byte_len: usize,
+) -> Result<(usize, usize, usize)> {
     if shape.len() < 2 {
         return Err(invalid(format!(
             "htj2k needs a chunk with trailing 2D (y, x) planes; got {} dimension(s)",
@@ -180,11 +184,9 @@ fn widen_plane(bytes: &[u8], dtype: SampleType) -> Result<Vec<i32>> {
 /// range-checking (a corrupt chunk must error, not wrap).
 pub fn narrow_samples(samples: &[i32], dtype: SampleType, out: &mut Vec<u8>) -> Result<()> {
     fn check(lo: i64, hi: i64, samples: &[i32], dtype: SampleType) -> Result<()> {
-        let (min, max) = samples
-            .iter()
-            .fold((i64::MAX, i64::MIN), |(lo, hi), &v| {
-                (lo.min(i64::from(v)), hi.max(i64::from(v)))
-            });
+        let (min, max) = samples.iter().fold((i64::MAX, i64::MIN), |(lo, hi), &v| {
+            (lo.min(i64::from(v)), hi.max(i64::from(v)))
+        });
         if !samples.is_empty() && (min < lo || max > hi) {
             return Err(Error::Codestream {
                 offset: 0,
@@ -469,8 +471,7 @@ mod tests {
         let shape = [2, 16, 16];
         let values: Vec<i32> = (0..512).map(|i| (i % 61) - 30).collect();
         let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_ne_bytes()).collect();
-        let chunk =
-            encode_chunk(&bytes, &shape, SampleType::I32, &Htj2kConfig::default()).unwrap();
+        let chunk = encode_chunk(&bytes, &shape, SampleType::I32, &Htj2kConfig::default()).unwrap();
         let back = decode_chunk(&chunk, &shape, SampleType::I32).unwrap();
         assert_eq!(back, bytes);
     }
@@ -480,8 +481,8 @@ mod tests {
         let shape = [1, 4, 4];
         let values: Vec<i32> = (0..16).map(|i| i32::MAX - i).collect();
         let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_ne_bytes()).collect();
-        let err = encode_chunk(&bytes, &shape, SampleType::I32, &Htj2kConfig::default())
-            .unwrap_err();
+        let err =
+            encode_chunk(&bytes, &shape, SampleType::I32, &Htj2kConfig::default()).unwrap_err();
         assert!(err.to_string().contains("htj2k plane 0"), "{err}");
     }
 

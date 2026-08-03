@@ -119,9 +119,9 @@ impl Source {
                 body: None,
             })
         } else {
-            Ok(Self::File(std::fs::File::open(input).with_context(
-                || format!("opening {input}"),
-            )?))
+            Ok(Self::File(
+                std::fs::File::open(input).with_context(|| format!("opening {input}"))?,
+            ))
         }
     }
 
@@ -308,7 +308,11 @@ fn build_plan(probed: &Probed, args: &IndexArgs) -> anyhow::Result<Plan> {
                      `--target plane --z K` first and region-plan the fetched plane"
                 );
             };
-            let rect = parse_rect(args.rect.as_deref().context("--target region needs --rect")?)?;
+            let rect = parse_rect(
+                args.rect
+                    .as_deref()
+                    .context("--target region needs --rect")?,
+            )?;
             let cs = Codestream::parse_prefix(&probed.prefix[usize::try_from(box_offset)?..])?;
             RangeIndex::region(&cs, rect, args.level)?
         }

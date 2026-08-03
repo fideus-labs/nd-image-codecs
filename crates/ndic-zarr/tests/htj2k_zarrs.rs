@@ -46,7 +46,8 @@ fn named_data_type(dtype_name: &str) -> (DataType, usize) {
 /// lift (bare `transpose → htj2k`).
 fn build_array(store: Arc<MemoryStore>, dtype_name: &str, kind: &str) -> Array<MemoryStore> {
     let (data_type, size) = named_data_type(dtype_name);
-    let mut codecs = vec![json!({ "name": "transpose", "configuration": { "order": [1, 0, 2, 3] } })];
+    let mut codecs =
+        vec![json!({ "name": "transpose", "configuration": { "order": [1, 0, 2, 3] } })];
     if kind != "none" {
         let levels = if kind == "delta" { 0 } else { 2 };
         codecs.push(json!({ "name": "nd_lift", "configuration": {
@@ -217,7 +218,10 @@ fn unimplemented_configurations_are_refused() {
         &serde_json::from_value(json!({ "reversible": false })).unwrap(),
     )
     .expect("lossy config constructs");
-    let shape: Vec<NonZeroU64> = [4, 4].iter().map(|&d| NonZeroU64::new(d).unwrap()).collect();
+    let shape: Vec<NonZeroU64> = [4, 4]
+        .iter()
+        .map(|&d| NonZeroU64::new(d).unwrap())
+        .collect();
     let (dtype, size) = named_data_type("uint8");
     let result = Arc::new(codec).encode(
         ArrayBytes::from(vec![0u8; 16]),
@@ -254,7 +258,10 @@ fn malformed_chunks_error_cleanly() {
     let codec = Arc::new(
         Htj2kCodec::new_with_configuration(&serde_json::from_value(json!({})).unwrap()).unwrap(),
     );
-    let shape: Vec<NonZeroU64> = [4, 8, 8].iter().map(|&d| NonZeroU64::new(d).unwrap()).collect();
+    let shape: Vec<NonZeroU64> = [4, 8, 8]
+        .iter()
+        .map(|&d| NonZeroU64::new(d).unwrap())
+        .collect();
     let (dtype, size) = named_data_type("uint16");
     let fill = FillValue::new(vec![0u8; size]);
     let options = CodecOptions::default();
@@ -289,8 +296,10 @@ fn malformed_chunks_error_cleanly() {
 #[test]
 fn stored_chunks_serve_thumbnail_plans() {
     let codec = Arc::new(
-        Htj2kCodec::new_with_configuration(&serde_json::from_value(json!({ "xy_levels": 2 })).unwrap())
-            .unwrap(),
+        Htj2kCodec::new_with_configuration(
+            &serde_json::from_value(json!({ "xy_levels": 2 })).unwrap(),
+        )
+        .unwrap(),
     );
     let shape: Vec<NonZeroU64> = [4, 32, 32]
         .iter()
@@ -347,6 +356,38 @@ fn stored_chunks_serve_thumbnail_plans() {
     assert_eq!(thumb.width, reference.width);
     assert_eq!(thumb.comps, reference.comps);
     assert_eq!(plan.decoded_size, vec![8, 8]);
+}
+
+/// The committed chunk-container micro-fixture: the version-1 byte layout
+/// is pinned — re-encoding the same data must reproduce the file
+/// byte-for-byte, and the committed bytes must decode to the same data
+/// (see `fixtures/codestreams/tiny-chunk-4x8x8.ndht.md`).
+#[test]
+fn chunk_fixture_is_byte_stable() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/codestreams/tiny-chunk-4x8x8.ndht"
+    );
+    let committed = std::fs::read(path).expect("committed fixture");
+    let shape = [4usize, 8, 8];
+    let data: Vec<u8> = (0..shape.iter().product::<usize>())
+        .flat_map(|i| u16::try_from(i * 7 % 4096).expect("< 4096").to_ne_bytes())
+        .collect();
+    let config = ndic_zarr::htj2k::Htj2kConfig {
+        xy_levels: 2,
+        ..Default::default()
+    };
+    let encoded =
+        ndic_zarr::htj2k::encode_chunk(&data, &shape, ndic_core::SampleType::U16, &config)
+            .expect("encode");
+    assert_eq!(
+        encoded, committed,
+        "the htj2k chunk container layout must stay byte-stable \
+         (regenerate the fixture only on a deliberate format bump)"
+    );
+    let decoded = ndic_zarr::htj2k::decode_chunk(&committed, &shape, ndic_core::SampleType::U16)
+        .expect("decode");
+    assert_eq!(decoded, data);
 }
 
 /// Every `htj2k` configuration the cross-language `codec_series` builders

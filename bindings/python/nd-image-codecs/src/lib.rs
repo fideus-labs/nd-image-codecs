@@ -41,6 +41,8 @@ fn sample_type(dtype: &str) -> PyResult<SampleType> {
 #[pyfunction]
 #[pyo3(signature = (chunk, shape, dtype, *, xy_levels=5, reversible=true, progression="RPCL", index=true))]
 #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+// `Vec<usize>`: pyo3 extracts owned collections from Python lists.
+#[allow(clippy::needless_pass_by_value)]
 fn htj2k_encode<'py>(
     py: Python<'py>,
     chunk: &[u8],
@@ -64,6 +66,8 @@ fn htj2k_encode<'py>(
 
 /// Decodes an `htj2k` chunk back to native-endian elements in C order.
 #[pyfunction]
+// `Vec<usize>`: pyo3 extracts owned collections from Python lists.
+#[allow(clippy::needless_pass_by_value)]
 fn htj2k_decode<'py>(
     py: Python<'py>,
     chunk: &[u8],

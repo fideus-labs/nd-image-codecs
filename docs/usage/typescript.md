@@ -6,9 +6,10 @@ description: 'Using nd-image-codecs from TypeScript and the browser: the codecSe
 
 # TypeScript / Browser
 
-:::{caution} Status: Skeleton
-The package scaffolding and the `codecSeries` builder
-exist; the WASM cores land per the [roadmap](../development/roadmap/index.md).
+:::{caution} Status: Partial
+The `codecSeries` builder and the `htj2k` WASM core work
+(`npm run build:wasm`); the `nd_lift` and `nd_zfp` WASM paths land per the
+[roadmap](../development/roadmap/index.md).
 :::
 
 ```bash

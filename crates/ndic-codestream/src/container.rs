@@ -296,8 +296,7 @@ impl ChunkHeader {
                 if offset < min_offset {
                     return Err(err(at, "plane offsets overlap or precede the index"));
                 }
-                if prefix.windows(2).any(|w| w[0] > w[1])
-                    || prefix.last().is_some_and(|&l| l > len)
+                if prefix.windows(2).any(|w| w[0] > w[1]) || prefix.last().is_some_and(|&l| l > len)
                 {
                     return Err(err(at, "plane prefix lengths are inconsistent"));
                 }

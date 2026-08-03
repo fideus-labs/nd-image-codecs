@@ -26,8 +26,8 @@ use zarrs::metadata::Configuration;
 use zarrs::metadata::v3::MetadataV3;
 use zarrs::plugin::{PluginCreateError, ZarrVersion};
 
-use ndic_core::SampleType;
 use ndic_codestream::container::ChunkHeader;
+use ndic_core::SampleType;
 
 use crate::htj2k::{Htj2kConfig, decode_chunk, decode_plane, encode_chunk};
 
@@ -248,9 +248,10 @@ impl Htj2kPartialDecoder {
             return Ok(Some(header.clone()));
         }
         let fixed_len = ChunkHeader::fixed_len(self.shape.len());
-        let Some(fixed) = self
-            .input_handle
-            .partial_decode(StorageByteRange::FromStart(0, Some(fixed_len as u64)), options)?
+        let Some(fixed) = self.input_handle.partial_decode(
+            StorageByteRange::FromStart(0, Some(fixed_len as u64)),
+            options,
+        )?
         else {
             return Ok(None);
         };
@@ -336,8 +337,7 @@ impl ArrayPartialDecoderTraits for Htj2kPartialDecoder {
         let to_usize = |values: &[u64]| -> Option<Vec<usize>> {
             values.iter().map(|&v| usize::try_from(v).ok()).collect()
         };
-        let (Some(start), Some(sel_shape)) =
-            (to_usize(&subset.start()), to_usize(&subset.shape()))
+        let (Some(start), Some(sel_shape)) = (to_usize(&subset.start()), to_usize(&subset.shape()))
         else {
             return self.decode_all(indexer, options);
         };
@@ -371,9 +371,9 @@ impl ArrayPartialDecoderTraits for Htj2kPartialDecoder {
         let element = self.dtype.size_bytes();
         let mut out = Vec::with_capacity(planes.len() * sel_h * sel_w * element);
         for &p in &planes {
-            let entry = entries.get(p).ok_or_else(|| {
-                CodecError::Other(format!("htj2k chunk index has no plane {p}"))
-            })?;
+            let entry = entries
+                .get(p)
+                .ok_or_else(|| CodecError::Other(format!("htj2k chunk index has no plane {p}")))?;
             let Some(stream) = self.input_handle.partial_decode(
                 StorageByteRange::FromStart(entry.offset, Some(u64::from(entry.len))),
                 options,

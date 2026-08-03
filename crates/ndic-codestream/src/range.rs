@@ -278,7 +278,10 @@ impl RangeIndex {
     /// [`Error::InvalidArgument`] when `z` is out of range.
     pub fn plane(&self, z: usize) -> Result<Plan> {
         let p = self.planes.get(z).ok_or_else(|| Error::InvalidArgument {
-            message: alloc::format!("plane {z} out of range for a {}-plane chunk", self.planes.len()),
+            message: alloc::format!(
+                "plane {z} out of range for a {}-plane chunk",
+                self.planes.len()
+            ),
         })?;
         let mut ranges: Vec<ByteRange> = self.header_range().into_iter().collect();
         ranges.extend(ByteRange::of(p.offset, u64::from(p.len)));
@@ -356,7 +359,13 @@ impl RangeIndex {
             .collect();
         decoded_size.push(h as u64);
         decoded_size.push(w as u64);
-        Ok(plan("thumbnail_3d", decoded_size, max_res, selected, ranges))
+        Ok(plan(
+            "thumbnail_3d",
+            decoded_size,
+            max_res,
+            selected,
+            ranges,
+        ))
     }
 
     /// A precinct-aligned sub-region plan over one parsed codestream:
@@ -383,8 +392,9 @@ impl RangeIndex {
         let spans = cs.packet_index()?;
 
         // Main header + every tile-part header.
-        let mut ranges: Vec<ByteRange> =
-            ByteRange::of(0, cs.first_tile_offset as u64).into_iter().collect();
+        let mut ranges: Vec<ByteRange> = ByteRange::of(0, cs.first_tile_offset as u64)
+            .into_iter()
+            .collect();
         for tp in &cs.tile_parts {
             ranges.extend(ByteRange::of(
                 tp.offset as u64,
@@ -399,8 +409,11 @@ impl RangeIndex {
             // The precinct grid of this resolution, in resolution pixels.
             let shift = usize::from(levels - span.res);
             let (pex, pey) = cs.cod.precinct_exp(span.res);
-            let (res_w, res_h) =
-                dwt::level_dims(cs.siz.xsiz as usize, cs.siz.ysiz as usize, levels - span.res);
+            let (res_w, res_h) = dwt::level_dims(
+                cs.siz.xsiz as usize,
+                cs.siz.ysiz as usize,
+                levels - span.res,
+            );
             // rect mapped into this resolution (floor start, ceil end).
             let x0 = (rx as usize >> shift).min(res_w);
             let y0 = (ry as usize >> shift).min(res_h);
@@ -498,7 +511,10 @@ mod tests {
             plan.ranges,
             alloc::vec![
                 ByteRange { start: 0, end: 115 },
-                ByteRange { start: 2116, end: 3115 },
+                ByteRange {
+                    start: 2116,
+                    end: 3115
+                },
             ]
         );
         assert!(chunk_index().plane(4).is_err());
@@ -521,6 +537,10 @@ mod tests {
         let plan = chunk_index().thumbnail_3d(16, &[]).unwrap();
         assert_eq!(plan.planes, alloc::vec![0, 1, 2, 3]);
         assert_eq!(plan.decoded_size, alloc::vec![4, 16, 16]);
-        assert_eq!(plan.ranges.len(), 4, "prefixes of contiguous planes stay separate");
+        assert_eq!(
+            plan.ranges.len(),
+            4,
+            "prefixes of contiguous planes stay separate"
+        );
     }
 }

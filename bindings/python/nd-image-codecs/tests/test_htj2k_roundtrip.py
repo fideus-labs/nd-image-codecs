@@ -73,17 +73,21 @@ def test_nd_lift_ht_series_roundtrips(dtype: str) -> None:
 
 @needs_native
 def test_chunks_are_byte_identical_to_the_rust_codec_fixture() -> None:
-    """The chunk container opens with the ndht magic and decodes exactly."""
-    shape = [3, 16, 16]
-    data = (np.arange(np.prod(shape), dtype=np.uint16) * 7 % 4096).reshape(shape)
-    blob = _native.htj2k_encode(
-        data.tobytes(), list(shape), "uint16", xy_levels=2
-    )
-    assert blob[:4] == b"ndht"
+    """Python encodes the committed micro-fixture byte-for-byte.
+
+    The Rust `zarrs` codec pins the same file
+    (``fixtures/codestreams/tiny-chunk-4x8x8.ndht``), so this is the
+    cross-ecosystem byte-identity gate.
+    """
+    from conftest import REPO
+
+    shape = [4, 8, 8]
+    data = np.arange(np.prod(shape), dtype=np.uint16) * 7 % 4096
+    blob = _native.htj2k_encode(data.tobytes(), list(shape), "uint16", xy_levels=2)
+    committed = (REPO / "fixtures" / "codestreams" / "tiny-chunk-4x8x8.ndht").read_bytes()
+    assert blob == committed
     back = _native.htj2k_decode(blob, list(shape), "uint16")
-    np.testing.assert_array_equal(
-        np.frombuffer(back, dtype=np.uint16).reshape(shape), data
-    )
+    np.testing.assert_array_equal(np.frombuffer(back, dtype=np.uint16), data)
 
 
 @needs_native

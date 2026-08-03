@@ -320,10 +320,7 @@ fn thumbnail_over_http_range_requests() {
         "-o",
         local.to_str().unwrap(),
     ]);
-    assert_eq!(
-        std::fs::read(&out).unwrap(),
-        std::fs::read(&local).unwrap()
-    );
+    assert_eq!(std::fs::read(&out).unwrap(), std::fs::read(&local).unwrap());
 
     // And it must have fetched a strict subset of the file.
     let reported: u64 = stdout
