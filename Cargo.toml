@@ -54,6 +54,12 @@ rayon = "1"
 bytemuck = { version = "1", features = ["derive"] }
 wide = "0.7"          # portable SIMD helper for scalar-fallback lanes
 
+# --- ZFP core ---------------------------------------------------------
+# Pure-Rust ZFP (LDeakin/zfp-rs): bit-for-bit identical streams to the
+# LLNL C reference on little-endian targets. The nd_zfp codec delegates
+# its block transform + coder here instead of maintaining its own port.
+zfp-rs = "0.1"
+
 # --- Zarr codec ecosystem (Rust) -------------------------------------
 # default-features off: the C-backed codecs (blosc/zstd) don't build on wasm32,
 # and the codec crate only needs the plugin/codec traits.
