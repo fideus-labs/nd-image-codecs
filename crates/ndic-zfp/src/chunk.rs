@@ -394,11 +394,115 @@ pub fn decode_chunk(
     }
 }
 
+/// The typed reader behind [`NdZfpBrickDecoder`], keyed by the dtype's
+/// coded scalar (narrow integers ride the promoted `i32` reader).
+enum BrickReaderKind {
+    I32(crate::BrickReader<i32>),
+    I64(crate::BrickReader<i64>),
+    F32(crate::BrickReader<f32>),
+    F64(crate::BrickReader<f64>),
+}
+
+/// A prepared fixed-rate `nd_zfp` chunk for repeated brick decodes: the
+/// stream buffering and header validation are paid **once** at
+/// construction, then every [`NdZfpBrickDecoder::decode_brick`] call is a
+/// seek plus one block decode. Prefer this over [`decode_chunk_brick`]
+/// whenever more than one brick of the same chunk is read (the codec's
+/// partial decoder does).
+pub struct NdZfpBrickDecoder {
+    reader: BrickReaderKind,
+    dtype: ZfpDtype,
+}
+
+impl NdZfpBrickDecoder {
+    /// Prepare a fixed-rate chunk for brick decoding.
+    ///
+    /// # Errors
+    /// [`Error::InvalidArgument`] unless the configuration is
+    /// `fixed_rate`, or for geometry violations; [`Error::Codestream`]
+    /// for a malformed stream.
+    pub fn new(
+        bytes: &[u8],
+        shape: &[usize],
+        dtype: ZfpDtype,
+        config: &NdZfpConfig,
+    ) -> Result<Self> {
+        let ZfpMode::FixedRate(rate) = config.zfp_mode()? else {
+            return Err(invalid(format!(
+                "nd_zfp: brick decode needs fixed_rate mode, configuration says {:?}",
+                config.mode
+            )));
+        };
+        let effective = effective_shape(shape, config.dims)?;
+        let reader = match dtype.scalar_kind() {
+            crate::ZfpScalarKind::I32 => {
+                BrickReaderKind::I32(crate::BrickReader::fixed_rate(bytes, &effective, rate)?)
+            }
+            crate::ZfpScalarKind::I64 => {
+                BrickReaderKind::I64(crate::BrickReader::fixed_rate(bytes, &effective, rate)?)
+            }
+            crate::ZfpScalarKind::F32 => {
+                BrickReaderKind::F32(crate::BrickReader::fixed_rate(bytes, &effective, rate)?)
+            }
+            crate::ZfpScalarKind::F64 => {
+                BrickReaderKind::F64(crate::BrickReader::fixed_rate(bytes, &effective, rate)?)
+            }
+        };
+        Ok(Self { reader, dtype })
+    }
+
+    /// Decode the brick at per-axis brick coordinates over the chunk's
+    /// **effective** shape ([`NdZfpConfig::effective_shape`]); the
+    /// returned bytes are the brick's little-endian samples in C order
+    /// plus the brick's (possibly clipped) shape.
+    ///
+    /// # Errors
+    /// [`Error::InvalidArgument`] for out-of-grid coordinates;
+    /// [`Error::Codestream`] when the brick fails to decode.
+    pub fn decode_brick(&mut self, brick: &[usize]) -> Result<(Vec<u8>, Vec<usize>)> {
+        match &mut self.reader {
+            BrickReaderKind::I32(reader) => {
+                let (values, brick_shape) = reader.brick(brick)?;
+                let bytes = if self.dtype == ZfpDtype::I32 {
+                    bytemuck::cast_slice::<i32, u8>(&values).to_vec()
+                } else {
+                    demoted_bytes(&values, self.dtype)
+                };
+                Ok((bytes, brick_shape))
+            }
+            BrickReaderKind::I64(reader) => {
+                let (values, brick_shape) = reader.brick(brick)?;
+                Ok((
+                    bytemuck::cast_slice::<i64, u8>(&values).to_vec(),
+                    brick_shape,
+                ))
+            }
+            BrickReaderKind::F32(reader) => {
+                let (values, brick_shape) = reader.brick(brick)?;
+                Ok((
+                    bytemuck::cast_slice::<f32, u8>(&values).to_vec(),
+                    brick_shape,
+                ))
+            }
+            BrickReaderKind::F64(reader) => {
+                let (values, brick_shape) = reader.brick(brick)?;
+                Ok((
+                    bytemuck::cast_slice::<f64, u8>(&values).to_vec(),
+                    brick_shape,
+                ))
+            }
+        }
+    }
+}
+
 /// Decode a single fixed-rate brick of an `nd_zfp` chunk at its computed
 /// offset. `brick` holds per-axis brick coordinates over the chunk's
 /// **effective** shape ([`NdZfpConfig::effective_shape`]); the returned
 /// bytes are the brick's little-endian samples in C order plus the brick's
 /// (possibly clipped) shape.
+///
+/// One-shot convenience over [`NdZfpBrickDecoder`]; when reading several
+/// bricks of the same chunk, build the decoder once instead.
 ///
 /// # Errors
 /// [`Error::InvalidArgument`] unless the configuration is `fixed_rate`, or
@@ -410,33 +514,7 @@ pub fn decode_chunk_brick(
     config: &NdZfpConfig,
     brick: &[usize],
 ) -> Result<(Vec<u8>, Vec<usize>)> {
-    fn native<T: crate::ZfpElement + bytemuck::Pod>(
-        bytes: &[u8],
-        effective: &[usize],
-        rate: f64,
-        brick: &[usize],
-    ) -> Result<(Vec<u8>, Vec<usize>)> {
-        let (values, brick_shape) = crate::decompress_brick::<T>(bytes, effective, rate, brick)?;
-        Ok((bytemuck::cast_slice::<T, u8>(&values).to_vec(), brick_shape))
-    }
-    let ZfpMode::FixedRate(rate) = config.zfp_mode()? else {
-        return Err(invalid(format!(
-            "nd_zfp: brick decode needs fixed_rate mode, configuration says {:?}",
-            config.mode
-        )));
-    };
-    let effective = effective_shape(shape, config.dims)?;
-    match dtype {
-        ZfpDtype::F32 => native::<f32>(bytes, &effective, rate, brick),
-        ZfpDtype::F64 => native::<f64>(bytes, &effective, rate, brick),
-        ZfpDtype::I32 => native::<i32>(bytes, &effective, rate, brick),
-        ZfpDtype::I64 => native::<i64>(bytes, &effective, rate, brick),
-        ZfpDtype::U8 | ZfpDtype::I8 | ZfpDtype::U16 | ZfpDtype::I16 => {
-            let (values, brick_shape) =
-                crate::decompress_brick::<i32>(bytes, &effective, rate, brick)?;
-            Ok((demoted_bytes(&values, dtype), brick_shape))
-        }
-    }
+    NdZfpBrickDecoder::new(bytes, shape, dtype, config)?.decode_brick(brick)
 }
 
 #[cfg(test)]

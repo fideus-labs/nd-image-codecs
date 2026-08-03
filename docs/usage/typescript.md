@@ -68,10 +68,10 @@ const arr = await zarrita.open(store, { kind: "array" });
 const view = await zarrita.get(arr, [null, null, null]);
 ```
 
-`NdLift` and `NdZfp` register the same way once their WASM encode/decode
-paths land (see the status note above) — today they are config/validation
-classes only, so reading an `nd_lift`-decorrelated array from the browser
-still needs those phases.
+`NdZfp` registers the same way (`zarrita.registry.set("nd_zfp", () => NdZfp)`)
+— its WASM encode/decode path is live. `NdLift` remains a config/validation
+class until its WASM path lands (see the status note above), so reading an
+`nd_lift`-decorrelated array from the browser still needs that phase.
 
 nd-delta pipelines need no registration at all — they use codecs zarrita.js
 already ships (`transpose`, `blosc`, …).

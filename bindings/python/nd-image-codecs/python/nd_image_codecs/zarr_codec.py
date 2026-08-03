@@ -149,9 +149,9 @@ def _native():
         from . import _nd_image_codecs
     except ImportError as err:  # pragma: no cover - build-environment issue
         raise RuntimeError(
-            "the htj2k codec needs nd-image-codecs's native extension module; "
-            "install a built wheel (or `maturin develop`) rather than the "
-            "pure-Python source tree"
+            "the htj2k and nd_zfp codecs need nd-image-codecs's native "
+            "extension module; install a built wheel (or `maturin develop`) "
+            "rather than the pure-Python source tree"
         ) from err
     return _nd_image_codecs
 

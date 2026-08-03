@@ -127,7 +127,7 @@ consult the roadmap before implementing anything.
 | `wide` | 0.7 | Portable SIMD fallback lanes (native paths use `core::arch`) |
 | `zarrs` | 0.23 | Zarr v3 codec traits + plugin registry (feature-gated) |
 | `inventory` | 0.3 | Link-time registration: zarrs codec + bench entries |
-| `zfp-rs` | 0.1 | Pure-Rust ZFP core, bit-identical to the C reference (`nd_zfp`) |
+| `zfp-rs` | 0.1 | Pure-Rust ZFP core, bit-identical to the C reference on little-endian targets (`nd_zfp`) |
 | `pyo3` / `numpy` | 0.24 | Python binding, `abi3-py311` |
 | `wasm-bindgen` | 0.2 | TypeScript/WASM binding |
 | `clap` | 4 | `ndic` and `ndic-bench` CLIs |

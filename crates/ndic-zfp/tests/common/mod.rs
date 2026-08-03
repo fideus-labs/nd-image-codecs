@@ -62,13 +62,13 @@ pub fn tiny_chunk_f32() -> Vec<u8> {
 /// order committed in `fixtures/zfp/checksums.json`.
 #[allow(dead_code)]
 pub fn matrix_cases() -> Vec<(Vec<usize>, &'static str, ndic_zfp::NdZfpConfig)> {
-    let shapes: [&[usize]; 3] = [&[9, 10], &[5, 6, 7], &[3, 4, 5, 6]];
+    let shapes: [&[usize]; 4] = [&[17], &[9, 10], &[5, 6, 7], &[3, 4, 5, 6]];
     let dtypes = [
         "uint8", "int8", "uint16", "int16", "int32", "int64", "float32", "float64",
     ];
     let mut cases = Vec::new();
     for shape in shapes {
-        #[allow(clippy::cast_possible_truncation)] // ranks are 2..=4
+        #[allow(clippy::cast_possible_truncation)] // ranks are 1..=4
         let dims = shape.len() as u8;
         for dtype in dtypes {
             let mut modes = vec![

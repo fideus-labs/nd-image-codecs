@@ -8,6 +8,8 @@ optional-dependency lanes.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pytest
 
@@ -182,9 +184,9 @@ def test_metadata_round_trips_and_bad_configs_are_refused() -> None:
         NdZfpCodec(mode="fixed_rate", rate=float("nan"))
     with pytest.raises(ValueError, match="non-negative finite"):
         NdZfpCodec(mode="fixed_accuracy", tolerance=-1.0)
-    with pytest.raises(ValueError, match="1..=64"):
+    with pytest.raises(ValueError, match=re.escape("1..=64")):
         NdZfpCodec(mode="fixed_precision", precision=65)
-    with pytest.raises(ValueError, match="1..=64"):
+    with pytest.raises(ValueError, match=re.escape("1..=64")):
         NdZfpCodec(mode="fixed_precision", precision=0)
 
 

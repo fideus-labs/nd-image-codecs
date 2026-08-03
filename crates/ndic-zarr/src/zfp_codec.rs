@@ -30,7 +30,7 @@ use zarrs::metadata::v3::MetadataV3;
 use zarrs::plugin::{PluginCreateError, ZarrVersion};
 
 use ndic_zfp::{
-    BrickIndex, NdZfpConfig, ZfpDtype, ZfpMode, decode_chunk, decode_chunk_brick, encode_chunk,
+    BrickIndex, NdZfpBrickDecoder, NdZfpConfig, ZfpDtype, ZfpMode, decode_chunk, encode_chunk,
 };
 
 /// The `nd_zfp` codec: ZFP-compressed chunks with O(1) brick addressing in
@@ -416,14 +416,16 @@ impl NdZfpPartialDecoder {
             return Ok(Some(self.fill_bytes(indexer_len)));
         }
 
-        // Decode each touched brick and copy its intersection window.
+        // Decode each touched brick and copy its intersection window. The
+        // decoder is prepared once — buffering and header validation are
+        // paid per chunk, each brick is then a seek + one block decode.
+        let mut decoder = NdZfpBrickDecoder::new(&stream, &self.shape, self.dtype, &self.config)
+            .map_err(codec_err)?;
         let esize = self.dtype.size_bytes();
         let elements = usize::try_from(indexer_len).expect("subset fits");
         let mut out = vec![0u8; elements * esize];
         for_each_coord(&brick_lo, &brick_hi, &mut |brick| {
-            let (brick_bytes, brick_shape) =
-                decode_chunk_brick(&stream, &self.shape, self.dtype, &self.config, brick)
-                    .map_err(codec_err)?;
+            let (brick_bytes, brick_shape) = decoder.decode_brick(brick).map_err(codec_err)?;
             let origin: Vec<usize> = brick.iter().map(|&b| b * 4).collect();
             let lo: Vec<usize> = origin
                 .iter()

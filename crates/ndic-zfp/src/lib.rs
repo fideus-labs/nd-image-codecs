@@ -50,7 +50,9 @@ use zfp_rs::{
 
 mod chunk;
 
-pub use chunk::{NdZfpConfig, ZfpDtype, decode_chunk, decode_chunk_brick, encode_chunk};
+pub use chunk::{
+    NdZfpBrickDecoder, NdZfpConfig, ZfpDtype, decode_chunk, decode_chunk_brick, encode_chunk,
+};
 
 /// The registered Zarr v3 array-to-bytes codec identifier.
 pub const CODEC_NAME: &str = "nd_zfp";
@@ -492,10 +494,90 @@ impl BrickIndex {
     }
 }
 
+/// A prepared fixed-rate stream for repeated brick decodes: the stream
+/// buffering, size check, and header validation are paid **once**, then
+/// every [`BrickReader::brick`] call is a seek plus one block decode —
+/// the O(1) access the format promises. Prefer this over
+/// [`decompress_brick`] whenever more than one brick of the same chunk is
+/// read.
+pub struct BrickReader<T: ZfpElement> {
+    stream: ZfpBitStream,
+    index: BrickIndex,
+    config: ZfpConfig,
+    shape: Vec<usize>,
+    _samples: core::marker::PhantomData<T>,
+}
+
+impl<T: ZfpElement> BrickReader<T> {
+    /// Prepare a fixed-rate stream over `shape` (row-major) for brick
+    /// decoding: validates the exact stream length and the full header.
+    ///
+    /// # Errors
+    /// [`Error::InvalidArgument`] for shape/rate violations;
+    /// [`Error::Codestream`] when the stream fails the header or size
+    /// checks of [`decompress`].
+    pub fn fixed_rate(bytes: &[u8], shape: &[usize], rate: f64) -> Result<Self> {
+        let dims = validate_shape(shape)?;
+        let index = BrickIndex::fixed_rate(shape, T::kind(), rate)?;
+        if bytes.len() != index.stream_len() {
+            return Err(malformed(format!(
+                "nd_zfp: fixed-rate stream is {} bytes, computed size is {}",
+                bytes.len(),
+                index.stream_len()
+            )));
+        }
+        let scalar = T::kind().to_zfp();
+        let config = ZfpMode::FixedRate(rate).config(scalar, dims);
+        let mut stream = padded_stream(bytes, &config, scalar, shape)?;
+        read_checked_header(&mut stream, &config, scalar, shape)?;
+        Ok(Self {
+            stream,
+            index,
+            config,
+            shape: shape.to_vec(),
+            _samples: core::marker::PhantomData,
+        })
+    }
+
+    /// The stream's computed brick addressing.
+    pub fn index(&self) -> &BrickIndex {
+        &self.index
+    }
+
+    /// Decode the `4^d` brick at per-axis brick coordinates `brick`,
+    /// without decoding any other brick. Returns the brick's samples
+    /// (row-major) and its shape — edge bricks are clipped to the array
+    /// bounds.
+    ///
+    /// # Errors
+    /// [`Error::InvalidArgument`] for out-of-grid coordinates;
+    /// [`Error::Codestream`] when the brick fails to decode.
+    pub fn brick(&mut self, brick: &[usize]) -> Result<(Vec<T>, Vec<usize>)> {
+        let k = self.index.linear(brick)?;
+        let (bit_offset, _) = self.index.bit_range(k)?;
+        self.stream.seek_read(bit_offset);
+        let brick_shape: Vec<usize> = self
+            .shape
+            .iter()
+            .zip(brick)
+            .map(|(&n, &b)| (n - b * 4).min(4))
+            .collect();
+        let mut out = vec![T::default(); brick_shape.iter().product()];
+        let mut field = field_mut_of(&mut out, &brick_shape);
+        self.stream
+            .decompress(&self.config, &mut field)
+            .map_err(|e| malformed(format!("nd_zfp decompress brick {k}: {e}")))?;
+        Ok((out, brick_shape))
+    }
+}
+
 /// Decode a single `4^d` brick of a fixed-rate stream at its computed
 /// offset, without decoding any other brick. Returns the brick's samples
 /// (row-major) and its shape — edge bricks are clipped to the array
 /// bounds.
+///
+/// One-shot convenience over [`BrickReader`]; when reading several bricks
+/// of the same chunk, build the reader once instead.
 ///
 /// # Errors
 /// [`Error::InvalidArgument`] for shape/rate/coordinate violations;
@@ -507,32 +589,7 @@ pub fn decompress_brick<T: ZfpElement>(
     rate: f64,
     brick: &[usize],
 ) -> Result<(Vec<T>, Vec<usize>)> {
-    let dims = validate_shape(shape)?;
-    let index = BrickIndex::fixed_rate(shape, T::kind(), rate)?;
-    let k = index.linear(brick)?;
-    if bytes.len() != index.stream_len() {
-        return Err(malformed(format!(
-            "nd_zfp: fixed-rate stream is {} bytes, computed size is {}",
-            bytes.len(),
-            index.stream_len()
-        )));
-    }
-    let scalar = T::kind().to_zfp();
-    let config = ZfpMode::FixedRate(rate).config(scalar, dims);
-    let mut bs = padded_stream(bytes, &config, scalar, shape)?;
-    read_checked_header(&mut bs, &config, scalar, shape)?;
-    let (bit_offset, _) = index.bit_range(k)?;
-    bs.seek_read(bit_offset);
-    let brick_shape: Vec<usize> = shape
-        .iter()
-        .zip(brick)
-        .map(|(&n, &b)| (n - b * 4).min(4))
-        .collect();
-    let mut out = vec![T::default(); brick_shape.iter().product()];
-    let mut field = field_mut_of(&mut out, &brick_shape);
-    bs.decompress(&config, &mut field)
-        .map_err(|e| malformed(format!("nd_zfp decompress brick {k}: {e}")))?;
-    Ok((out, brick_shape))
+    BrickReader::<T>::fixed_rate(bytes, shape, rate)?.brick(brick)
 }
 
 #[cfg(test)]
@@ -654,6 +711,34 @@ mod tests {
                     assert_eq!(brick, expected, "brick {coords:?}");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn brick_reader_matches_one_shot_brick_decodes() {
+        // The prepared reader (buffer + header paid once) must decode every
+        // brick identically to the one-shot path, in any visit order.
+        let shape = [9, 10, 7];
+        let rate = 8.0;
+        let data: Vec<f32> = smooth(&shape);
+        let bytes = compress(&data, &shape, ZfpMode::FixedRate(rate)).expect("compress");
+        let mut reader = BrickReader::<f32>::fixed_rate(&bytes, &shape, rate).expect("reader");
+        let grid = reader.index().grid().to_vec();
+        let mut coords_list = Vec::new();
+        for bz in 0..grid[0] {
+            for by in 0..grid[1] {
+                for bx in 0..grid[2] {
+                    coords_list.push([bz, by, bx]);
+                }
+            }
+        }
+        coords_list.reverse(); // out-of-stream-order seeks must work too
+        for coords in coords_list {
+            let (from_reader, shape_r) = reader.brick(&coords).expect("reader brick");
+            let (one_shot, shape_o) =
+                decompress_brick::<f32>(&bytes, &shape, rate, &coords).expect("one-shot brick");
+            assert_eq!(shape_r, shape_o, "brick {coords:?}");
+            assert_eq!(from_reader, one_shot, "brick {coords:?}");
         }
     }
 

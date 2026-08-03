@@ -72,9 +72,9 @@ modes → 3D → 4D → integer types → brick index → Zarr wrapper → SIMD.
 
 - [x] Upstream checksum matrix reproduced bit-exactly (2D/3D/4D × 4 modes ×
       supported types). (Delegated to `zfp-rs`'s CI against the upstream
-      suite; this repo pins its own stream matrix in
-      `fixtures/zfp/checksums.json` — `crates/ndic-zfp/tests/checksums.rs` —
-      and asserts byte-identity with `imagecodecs` output.)
+      suite; this repo pins its own stream matrix — covering 1D through 4D —
+      in `fixtures/zfp/checksums.json` — `crates/ndic-zfp/tests/checksums.rs`
+      — and asserts byte-identity with `imagecodecs` output.)
 - [x] Cross-decode with the C library succeeds in both directions.
       (`test_streams_match_the_c_reference_via_imagecodecs`: byte-identical
       streams both modes, cross-decode both directions.)
