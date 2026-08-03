@@ -191,6 +191,26 @@ impl RangeIndex {
         &self.dims
     }
 
+    /// In-plane decomposition levels.
+    #[must_use]
+    pub fn xy_levels(&self) -> u8 {
+        self.xy_levels
+    }
+
+    /// Bytes of `[header | index]` before the first codestream (0 for a
+    /// bare codestream).
+    #[must_use]
+    pub fn header_len(&self) -> u64 {
+        self.header_len
+    }
+
+    /// The index entry of plane `i` — what a plan executor needs to slice
+    /// fetched bytes back into per-plane codestream prefixes.
+    #[must_use]
+    pub fn plane_entry(&self, i: usize) -> Option<&PlaneEntry> {
+        self.planes.get(i)
+    }
+
     fn plane_width(&self) -> usize {
         self.dims[self.dims.len() - 1] as usize
     }

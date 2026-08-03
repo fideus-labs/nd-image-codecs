@@ -226,6 +226,44 @@ pub fn wrap(codestream: &[u8], width: u32, height: u32, comps: &[(u8, bool)]) ->
     out
 }
 
+/// Locates the codestream payload offset from a file **prefix**: the box
+/// walk reads only box headers, so a small ranged fetch suffices and the
+/// codestream box's declared extent may reach past the bytes on hand
+/// (unlike [`parse`], which bounds-checks every box).
+///
+/// # Errors
+/// [`Error::Codestream`] when the prefix is not a JP2-family file or ends
+/// before the codestream box header.
+pub fn codestream_offset(data: &[u8]) -> Result<usize> {
+    if !is_box_format(data) {
+        return Err(err(0, "not a JP2-family box file (bad signature)"));
+    }
+    let mut pos = 12usize;
+    while pos + 8 <= data.len() {
+        let lbox = rd32(data, pos)? as usize;
+        let tbox = rd32(data, pos + 4)?;
+        if tbox == BOX_JP2C {
+            return Ok(pos + if lbox == 1 { 16 } else { 8 });
+        }
+        match lbox {
+            0 => break, // a non-codestream box running to EOF: nothing follows
+            1 => {
+                let hi = u64::from(rd32(data, pos + 8)?);
+                let lo = u64::from(rd32(data, pos + 12)?);
+                let xl = usize::try_from((hi << 32) | lo)
+                    .map_err(|_| err(pos, "XLBox exceeds addressable size"))?;
+                if xl < 16 {
+                    return Err(err(pos, "XLBox too short"));
+                }
+                pos += xl;
+            }
+            2..=7 => return Err(err(pos, "invalid LBox")),
+            _ => pos += lbox,
+        }
+    }
+    Err(err(pos, "prefix ends before the jp2c codestream box"))
+}
+
 /// Returns the raw codestream: unwraps `.jph`/`.jp2` boxes, passes raw
 /// `SOC`-led codestreams through.
 ///

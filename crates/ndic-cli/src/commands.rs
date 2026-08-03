@@ -98,6 +98,10 @@ pub struct ExpandArgs {
     /// Decode only resolutions `0..=R` (default: all).
     #[arg(long)]
     pub resolution: Option<u8>,
+    /// The input is a fetched byte-range prefix (e.g. from `curl -r`):
+    /// decode the highest resolution the bytes on hand cover.
+    #[arg(long)]
+    pub partial: bool,
 }
 
 /// Arguments for `ndic inspect`.
@@ -185,11 +189,34 @@ pub fn compress(args: &CompressArgs) -> anyhow::Result<()> {
 pub fn expand(args: &ExpandArgs) -> anyhow::Result<()> {
     let data =
         std::fs::read(&args.input).with_context(|| format!("reading {}", args.input.display()))?;
-    let cs_bytes = jph::unwrap_codestream(&data)?;
-    let cs = Codestream::parse(cs_bytes)?;
-    let dec = match args.resolution {
-        Some(r) => cs.decode_to_resolution(r)?,
-        None => cs.decode()?,
+    let (cs, dec) = if args.partial {
+        // A fetched prefix: headers intact, packet bodies cut short. The
+        // PLT index tells which resolutions the bytes on hand cover.
+        let cs_bytes = if data.starts_with(&[0xFF, 0x4F]) {
+            &data[..]
+        } else {
+            &data[jph::codestream_offset(&data)?..]
+        };
+        let cs = Codestream::parse_prefix(cs_bytes)?;
+        let entry = ndic_codestream::container::PlaneEntry::from_codestream(&cs, 0)?;
+        let covered = entry
+            .prefix
+            .iter()
+            .rposition(|&p| u64::from(p) <= cs_bytes.len() as u64)
+            .context("the prefix covers no complete resolution")?;
+        let r = args
+            .resolution
+            .map_or(covered, |r| usize::from(r).min(covered));
+        let dec = cs.decode_to_resolution(u8::try_from(r)?)?;
+        (cs, dec)
+    } else {
+        let cs_bytes = jph::unwrap_codestream(&data)?;
+        let cs = Codestream::parse(cs_bytes)?;
+        let dec = match args.resolution {
+            Some(r) => cs.decode_to_resolution(r)?,
+            None => cs.decode()?,
+        };
+        (cs, dec)
     };
     let c0 = cs.siz.comps[0];
     let dtype = match (c0.depth > 8, c0.signed) {
@@ -356,6 +383,7 @@ mod tests {
             input: jph.clone(),
             output: out.clone(),
             resolution: None,
+            partial: false,
         })
         .unwrap();
         assert_eq!(std::fs::read(&src).unwrap(), std::fs::read(&out).unwrap());
@@ -383,6 +411,7 @@ mod tests {
             input: j2c.clone(),
             output: out.clone(),
             resolution: None,
+            partial: false,
         })
         .unwrap();
         assert_eq!(std::fs::read(&src).unwrap(), std::fs::read(&out).unwrap());
@@ -393,6 +422,7 @@ mod tests {
             input: j2c,
             output: half.clone(),
             resolution: Some(2),
+            partial: false,
         })
         .unwrap();
         let head = std::fs::read(&half).unwrap();
@@ -418,6 +448,7 @@ mod tests {
             input: jph,
             output: out.clone(),
             resolution: None,
+            partial: false,
         })
         .unwrap();
         let back = image_io::load(&out, None).unwrap();
