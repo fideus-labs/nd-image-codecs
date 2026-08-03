@@ -22,6 +22,7 @@ ndic-codestream.workspace = true
 # The workloads (src/workloads/) measure these crates through their public
 # API only, so the published crates need no bench dependency of their own.
 ndic-lift.workspace = true
+ndic-zfp.workspace = true
 ndic-zarr = { workspace = true, features = ["zarrs"] }
 zarrs.workspace = true
 clap.workspace = true

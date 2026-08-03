@@ -152,6 +152,7 @@ fn builtin_configs() -> Vec<BenchConfig> {
         cfg("simd-97-ht", "nd-lift-ht", true, true, 0),
         cfg("simd-53-lift-z2", "nd-lift-ht", true, false, 2),
         cfg("zfp-rate8", "nd-zfp", true, true, 0),
+        cfg("zfp-reversible", "nd-zfp", true, false, 0),
     ]
 }
 
