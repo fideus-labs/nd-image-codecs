@@ -9,6 +9,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 mod commands;
 mod image_io;
+mod plans;
 
 /// nd-image-codecs command-line interface.
 #[derive(Parser)]
@@ -29,11 +30,13 @@ enum Command {
     Series(SeriesArgs),
     /// Print codestream structure (markers, resolutions, layers, tile-parts).
     Inspect(commands::InspectArgs),
-    /// Emit the byte-range index (from TLM/PLT and the coefficient-plane
-    /// index) for thumbnail / region fetch planning.
-    Index,
-    /// Extract an XY / XYZ / XYT / XYZT thumbnail from stored low-pass bands.
-    Thumbnail,
+    /// Emit a byte-range plan (from TLM/PLT and the coefficient-plane
+    /// index) for thumbnail / plane / region fetch, executable by any HTTP
+    /// client.
+    Index(plans::IndexArgs),
+    /// Plan, fetch (local file or HTTP Range), and decode a thumbnail or
+    /// low-pass 3D preview in one step.
+    Thumbnail(plans::ThumbnailArgs),
 }
 
 /// Arguments for `ndic series`.
@@ -111,9 +114,8 @@ fn main() {
         Command::Compress(args) => exit_on_error(commands::compress(&args)),
         Command::Expand(args) => exit_on_error(commands::expand(&args)),
         Command::Inspect(args) => exit_on_error(commands::inspect(&args)),
-        Command::Index | Command::Thumbnail => {
-            eprintln!("ndic: subcommand scaffolded; lands with a later roadmap phase");
-        }
+        Command::Index(args) => exit_on_error(plans::index(&args)),
+        Command::Thumbnail(args) => exit_on_error(plans::thumbnail(&args)),
     }
 }
 

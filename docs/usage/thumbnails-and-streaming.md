@@ -6,9 +6,10 @@ description: Decoding thumbnails, single planes, and low-resolution previews fro
 
 # Thumbnails & Streaming over HTTP Range
 
-:::{caution} Status: Skeleton
-`RangeIndex`, thumbnail extraction, and 3D targets land
-with [Phase 4](../development/roadmap/phase-4-nd-lift-ht.md).
+:::{note} Status
+Implemented ([Phase 4](../development/roadmap/phase-4-nd-lift-ht.md)):
+`RangeIndex` plans, `ndic index`/`ndic thumbnail` (local files and HTTP
+Range), `ndic expand --partial`, and 3D low-pass targets.
 :::
 
 Any nd-lift-ht plane (`.jph`) or chunk on any static host (S3, GCS, nginx…)

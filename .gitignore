@@ -14,11 +14,14 @@ __pycache__/
 dist/
 *.whl
 .venv/
+# maturin develop drops the native extension into the source tree
+*.abi3.so
 
 # TypeScript / Node
 node_modules/
 bindings/typescript/dist/
 bindings/typescript/pkg/
+bindings/typescript/src/wasm/
 *.wasm
 
 # Benchmark working artifacts. Per-run JSON records and the browser

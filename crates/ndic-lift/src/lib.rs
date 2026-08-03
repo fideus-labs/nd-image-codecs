@@ -183,6 +183,47 @@ pub(crate) fn check_dimension(step: &AxisTransform, ndim: usize) -> Result<()> {
     Ok(())
 }
 
+/// The number of leading approximation ("low-pass") samples one transform
+/// step leaves at the head of a group of `group_len` axis samples.
+///
+/// The lifting kinds emit subband order — approximation band first — and
+/// recurse on it, so after the levels [`kernel`]'s depth rule actually
+/// applies the approximation band is the group's first `⌈group_len / 2^k⌉`
+/// samples. `delta` keeps only its seed sample raw. A 3D thumbnail plan
+/// fetches exactly these planes (`docs/architecture/range-access.md`).
+#[must_use]
+pub fn approx_len(kind: LiftKind, group_len: usize, levels: u8) -> usize {
+    match kind {
+        LiftKind::Delta => group_len.min(1),
+        LiftKind::Haar | LiftKind::Lift53 => {
+            let applied = kernel::band_count(group_len, levels);
+            group_len.div_ceil(1usize << applied)
+        }
+    }
+}
+
+/// The axis indices holding low-pass samples after `step` runs over an axis
+/// of `extent` samples: the head of every group (the last group may be
+/// short).
+///
+/// Indices come back sorted. An untransformed (singleton) extent is its own
+/// low-pass.
+#[must_use]
+pub fn low_pass_indices(step: &AxisTransform, extent: usize) -> Vec<usize> {
+    let mut out = Vec::new();
+    if extent == 0 {
+        return out;
+    }
+    let group = chunk::effective_group(step.group, extent);
+    let mut base = 0usize;
+    while base < extent {
+        let group_len = group.min(extent - base);
+        out.extend(base..base + approx_len(step.kind, group_len, step.levels));
+        base += group_len;
+    }
+    out
+}
+
 /// Refuse configuration versions this build does not implement.
 fn check_version(version: &str) -> Result<()> {
     let mut parts = version.split('.');
@@ -241,6 +282,37 @@ mod tests {
         assert!(cfg.validate(1).is_err());
         cfg.transforms[0].kind = LiftKind::Delta;
         assert!(cfg.validate(1).is_ok(), "delta ignores levels");
+    }
+
+    #[test]
+    fn low_pass_selection_matches_the_depth_rule() {
+        let step = |kind, levels, group| AxisTransform {
+            axis: "z".to_string(),
+            dimension: 0,
+            kind,
+            levels,
+            group,
+        };
+        // 32 samples, 2 levels, whole-extent group: the first ⌈32/4⌉ = 8.
+        assert_eq!(
+            low_pass_indices(&step(LiftKind::Lift53, 2, 0), 32),
+            (0..8).collect::<Vec<_>>()
+        );
+        // Grouped haar, 1 level: the head pair of every group of 4.
+        assert_eq!(
+            low_pass_indices(&step(LiftKind::Haar, 1, 4), 8),
+            vec![0, 1, 4, 5]
+        );
+        // Delta: one seed sample per group, short last group included.
+        assert_eq!(
+            low_pass_indices(&step(LiftKind::Delta, 0, 4), 10),
+            vec![0, 4, 8]
+        );
+        // Levels beyond the depth rule stop at the singleton approximation.
+        assert_eq!(low_pass_indices(&step(LiftKind::Lift53, 8, 0), 5), vec![0]);
+        // A singleton extent is its own low-pass.
+        assert_eq!(low_pass_indices(&step(LiftKind::Lift53, 8, 0), 1), vec![0]);
+        assert_eq!(approx_len(LiftKind::Haar, 6, 1), 3);
     }
 
     #[cfg(feature = "serde")]

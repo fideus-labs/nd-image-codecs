@@ -47,6 +47,7 @@ serde_json = "1"
 # --- CLI -------------------------------------------------------------
 clap = { version = "4", features = ["derive"] }
 png = "0.17"          # ndic CLI PNG input/output
+ureq = "3"            # ndic CLI HTTP Range fetch (index/thumbnail on URLs)
 
 # --- Parallelism / SIMD ----------------------------------------------
 rayon = "1"

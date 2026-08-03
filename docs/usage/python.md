@@ -5,9 +5,9 @@ description: 'Using nd-image-codecs from Python: the maturin-built nd_image_code
 
 # Python
 
-:::{caution} Status: Skeleton
-The package builds today (maturin) and the
-`codec_series` builder works; codec behavior lands per the
+:::{caution} Status: Partial
+The `codec_series` builder, the `nd_lift` codec, and the native `htj2k`
+codec (`zarr_codec.Htj2kCodec`, wheel builds) work; `nd_zfp` lands per the
 [roadmap](../development/roadmap/index.md).
 :::
 

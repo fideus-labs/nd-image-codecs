@@ -18,9 +18,14 @@
 //! `zarrs` feature is enabled (roadmap Phases 2–5); `nd_lift` (Phase 2) is
 //! implemented in the feature-gated `lift_codec` module.
 
+pub mod htj2k;
+#[cfg(feature = "zarrs")]
+pub mod htj2k_codec;
 #[cfg(feature = "zarrs")]
 pub mod lift_codec;
 pub mod series;
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 /// The registered Zarr v3 array-to-bytes codec identifier for the HTJ2K
 /// coefficient-plane codec (independent Part 1 / Part 15 codestreams per

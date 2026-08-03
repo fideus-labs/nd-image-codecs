@@ -67,12 +67,44 @@ resolution levels 0…k of the low-pass plane(s) only. The result decodes into a
 volume downsampled in x, y, *and* z — fetched with the same handful of Range
 requests (see [the `nd_lift` transform](./nd-transform.md)).
 
-## Precincts
+## Precincts: measured guidance for `region` plans
 
-Default precincts are maximal; for very large planes, `EncodeParams::precincts`
-(e.g. 256×256 at high resolutions) bounds the byte-span of a spatial region so
-`RangeIndex::region` plans stay tight. Guidance and measured trade-offs live in
-the [Phase 4 roadmap](../development/roadmap/phase-4-nd-lift-ht.md).
+Default precincts are **maximal** — one whole-plane precinct per resolution.
+Every packet then spans the full plane, so a `RangeIndex::region` plan
+degrades to the resolution prefix: it fetches *all* of resolutions
+`0..=level`, however small the viewport.
+
+Measured on a 2048×2048 8-bit plane (5 levels, 527 KiB codestream), a
+256×256 viewport — 1.6 % of the area — plans:
+
+| `--level` | decoded size | bytes fetched | share of stream |
+| --- | --- | --- | --- |
+| 0 | 8×8 | 4.4 KiB | 0.8 % |
+| 1 | 16×16 | 9.5 KiB | 1.8 % |
+| 2 | 32×32 | 21.8 KiB | 4.1 % |
+| 3 | 64×64 | 51.6 KiB | 9.8 % |
+
+Each plan is a **single** contiguous range (the RPCL prefix), so for
+thumbnails and low-`level` navigation maximal precincts are exactly right:
+minimal header overhead, one request, and the low resolutions are cheap
+regardless of viewport size. The cost only appears at *high* levels of
+*very large* planes, where the whole-plane packets dwarf the viewport — at
+`--level 3` above, a precinct-partitioned stream (256×256 precincts ⇒ four
+precincts at that resolution) would fetch roughly the viewport's share
+(~25 % of that resolution's packets, ~3 % of the stream) at the price of
+per-precinct packet headers (~1–2 % size overhead) and more, smaller
+ranges per plan.
+
+**Guidance:** stay with maximal precincts for chunked Zarr data — chunk
+planes (≤ 1024²) never accumulate enough high-resolution bytes for
+precincts to pay for their overhead, and maximal precincts are all the
+writer emits today (`EncodeParams::precincts` must be empty; writer-side
+precinct support lands with a later phase). The read side is already
+precinct-aware — the reader decodes explicit-precinct streams and
+`RangeIndex::region` plans tighten automatically over them — so once the
+writer lands, explicit precincts (256×256 at the finest two resolutions)
+will be the right choice for monolithic planes ≳ 4k² served for deep-zoom
+viewports.
 
 ## nd-zfp random access
 

@@ -150,7 +150,7 @@ fn apply_axis<T: PlaneSample>(chunk: &mut [T], shape: &[usize], step: &AxisTrans
 }
 
 /// The bounded segment length a step couples along its axis.
-fn effective_group(group: u32, len: usize) -> usize {
+pub(crate) fn effective_group(group: u32, len: usize) -> usize {
     if group == 0 {
         len
     } else {

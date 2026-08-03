@@ -1,28 +1,33 @@
-"""``nd_lift`` as a ``zarr-python`` (v3) array-to-array codec.
+"""``nd_lift`` and ``htj2k`` as ``zarr-python`` (v3) codecs.
 
 Importing this module requires ``zarr >= 3.1`` — the release that introduced
-``zarr.core.dtype`` and the ``to_native_dtype()`` accessor this codec resolves
-its coefficient plane through. The codec is registered with
-zarr both via the ``zarr.codecs`` entry point (when this package is
-installed) and explicitly through :func:`register`, so pipelines authored by
-:func:`nd_image_codecs.codec_series` — e.g. the Phase 2 validation series
-``transpose → nd_lift → bytes → blosc`` — run end-to-end:
+``zarr.core.dtype`` and the ``to_native_dtype()`` accessor these codecs
+resolve dtypes through. The codecs are registered with zarr both via the
+``zarr.codecs`` entry point (when this package is installed) and explicitly
+through :func:`register`, so pipelines authored by
+:func:`nd_image_codecs.codec_series` — the flagship Phase 4 series
+``transpose → nd_lift → htj2k`` above all — run end-to-end:
 
 >>> import nd_image_codecs.zarr_codec  # doctest: +SKIP
 >>> nd_image_codecs.zarr_codec.register()  # doctest: +SKIP
 
-The transform math lives in :mod:`nd_image_codecs._lift`, the NumPy port of
-the Rust ``ndic-lift`` crate; both are pinned bit-identical by the committed
-conformance vectors (``fixtures/nd-lift/vectors.json``).
+The ``nd_lift`` transform math lives in :mod:`nd_image_codecs._lift`, the
+NumPy port of the Rust ``ndic-lift`` crate; both are pinned bit-identical by
+the committed conformance vectors (``fixtures/nd-lift/vectors.json``). The
+``htj2k`` codec has no pure-Python port — it calls the native extension
+module (the same Rust core as the ``zarrs`` codec and the WASM binding, so
+every ecosystem produces byte-identical chunks) and raises a clear error
+when the package was installed without it.
 """
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Self
 
 import numpy as np
-from zarr.abc.codec import ArrayArrayCodec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.dtype import Int32, Int64
@@ -31,9 +36,9 @@ from zarr.registry import register_codec
 from . import _lift
 
 if TYPE_CHECKING:
-    from zarr.core.buffer import NDBuffer
+    from zarr.core.buffer import Buffer, NDBuffer
 
-__all__ = ["NdLiftCodec", "register"]
+__all__ = ["Htj2kCodec", "NdLiftCodec", "register"]
 
 
 @dataclass(frozen=True)
@@ -130,9 +135,109 @@ class NdLiftCodec(ArrayArrayCodec):
         return input_byte_length * plane.itemsize // dtype.itemsize
 
 
+#: Zarr dtype names the htj2k integer path accepts.
+_HTJ2K_DTYPES = frozenset({"uint8", "int8", "uint16", "int16", "uint32", "int32"})
+
+#: Progression orders the codestream writer implements.
+_HTJ2K_PROGRESSIONS = frozenset({"LRCP", "RLCP", "RPCL", "PCRL", "CPRL"})
+
+
+def _native():
+    """The native extension module, or a clear error when it is absent."""
+    try:
+        from . import _nd_image_codecs
+    except ImportError as err:  # pragma: no cover - build-environment issue
+        raise RuntimeError(
+            "the htj2k codec needs nd-image-codecs's native extension module; "
+            "install a built wheel (or `maturin develop`) rather than the "
+            "pure-Python source tree"
+        ) from err
+    return _nd_image_codecs
+
+
+@dataclass(frozen=True)
+class Htj2kCodec(ArrayBytesCodec):
+    """The ``htj2k`` coefficient-plane codec: one HTJ2K codestream per
+    trailing 2D plane plus the coefficient-plane byte index
+    (``docs/architecture/range-access.md``)."""
+
+    is_fixed_size = False
+
+    xy_levels: int = 5
+    reversible: bool = True
+    progression: str = "RPCL"
+    index: bool = True
+
+    def __post_init__(self) -> None:
+        if not 0 <= int(self.xy_levels) <= 33:
+            raise ValueError("htj2k: xy_levels must be in 0..=33")
+        if self.progression not in _HTJ2K_PROGRESSIONS:
+            raise ValueError(f"htj2k: unknown progression order {self.progression!r}")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
+        _, configuration = parse_named_configuration(
+            data, "htj2k", require_configuration=False
+        )
+        return cls(**(configuration or {}))  # type: ignore[arg-type]
+
+    def to_dict(self) -> dict[str, JSON]:
+        return {
+            "name": "htj2k",
+            "configuration": {
+                "xy_levels": self.xy_levels,
+                "reversible": self.reversible,
+                "progression": self.progression,
+                "index": self.index,
+            },
+        }
+
+    def validate(self, *, shape: tuple[int, ...], dtype: Any, chunk_grid: Any) -> None:
+        name = dtype.to_native_dtype().name
+        if name not in _HTJ2K_DTYPES:
+            raise ValueError(
+                f"htj2k has no integer path for dtype {name!r}; "
+                "use nd-zfp for float data"
+            )
+        if len(shape) < 2:
+            raise ValueError("htj2k needs a chunk with trailing 2D (y, x) planes")
+
+    async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
+        data = np.ascontiguousarray(chunk_array.as_numpy_array())
+        # Off the event loop, like zarr's own Zstd/Blosc codecs: the native
+        # call is CPU-bound (and releases the GIL), so `to_thread` keeps
+        # chunk pipelining and other async I/O running during the encode.
+        blob = await asyncio.to_thread(
+            _native().htj2k_encode,
+            data.tobytes(),
+            list(data.shape),
+            data.dtype.name,
+            xy_levels=self.xy_levels,
+            reversible=self.reversible,
+            progression=self.progression,
+            index=self.index,
+        )
+        return chunk_spec.prototype.buffer.from_bytes(blob)
+
+    async def _decode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        dtype = chunk_spec.dtype.to_native_dtype()
+        raw = await asyncio.to_thread(
+            _native().htj2k_decode,
+            chunk_bytes.to_bytes(),
+            list(chunk_spec.shape),
+            dtype.name,
+        )
+        data = np.frombuffer(raw, dtype=dtype).reshape(chunk_spec.shape)
+        return chunk_spec.prototype.nd_buffer.from_numpy_array(data)
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        raise NotImplementedError("htj2k chunks have no fixed encoded size")
+
+
 def register() -> None:
-    """Register the codec with the zarr-python codec registry."""
+    """Register the codecs with the zarr-python codec registry."""
     register_codec("nd_lift", NdLiftCodec)
+    register_codec("htj2k", Htj2kCodec)
 
 
 register()

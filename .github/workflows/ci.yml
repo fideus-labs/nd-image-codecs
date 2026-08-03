@@ -151,7 +151,12 @@ jobs:
       - run: pipx install maturin
       - run: maturin build --release -m bindings/python/nd-image-codecs/Cargo.toml
       - run: pip install pytest "zarr>=3.1" numpy numcodecs
+      # Install the built wheel so the suite exercises the native extension
+      # (the htj2k codec has no pure-Python fallback and skips without it).
+      - run: pip install --no-index --find-links target/wheels nd-image-codecs
       - run: python -m pytest bindings/python/nd-image-codecs/tests -q
+      # The htj2k lane must have actually run, not skipped.
+      - run: python -c "from nd_image_codecs import _nd_image_codecs as m; assert hasattr(m, 'htj2k_encode')"
 
   typescript:
     runs-on: ubuntu-24.04
@@ -160,12 +165,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - uses: Swatinem/rust-cache@v2
       - run: npm ci
+        working-directory: bindings/typescript
+      # Build the WASM core first: the htj2k round-trip tests skip without
+      # it, and skipping in CI would hide a broken binding.
+      - run: npm run build:wasm
         working-directory: bindings/typescript
       - run: npm run build
         working-directory: bindings/typescript
       - run: npm test
         working-directory: bindings/typescript
+      - run: test -f bindings/typescript/src/wasm/ndic_zarr_bg.wasm
 
   series-equality:
     runs-on: ubuntu-24.04

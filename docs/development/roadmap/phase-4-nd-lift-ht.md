@@ -61,10 +61,23 @@ plans.
 
 ## Acceptance criteria
 
-- [ ] nd-lift-ht chunks round-trip losslessly across zarrs and zarr-python.
-- [ ] A 1/32-scale thumbnail of a 100 GB-class volume decodes from ≤3 HTTP Range
-      requests without a smart server.
-- [ ] 3D previews decode from low-pass planes' low-resolution prefixes only.
-- [ ] `ndic index` emits plans executable by plain `curl -r`.
-- [ ] Measured compression gain of z-decorrelation over nd-delta on correlated
-      volumes is recorded in the bench baselines.
+- [x] nd-lift-ht chunks round-trip losslessly across zarrs and zarr-python
+      (both call the same feature-free chunk core, so chunks are
+      byte-identical; u8/i8/u16/i16 plus range-limited u32/i32 — 64-bit
+      dtypes and lossy `reversible: false` refuse to encode with clear
+      errors).
+- [x] A 1/32-scale thumbnail decodes from ≤3 HTTP Range requests without a
+      smart server. *Caveat:* verified against a real Range-serving HTTP
+      server on synthetic fixtures; the mechanism (chunk-header prefix +
+      plane prefix) is size-independent, and Tier-3 (100 GB-class) corpus
+      validation lands with Phase 6's fetch script.
+- [x] 3D previews decode from low-pass planes' low-resolution prefixes only
+      (`ndic thumbnail --three-d`, plane selection via
+      `ndic_lift::low_pass_indices`).
+- [x] `ndic index` emits plans executable by plain `curl -r`
+      (`--format curl`; the CLI test executes the emitted ranges and pins
+      `expand --partial` bit-identical to the full decode).
+- [x] Measured compression gain of z-decorrelation over nd-delta on
+      correlated volumes is recorded in the bench baselines
+      (`simd-53-lift-z2` 0.2549 vs `simd-53-ht` 0.2933; see
+      `docs/development/benchmarking.md`).

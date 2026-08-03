@@ -6,10 +6,10 @@ description: 'The ndic command-line tool: build a codec series from an array''s 
 
 # CLI — `ndic`
 
-:::{caution} Status: Skeleton
-`ndic series` works today; encode/decode behavior lands
-with [Phase 3](../development/roadmap/phase-3-htj2k-core.md) and
-[Phase 4](../development/roadmap/phase-4-nd-lift-ht.md).
+:::{note} Status
+All subcommands work: `series` (Phase 1), `compress`/`expand`/`inspect`
+(Phase 3), and `index`/`thumbnail` with HTTP Range execution
+([Phase 4](../development/roadmap/phase-4-nd-lift-ht.md)).
 :::
 
 ```bash

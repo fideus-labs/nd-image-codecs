@@ -42,6 +42,10 @@ pub struct TilePart {
 #[derive(Debug)]
 pub struct Codestream<'a> {
     data: &'a [u8],
+    /// Bytes this codestream spans from its first byte (`SOC`) through `EOC`.
+    /// For a [`Codestream::parse_prefix`] of a truncated stream this is the
+    /// *declared* extent (from `Psot`), which may exceed the bytes on hand.
+    total_len: usize,
     /// The `SIZ` marker.
     pub siz: Siz,
     /// The `COD` marker.
@@ -92,8 +96,28 @@ impl<'a> Codestream<'a> {
     /// # Errors
     /// [`Error::Codestream`] on malformed streams, [`Error::Unsupported`]
     /// for syntax outside the Phase-3 reader.
-    #[allow(clippy::too_many_lines)]
     pub fn parse(data: &'a [u8]) -> Result<Self> {
+        Self::parse_impl(data, true)
+    }
+
+    /// Parses a codestream **prefix**: a truncated stream whose main header
+    /// and tile-part headers are intact but whose packet bodies (and `EOC`)
+    /// may be cut short — the shape a byte-range plan fetches.
+    ///
+    /// Tile-part [`TilePart::body`] ranges keep their *declared* extent (from
+    /// `Psot`), so [`Codestream::packet_index`] still reconstructs the full
+    /// packet map from a header-only prefix; decode clamps reads to the bytes
+    /// on hand and [`Codestream::decode_to_resolution`] stops at the last
+    /// resolution the prefix covers.
+    ///
+    /// # Errors
+    /// [`Error::Codestream`] when even the retained headers are malformed.
+    pub fn parse_prefix(data: &'a [u8]) -> Result<Self> {
+        Self::parse_impl(data, false)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn parse_impl(data: &'a [u8], strict: bool) -> Result<Self> {
         let rd16 = |pos: usize| -> Result<u16> {
             data.get(pos..pos + 2)
                 .map(|b| u16::from_be_bytes([b[0], b[1]]))
@@ -151,10 +175,43 @@ impl<'a> Codestream<'a> {
         let first_tile_offset = pos;
 
         // ---- tile-parts ------------------------------------------------
-        let mut tile_parts = Vec::new();
+        let mut tile_parts: Vec<TilePart> = Vec::new();
+        let total_len;
+        // The declared full-stream extent from the tile-parts on hand:
+        // `Psot`-carrying tile-parts end at a known byte and the last one is
+        // followed by `EOC`; an open-ended (`Psot == 0`) tile-part in a
+        // prefix declares nothing beyond the bytes present, so its extent
+        // is just what we hold (no phantom `EOC` accounting).
+        let declared_len = |tile_parts: &[TilePart]| {
+            tile_parts
+                .iter()
+                .map(|tp| {
+                    if tp.sot.psot == 0 {
+                        tp.body.end
+                    } else {
+                        tp.body.end + 2
+                    }
+                })
+                .max()
+                .unwrap_or(data.len())
+        };
         loop {
-            let marker = rd16(pos)?;
+            if !strict && pos >= data.len() {
+                // The prefix ends inside (or exactly at the end of) a packet
+                // body; the declared extent still tells the full stream size.
+                total_len = declared_len(&tile_parts);
+                break;
+            }
+            let marker = match rd16(pos) {
+                Ok(marker) => marker,
+                Err(_) if !strict => {
+                    total_len = declared_len(&tile_parts);
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
             if marker == markers::EOC {
+                total_len = pos + 2;
                 break;
             }
             if marker != markers::SOT {
@@ -197,12 +254,17 @@ impl<'a> Codestream<'a> {
             }
 
             let body_end = if sot.psot == 0 {
-                // Open-ended last tile-part: runs to EOC.
-                data.len().saturating_sub(2)
+                // Open-ended last tile-part: runs to EOC (which a prefix
+                // may not carry).
+                if strict || data.ends_with(&markers::EOC.to_be_bytes()) {
+                    data.len().saturating_sub(2)
+                } else {
+                    data.len()
+                }
             } else {
                 sot_off + sot.psot as usize
             };
-            if body_end < pos || body_end > data.len() {
+            if body_end < pos || (strict && body_end > data.len()) {
                 return Err(err(sot_off, "Psot out of bounds"));
             }
             tile_parts.push(TilePart {
@@ -216,6 +278,7 @@ impl<'a> Codestream<'a> {
 
         Ok(Self {
             data,
+            total_len,
             siz,
             cod,
             quant,
@@ -225,6 +288,17 @@ impl<'a> Codestream<'a> {
             first_tile_offset,
             tile_parts,
         })
+    }
+
+    /// Bytes the whole codestream spans, `SOC` through `EOC` inclusive.
+    ///
+    /// After [`Codestream::parse`] this is the consumed length — callers
+    /// walking concatenated codestreams resume at the next byte. After
+    /// [`Codestream::parse_prefix`] it is the *declared* full-stream length,
+    /// which the bytes on hand may not reach.
+    #[must_use]
+    pub fn total_len(&self) -> usize {
+        self.total_len
     }
 
     /// Validates that the stream is within the Phase-3 decoding scope.
@@ -409,10 +483,13 @@ impl<'a> Codestream<'a> {
         let height = self.siz.ysiz as usize;
         let ncomps = self.siz.comps.len();
 
-        // Concatenated packet bodies across tile-parts.
+        // Concatenated packet bodies across tile-parts, clamped to the bytes
+        // on hand (a parsed prefix declares more body than it carries).
         let mut body = Vec::new();
         for tp in &self.tile_parts {
-            body.extend_from_slice(&self.data[tp.body.clone()]);
+            let start = tp.body.start.min(self.data.len());
+            let end = tp.body.end.min(self.data.len());
+            body.extend_from_slice(&self.data[start..end]);
         }
 
         let mut planes = alloc::vec![alloc::vec![0i32; width * height]; ncomps];
@@ -421,8 +498,22 @@ impl<'a> Codestream<'a> {
         let uses_eph = self.cod.scod & 4 != 0;
         let stripe_causal = self.cod.stripe_causal();
 
+        // Stop after the last packet the requested resolutions need: under
+        // LRCP/RLCP/RPCL that is the last packet before any higher
+        // resolution, under PCRL/CPRL the last component's. This is what
+        // makes a byte-range *prefix* decodable — the packets past it need
+        // not exist.
+        let sequence = self.packet_sequence();
+        let last_needed = sequence.iter().rposition(|&(_, res, _, _)| res <= max_res);
+
         let mut cursor = 0usize;
-        for (comp, res, ppx_i, ppy_i) in self.packet_sequence() {
+        for (i, (comp, res, ppx_i, ppy_i)) in sequence.into_iter().enumerate() {
+            if last_needed.is_none_or(|last| i > last) {
+                break;
+            }
+            if cursor > body.len() {
+                return Err(err(cursor, "packet body truncated"));
+            }
             let bands = bands_of_resolution(width, height, levels, res);
             let (ppx, ppy) = self.cod.precinct_exp(res);
             let (ecbw, ecbh) = effective_cb(cbw_n, cbh_n, ppx, ppy, res);

@@ -15,8 +15,12 @@ Zarr v3 codecs assembled by :func:`codec_series` from an array's axis metadata:
 :mod:`nd_image_codecs._lift` (the NumPy port of the Rust ``ndic-lift`` crate,
 pinned bit-identical by the committed conformance vectors) and
 :mod:`nd_image_codecs.zarr_codec` registers it as a ``zarr-python`` v3
-array-to-array codec. :class:`Htj2k` and :class:`NdZfp` are scaffolds until
-their roadmap phases land; see ``docs/development/roadmap/``.
+array-to-array codec. ``htj2k`` is implemented (roadmap Phase 4) as
+``zarr_codec.Htj2kCodec``, backed by the native extension module — the same
+Rust core as the ``zarrs`` codec, so both ecosystems produce byte-identical
+chunks; the :class:`Htj2k` class here is its plain configuration mirror.
+:class:`NdZfp` is a scaffold until its roadmap phase lands; see
+``docs/development/roadmap/``.
 :func:`codec_series` is fully implemented in pure Python and is cross-checked
 against the Rust and TypeScript builders in CI.
 
@@ -108,8 +112,9 @@ class Htj2k:
     """Zarr v3 array-to-bytes HTJ2K coefficient-plane codec (``htj2k``).
 
     Independent JPEG 2000 Part 1 / Part 15 codestreams per trailing 2D plane,
-    plus a coefficient-plane byte index for range access. Scaffold: roadmap
-    Phase 3.
+    plus a coefficient-plane byte index for range access. This class is the
+    plain configuration object; the registered zarr-python codec (backed by
+    the native extension) is :class:`nd_image_codecs.zarr_codec.Htj2kCodec`.
     """
 
     name = "htj2k"

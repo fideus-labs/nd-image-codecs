@@ -226,6 +226,58 @@ pub fn wrap(codestream: &[u8], width: u32, height: u32, comps: &[(u8, bool)]) ->
     out
 }
 
+/// Locates the codestream payload offset from a file **prefix**: the box
+/// walk reads only box headers, so a small ranged fetch suffices and the
+/// codestream box's declared extent may reach past the bytes on hand
+/// (unlike [`parse`], which bounds-checks every box).
+///
+/// # Errors
+/// [`Error::Codestream`] when the prefix is not a JP2-family file or ends
+/// before the codestream box header.
+pub fn codestream_offset(data: &[u8]) -> Result<usize> {
+    if !is_box_format(data) {
+        return Err(err(0, "not a JP2-family box file (bad signature)"));
+    }
+    let mut pos = 12usize;
+    while pos + 8 <= data.len() {
+        let lbox = rd32(data, pos)? as usize;
+        let tbox = rd32(data, pos + 4)?;
+        if tbox == BOX_JP2C {
+            // Callers slice the prefix at the returned offset, so it must
+            // lie within the bytes on hand — for an XLBox header that means
+            // the extended-length field is present too.
+            if lbox == 1 && pos + 16 > data.len() {
+                return Err(err(pos, "prefix ends before the jp2c codestream box"));
+            }
+            return Ok(pos + if lbox == 1 { 16 } else { 8 });
+        }
+        // Box lengths are untrusted input: a declared length near
+        // `usize::MAX` must error, not wrap the cursor backwards.
+        match lbox {
+            0 => break, // a non-codestream box running to EOF: nothing follows
+            1 => {
+                let hi = u64::from(rd32(data, pos + 8)?);
+                let lo = u64::from(rd32(data, pos + 12)?);
+                let xl = usize::try_from((hi << 32) | lo)
+                    .map_err(|_| err(pos, "XLBox exceeds addressable size"))?;
+                if xl < 16 {
+                    return Err(err(pos, "XLBox too short"));
+                }
+                pos = pos
+                    .checked_add(xl)
+                    .ok_or_else(|| err(pos, "XLBox out of bounds"))?;
+            }
+            2..=7 => return Err(err(pos, "invalid LBox")),
+            _ => {
+                pos = pos
+                    .checked_add(lbox)
+                    .ok_or_else(|| err(pos, "box length out of bounds"))?;
+            }
+        }
+    }
+    Err(err(pos, "prefix ends before the jp2c codestream box"))
+}
+
 /// Returns the raw codestream: unwraps `.jph`/`.jp2` boxes, passes raw
 /// `SOC`-led codestreams through.
 ///
@@ -269,5 +321,52 @@ mod tests {
     fn rejects_bad_signature() {
         assert!(parse(&[0u8; 32]).is_err());
         assert!(!is_box_format(&[0u8; 4]));
+    }
+
+    #[test]
+    fn codestream_offset_finds_the_payload_from_a_prefix() {
+        let fake_cs = [0xFFu8, 0x4F, 0xFF, 0xD9];
+        let file = wrap(&fake_cs, 640, 480, &[(8, false); 3]);
+        let offset = codestream_offset(&file).unwrap();
+        assert_eq!(offset, parse(&file).unwrap().codestream.0);
+        // A header-only prefix (cut inside the codestream payload) still
+        // locates the offset.
+        assert_eq!(codestream_offset(&file[..=offset]).unwrap(), offset);
+    }
+
+    /// Untrusted box headers must error, never panic, wrap, or return an
+    /// offset past the prefix (callers slice with it).
+    #[test]
+    fn codestream_offset_survives_hostile_prefixes() {
+        let fake_cs = [0xFFu8, 0x4F, 0xFF, 0xD9];
+        let file = wrap(&fake_cs, 4, 4, &[(8, false)]);
+
+        // A jp2c box with an XLBox length but the prefix ends before the
+        // 16-byte extended header: must error, not return pos + 16.
+        let mut xl = file[..12].to_vec();
+        xl.extend_from_slice(&1u32.to_be_bytes()); // LBox = 1 (XLBox follows)
+        xl.extend_from_slice(&BOX_JP2C.to_be_bytes());
+        for cut in 12..xl.len() {
+            if let Ok(offset) = codestream_offset(&xl[..cut]) {
+                assert!(offset <= cut, "offset past the prefix");
+            }
+        }
+        assert!(codestream_offset(&xl).is_err(), "XLBox header incomplete");
+
+        // A non-codestream box declaring a length near usize::MAX: the
+        // cursor advance must not wrap.
+        let mut huge = file[..12].to_vec();
+        huge.extend_from_slice(&1u32.to_be_bytes()); // ftyp with XLBox
+        huge.extend_from_slice(&BOX_FTYP.to_be_bytes());
+        huge.extend_from_slice(&u64::MAX.to_be_bytes());
+        huge.extend_from_slice(&[0u8; 16]);
+        assert!(codestream_offset(&huge).is_err());
+
+        // Every 1-byte truncation of a valid file errs or stays in range.
+        for cut in 0..file.len() {
+            if let Ok(offset) = codestream_offset(&file[..cut]) {
+                assert!(offset <= cut, "offset {offset} past prefix of {cut}");
+            }
+        }
     }
 }

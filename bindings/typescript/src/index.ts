@@ -210,17 +210,126 @@ export interface Htj2kConfig {
   };
 }
 
+/** Chunk geometry an array-to-bytes codec needs beyond its configuration. */
+export interface Htj2kChunkMeta {
+  /** Chunk shape in stored (post-transpose) order; trailing dims are (y, x). */
+  shape: number[];
+  /** Zarr dtype name, e.g. `"uint16"` (integer dtypes up to 32-bit). */
+  dtype: string;
+}
+
+const HTJ2K_PROGRESSIONS = new Set(["LRCP", "RLCP", "RPCL", "PCRL", "CPRL"]);
+
+// Minimal ambient view of Node's `process`, so the Node-vs-browser probe
+// typechecks without @types/node (the package targets browsers first).
+declare const process: { versions?: { node?: string } } | undefined;
+
+/** The lazily-initialized WASM core (`npm run build:wasm`). */
+let wasmCore: Promise<{
+  htj2k_encode(chunk: Uint8Array, shape: Uint32Array, dtype: string, config: string): Uint8Array;
+  htj2k_decode(chunk: Uint8Array, shape: Uint32Array, dtype: string): Uint8Array;
+}> | null = null;
+
+function loadWasmCore() {
+  if (wasmCore === null) {
+    // A computed specifier keeps bundlers and tsc from resolving the module
+    // statically: the artifact exists only after `npm run build:wasm`.
+    const specifier = "./wasm/ndic_zarr.js";
+    wasmCore = import(/* @vite-ignore */ /* webpackIgnore: true */ specifier)
+      .then(async (mod) => {
+        // The wasm-pack `web` target initializes via fetch, which Node
+        // cannot do for file: URLs — hand it the bytes there instead.
+        if (typeof process !== "undefined" && process?.versions?.node !== undefined) {
+          const fsSpecifier = "node:fs/promises";
+          const { readFile } = await import(/* @vite-ignore */ fsSpecifier);
+          const wasmUrl = new URL("./wasm/ndic_zarr_bg.wasm", import.meta.url);
+          await mod.default({ module_or_path: await readFile(wasmUrl) });
+        } else {
+          await mod.default();
+        }
+        return mod;
+      })
+      .catch((cause) => {
+        wasmCore = null;
+        throw new Error(
+          "the htj2k codec needs the nd-image-codecs WASM core; " +
+            "run `npm run build:wasm` (wasm-pack) first",
+          { cause },
+        );
+      });
+  }
+  return wasmCore;
+}
+
+/**
+ * The `htj2k` Zarr v3 array-to-bytes codec: one HTJ2K codestream per
+ * trailing 2D plane plus the coefficient-plane byte index. Backed by the
+ * WASM build of the same Rust core as the `zarrs` codec and the Python
+ * extension, so every ecosystem produces byte-identical chunks.
+ *
+ * `encode`/`decode` operate on little-endian chunk bytes in C order; the
+ * chunk `shape`/`dtype` come from the second `fromConfig` argument (an
+ * array-to-bytes codec cannot infer them from bytes alone).
+ */
 export class Htj2k {
   static codecName = "htj2k" as const;
-  constructor(public readonly config: Htj2kConfig) {}
-  static fromConfig(config: Htj2kConfig): Htj2k {
-    return new Htj2k(config);
+
+  constructor(
+    public readonly config: Htj2kConfig,
+    public readonly meta?: Htj2kChunkMeta,
+  ) {
+    const { xy_levels = 5, progression = "RPCL" } = config.configuration ?? {};
+    if (!Number.isInteger(xy_levels) || xy_levels < 0 || xy_levels > 33) {
+      throw new Error(`htj2k: xy_levels must be an integer in 0..=33, got ${xy_levels}`);
+    }
+    if (!HTJ2K_PROGRESSIONS.has(progression)) {
+      throw new Error(`htj2k: unknown progression order ${JSON.stringify(progression)}`);
+    }
+    if (meta !== undefined && meta.shape.length < 2) {
+      throw new Error("htj2k needs a chunk with trailing 2D (y, x) planes");
+    }
   }
-  async encode(_data: Uint8Array): Promise<Uint8Array> {
-    throw new Error("htj2k encode: implemented in roadmap Phase 3");
+
+  static fromConfig(config: Htj2kConfig, meta?: Htj2kChunkMeta): Htj2k {
+    return new Htj2k(config, meta);
   }
-  async decode(_data: Uint8Array): Promise<Uint8Array> {
-    throw new Error("htj2k decode: implemented in roadmap Phase 3");
+
+  /** The Zarr v3 codec metadata object (the schema the Rust codec parses). */
+  toDict(): Required<Htj2kConfig> {
+    const {
+      xy_levels = 5,
+      reversible = true,
+      progression = "RPCL",
+      index = true,
+    } = this.config.configuration ?? {};
+    return { name: "htj2k", configuration: { xy_levels, reversible, progression, index } };
+  }
+
+  private chunkMeta(): Htj2kChunkMeta {
+    if (this.meta === undefined) {
+      throw new Error(
+        "htj2k encode/decode needs the chunk shape and dtype: " +
+          "construct with Htj2k.fromConfig(config, { shape, dtype })",
+      );
+    }
+    return this.meta;
+  }
+
+  async encode(data: Uint8Array): Promise<Uint8Array> {
+    const { shape, dtype } = this.chunkMeta();
+    const core = await loadWasmCore();
+    return core.htj2k_encode(
+      data,
+      Uint32Array.from(shape),
+      dtype,
+      JSON.stringify(this.toDict().configuration),
+    );
+  }
+
+  async decode(data: Uint8Array): Promise<Uint8Array> {
+    const { shape, dtype } = this.chunkMeta();
+    const core = await loadWasmCore();
+    return core.htj2k_decode(data, Uint32Array.from(shape), dtype);
   }
 }
 

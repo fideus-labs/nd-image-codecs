@@ -55,6 +55,18 @@ reference C ZFP library (`ref-zfp`, via `zfp-sys`), and Python `imagecodecs` on
 identical fixtures, so speed/ratio claims are grounded against the C/C++ state
 of the art.
 
+The nd-lift-ht lanes are told apart by the Phase-4 `lift_ht/*` workloads:
+the composed `nd_lift → htj2k` chunk path over a correlated z-stack
+(`chunk_encode`/`chunk_decode`, ratio + throughput) and the byte-range plan
+economy (`thumbnail_bytes`: bytes a 16-px thumbnail plan fetches, as a
+fraction of the chunk). The committed dev-box baselines record the
+**z-decorrelation gain** the roadmap asks for: ratio 0.2933 undecorrelated
+(`simd-53-ht`) vs **0.2549** with two z-lifting levels (`simd-53-lift-z2`)
+on the correlated fixture — ~13 % smaller chunks — with the blosc-backed
+analog on the Python correlated fixture at 0.4007 (`nd-lift-delta-zstd`,
+the nd-delta-style differencing) vs 0.3766 (`nd-lift-53-zstd`). Thumbnail
+plans fetch 2.1–2.4 % of the chunk in ≤ 3 ranges.
+
 ## Records & baselines
 
 Each `(benchmark, config)` run writes one JSON `BenchRecord` to
