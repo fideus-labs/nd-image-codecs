@@ -14,3 +14,4 @@
 mod htj2k;
 mod lift;
 mod lift_codec;
+mod lift_ht;
