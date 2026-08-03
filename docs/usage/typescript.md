@@ -7,8 +7,8 @@ description: 'Using nd-image-codecs from TypeScript and the browser: the codecSe
 # TypeScript / Browser
 
 :::{caution} Status: Partial
-The `codecSeries` builder and the `htj2k` WASM core work
-(`npm run build:wasm`); the `nd_lift` and `nd_zfp` WASM paths land per the
+The `codecSeries` builder and the `htj2k` and `nd_zfp` WASM cores work
+(`npm run build:wasm`); the `nd_lift` WASM path lands per the
 [roadmap](../development/roadmap/index.md).
 :::
 

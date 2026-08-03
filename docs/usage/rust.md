@@ -5,8 +5,9 @@ description: 'Using nd-image-codecs from Rust: the codec_series builder, the cod
 
 # Rust Library
 
-:::{caution} Status: Skeleton
-The `codec_series` builder works today; encode/decode
+:::{caution} Status: Partial
+The `codec_series` builder and the registered Zarr codecs (`nd_lift`,
+`htj2k`, `nd_zfp`) work today; the direct codestream API sketches below
 land per the [roadmap](../development/roadmap/index.md).
 :::
 
@@ -63,6 +64,27 @@ let steps = [AxisTransform {
     axis: "z".into(), dimension: 0, kind: LiftKind::Lift53, levels: 2, group: 0,
 }];
 // ndic_lift::forward(&mut chunk, &shape, &steps)?;   // then encode planes
+```
+
+## ZFP chunks and bricks
+
+The `nd_zfp` core ([nd_zfp codec](../architecture/zfp.md)) compresses 1D–4D
+arrays into standard ZFP streams; in fixed-rate mode every `4^d` brick sits
+at a computed offset:
+
+```rust
+use ndic_zfp::{BrickIndex, ZfpMode, ZfpScalarKind};
+
+let shape = [32usize, 256, 256];
+let bytes = ndic_zfp::compress(&samples, &shape, ZfpMode::FixedRate(8.0))?;
+
+// Decode one 4³ brick without touching the rest of the payload…
+let (brick, brick_shape) =
+    ndic_zfp::decompress_brick::<f32>(&bytes, &shape, 8.0, &[2, 10, 7])?;
+
+// …or plan the ranged fetch for it (HTTP Range, Zarr partial read).
+let index = BrickIndex::fixed_rate(&shape, ZfpScalarKind::F32, 8.0)?;
+let (offset, len) = index.byte_range(index.linear(&[2, 10, 7])?)?;
 ```
 
 ## Decode — full and partial

@@ -26,7 +26,7 @@ consult the roadmap before implementing anything.
 | `nd_lift` cross-axis lifting transform | [./crates/ndic-lift/](./crates/ndic-lift/) |
 | HT (FBCOT) block coder | [./crates/ndic-htj2k/](./crates/ndic-htj2k/) |
 | Codestream syntax + indexing (Part 1/15) | [./crates/ndic-codestream/](./crates/ndic-codestream/) |
-| `nd_zfp` Rust ZFP port (2D/3D/4D) | [./crates/ndic-zfp/](./crates/ndic-zfp/) |
+| `nd_zfp` ZFP codec (1D–4D, over `zfp-rs`) | [./crates/ndic-zfp/](./crates/ndic-zfp/) |
 | Zarr v3 codecs + `codec_series` builder (Rust + WASM core) | [./crates/ndic-zarr/](./crates/ndic-zarr/) |
 | `ndic` CLI | [./crates/ndic-cli/](./crates/ndic-cli/) |
 | Python binding (PyO3/maturin) | [./bindings/python/nd-image-codecs/](./bindings/python/nd-image-codecs/) |
@@ -43,7 +43,7 @@ consult the roadmap before implementing anything.
 | Work on the `nd_lift` transform | [./docs/architecture/nd-transform.md](./docs/architecture/nd-transform.md) |
 | Work on the HT block coder | [./docs/architecture/ht-block-coder.md](./docs/architecture/ht-block-coder.md) |
 | Work on the in-plane 2D wavelet | [./docs/architecture/wavelet-transform.md](./docs/architecture/wavelet-transform.md) |
-| Work on the ZFP port | [./docs/architecture/zfp.md](./docs/architecture/zfp.md) |
+| Work on the ZFP codec | [./docs/architecture/zfp.md](./docs/architecture/zfp.md) |
 | Work on markers / codestream IO | [./docs/architecture/codestream.md](./docs/architecture/codestream.md) |
 | Thumbnails / HTTP Range access | [./docs/architecture/range-access.md](./docs/architecture/range-access.md) |
 | Zarr codecs (Rust/Python/TS) | [./docs/architecture/zarr-codec.md](./docs/architecture/zarr-codec.md) |
@@ -127,7 +127,7 @@ consult the roadmap before implementing anything.
 | `wide` | 0.7 | Portable SIMD fallback lanes (native paths use `core::arch`) |
 | `zarrs` | 0.23 | Zarr v3 codec traits + plugin registry (feature-gated) |
 | `inventory` | 0.3 | Link-time registration: zarrs codec + bench entries |
-| `zfp-sys` | (ref lane) | FFI to upstream ZFP C for port parity checks |
+| `zfp-rs` | 0.1 | Pure-Rust ZFP core, bit-identical to the C reference (`nd_zfp`) |
 | `pyo3` / `numpy` | 0.24 | Python binding, `abi3-py311` |
 | `wasm-bindgen` | 0.2 | TypeScript/WASM binding |
 | `clap` | 4 | `ndic` and `ndic-bench` CLIs |
