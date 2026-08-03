@@ -24,6 +24,8 @@ pub mod htj2k_codec;
 #[cfg(feature = "zarrs")]
 pub mod lift_codec;
 pub mod series;
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 /// The registered Zarr v3 array-to-bytes codec identifier for the HTJ2K
 /// coefficient-plane codec (independent Part 1 / Part 15 codestreams per

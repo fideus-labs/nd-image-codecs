@@ -31,7 +31,7 @@ test = ["pytest", "imagecodecs", "zarr>=3.1"]
 # https://zarr.readthedocs.io/en/stable/user-guide/extending.html
 [project.entry-points."zarr.codecs"]
 "nd_lift" = "nd_image_codecs.zarr_codec:NdLiftCodec"
-"htj2k" = "nd_image_codecs:Htj2k"
+"htj2k" = "nd_image_codecs.zarr_codec:Htj2kCodec"
 "nd_zfp" = "nd_image_codecs:NdZfp"
 
 [project.urls]

@@ -9,6 +9,11 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+# cdylib for the wasm-pack build (`bindings/typescript`, feature `wasm`);
+# rlib so every native consumer links the crate as usual.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [features]
 default = []
 # Registers the codecs into the zarrs plugin registry (native use).
