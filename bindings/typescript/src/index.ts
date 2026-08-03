@@ -400,6 +400,17 @@ export class NdZfp {
         throw new Error(`nd_zfp: ${JSON.stringify(mode)} mode does not take "${name}"`);
       }
     }
+    // Mirror the Rust core's numeric bounds (`ZfpMode::validate`), so a bad
+    // configuration fails here rather than inside the WASM call.
+    if (rate !== undefined && !(Number.isFinite(rate) && rate > 0)) {
+      throw new Error(`nd_zfp: rate must be a positive finite number, got ${rate}`);
+    }
+    if (tolerance !== undefined && !(Number.isFinite(tolerance) && tolerance >= 0)) {
+      throw new Error(`nd_zfp: tolerance must be a non-negative finite number, got ${tolerance}`);
+    }
+    if (precision !== undefined && !(Number.isInteger(precision) && precision >= 1 && precision <= 64)) {
+      throw new Error(`nd_zfp: precision must be an integer in 1..=64, got ${precision}`);
+    }
     if (!Number.isInteger(dims) || dims < 1 || dims > 4) {
       throw new Error(`nd_zfp: dims must be an integer in 1..=4, got ${dims}`);
     }

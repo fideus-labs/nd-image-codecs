@@ -23,6 +23,7 @@ raise a clear error when the package was installed without it.
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Self
 
@@ -273,6 +274,20 @@ class NdZfpCodec(ArrayBytesCodec):
                 raise ValueError(f'nd_zfp: {self.mode} mode needs a "{name}"')
             if name != needed and value is not None:
                 raise ValueError(f"nd_zfp: {self.mode!r} mode does not take {name!r}")
+        # Mirror the Rust core's numeric bounds (`ZfpMode::validate`), so a
+        # bad configuration fails here rather than inside the native call.
+        if self.rate is not None and not (math.isfinite(self.rate) and self.rate > 0):
+            raise ValueError(f"nd_zfp: rate must be a positive finite number, got {self.rate}")
+        if self.tolerance is not None and not (
+            math.isfinite(self.tolerance) and self.tolerance >= 0
+        ):
+            raise ValueError(
+                f"nd_zfp: tolerance must be a non-negative finite number, got {self.tolerance}"
+            )
+        if self.precision is not None and not (
+            isinstance(self.precision, int) and 1 <= self.precision <= 64
+        ):
+            raise ValueError(f"nd_zfp: precision must be an integer in 1..=64, got {self.precision}")
         if not 1 <= int(self.dims) <= 4:
             raise ValueError("nd_zfp: dims must be in 1..=4")
 

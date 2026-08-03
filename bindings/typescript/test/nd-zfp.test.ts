@@ -47,6 +47,31 @@ describe("NdZfp configuration", () => {
     expect(() => NdZfp.fromConfig({ name: "nd_zfp", configuration: { dims: 5 } })).toThrow(
       /dims/,
     );
+    // Numeric bounds mirror the Rust core's ZfpMode::validate.
+    expect(() =>
+      NdZfp.fromConfig({ name: "nd_zfp", configuration: { mode: "fixed_rate", rate: 0 } }),
+    ).toThrow(/positive finite/);
+    expect(() =>
+      NdZfp.fromConfig({ name: "nd_zfp", configuration: { mode: "fixed_rate", rate: NaN } }),
+    ).toThrow(/positive finite/);
+    expect(() =>
+      NdZfp.fromConfig({
+        name: "nd_zfp",
+        configuration: { mode: "fixed_accuracy", tolerance: -1 },
+      }),
+    ).toThrow(/non-negative finite/);
+    expect(() =>
+      NdZfp.fromConfig({
+        name: "nd_zfp",
+        configuration: { mode: "fixed_precision", precision: 65 },
+      }),
+    ).toThrow(/1\.\.=64/);
+    expect(() =>
+      NdZfp.fromConfig({
+        name: "nd_zfp",
+        configuration: { mode: "fixed_precision", precision: 0 },
+      }),
+    ).toThrow(/1\.\.=64/);
   });
 
   it("demands chunk meta before coding", async () => {
