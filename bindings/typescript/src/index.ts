@@ -13,7 +13,7 @@
  * The individual codec classes follow the numcodecs.js convention (one JS
  * wrapper + one .wasm artifact, https://github.com/manzt/numcodecs.js) with a
  * static `fromConfig` so they register with zarrita.js / zarr.js registries.
- * The WASM cores land across roadmap Phases 2–5; `codecSeries` is pure
+ * The `htj2k` and `nd_zfp` WASM cores are live; `codecSeries` is pure
  * TypeScript and is cross-checked against the Rust and Python builders in CI.
  *
  * No component uses JPEG 2000 Part 2 (MCT) syntax; cross-axis decorrelation is
@@ -228,6 +228,8 @@ declare const process: { versions?: { node?: string } } | undefined;
 let wasmCore: Promise<{
   htj2k_encode(chunk: Uint8Array, shape: Uint32Array, dtype: string, config: string): Uint8Array;
   htj2k_decode(chunk: Uint8Array, shape: Uint32Array, dtype: string): Uint8Array;
+  nd_zfp_encode(chunk: Uint8Array, shape: Uint32Array, dtype: string, config: string): Uint8Array;
+  nd_zfp_decode(chunk: Uint8Array, shape: Uint32Array, dtype: string, config: string): Uint8Array;
 }> | null = null;
 
 function loadWasmCore() {
@@ -252,7 +254,7 @@ function loadWasmCore() {
       .catch((cause) => {
         wasmCore = null;
         throw new Error(
-          "the htj2k codec needs the nd-image-codecs WASM core; " +
+          "the htj2k/nd_zfp codecs need the nd-image-codecs WASM core; " +
             "run `npm run build:wasm` (wasm-pack) first",
           { cause },
         );
@@ -335,20 +337,136 @@ export class Htj2k {
 
 export interface NdZfpConfig {
   name: "nd_zfp";
-  configuration?: { mode?: string; rate?: number; dims?: number };
+  configuration?: {
+    mode?: string;
+    rate?: number;
+    tolerance?: number;
+    precision?: number;
+    dims?: number;
+  };
 }
 
+/** Chunk geometry the nd_zfp codec needs beyond its configuration. */
+export interface NdZfpChunkMeta {
+  /** Chunk shape in stored (post-transpose) order. */
+  shape: number[];
+  /** Zarr dtype name, e.g. `"float32"` (ZFP's native types + narrow ints). */
+  dtype: string;
+}
+
+/** nd_zfp compression modes and the parameter each one takes. */
+const ND_ZFP_MODES = new Map<string, "rate" | "tolerance" | "precision" | null>([
+  ["reversible", null],
+  ["fixed_rate", "rate"],
+  ["fixed_accuracy", "tolerance"],
+  ["fixed_precision", "precision"],
+]);
+
+/**
+ * The `nd_zfp` Zarr v3 array-to-bytes codec: singleton chunk dimensions
+ * squeezed away, the remainder compressed as a `dims`-dimensional ZFP
+ * field with the full ZFP header. Backed by the WASM build of the same
+ * Rust core as the `zarrs` codec and the Python extension, so every
+ * ecosystem produces byte-identical chunks.
+ *
+ * `encode`/`decode` operate on little-endian chunk bytes in C order; the
+ * chunk `shape`/`dtype` come from the second `fromConfig` argument (an
+ * array-to-bytes codec cannot infer them from bytes alone).
+ */
 export class NdZfp {
   static codecName = "nd_zfp" as const;
-  constructor(public readonly config: NdZfpConfig) {}
-  static fromConfig(config: NdZfpConfig): NdZfp {
-    return new NdZfp(config);
+
+  constructor(
+    public readonly config: NdZfpConfig,
+    public readonly meta?: NdZfpChunkMeta,
+  ) {
+    const {
+      mode = "reversible",
+      rate,
+      tolerance,
+      precision,
+      dims = 3,
+    } = config.configuration ?? {};
+    if (!ND_ZFP_MODES.has(mode)) {
+      throw new Error(`nd_zfp: unknown mode ${JSON.stringify(mode)}`);
+    }
+    const needed = ND_ZFP_MODES.get(mode);
+    const params = { rate, tolerance, precision } as const;
+    for (const [name, value] of Object.entries(params)) {
+      if (name === needed && value === undefined) {
+        throw new Error(`nd_zfp: ${mode} mode needs a "${name}"`);
+      }
+      if (name !== needed && value !== undefined) {
+        throw new Error(`nd_zfp: ${JSON.stringify(mode)} mode does not take "${name}"`);
+      }
+    }
+    // Mirror the Rust core's numeric bounds (`ZfpMode::validate`), so a bad
+    // configuration fails here rather than inside the WASM call.
+    if (rate !== undefined && !(Number.isFinite(rate) && rate > 0)) {
+      throw new Error(`nd_zfp: rate must be a positive finite number, got ${rate}`);
+    }
+    if (tolerance !== undefined && !(Number.isFinite(tolerance) && tolerance >= 0)) {
+      throw new Error(`nd_zfp: tolerance must be a non-negative finite number, got ${tolerance}`);
+    }
+    if (precision !== undefined && !(Number.isInteger(precision) && precision >= 1 && precision <= 64)) {
+      throw new Error(`nd_zfp: precision must be an integer in 1..=64, got ${precision}`);
+    }
+    if (!Number.isInteger(dims) || dims < 1 || dims > 4) {
+      throw new Error(`nd_zfp: dims must be an integer in 1..=4, got ${dims}`);
+    }
   }
-  async encode(_data: Uint8Array): Promise<Uint8Array> {
-    throw new Error("nd_zfp encode: implemented in roadmap Phase 5");
+
+  static fromConfig(config: NdZfpConfig, meta?: NdZfpChunkMeta): NdZfp {
+    return new NdZfp(config, meta);
   }
-  async decode(_data: Uint8Array): Promise<Uint8Array> {
-    throw new Error("nd_zfp decode: implemented in roadmap Phase 5");
+
+  /** The Zarr v3 codec metadata object (the schema the Rust codec parses). */
+  toDict(): Required<NdZfpConfig> {
+    const {
+      mode = "reversible",
+      rate,
+      tolerance,
+      precision,
+      dims = 3,
+    } = this.config.configuration ?? {};
+    const configuration: NonNullable<NdZfpConfig["configuration"]> = { mode };
+    if (rate !== undefined) configuration.rate = rate;
+    if (tolerance !== undefined) configuration.tolerance = tolerance;
+    if (precision !== undefined) configuration.precision = precision;
+    configuration.dims = dims;
+    return { name: "nd_zfp", configuration };
+  }
+
+  private chunkMeta(): NdZfpChunkMeta {
+    if (this.meta === undefined) {
+      throw new Error(
+        "nd_zfp encode/decode needs the chunk shape and dtype: " +
+          "construct with NdZfp.fromConfig(config, { shape, dtype })",
+      );
+    }
+    return this.meta;
+  }
+
+  async encode(data: Uint8Array): Promise<Uint8Array> {
+    const { shape, dtype } = this.chunkMeta();
+    const core = await loadWasmCore();
+    return core.nd_zfp_encode(
+      data,
+      Uint32Array.from(shape),
+      dtype,
+      JSON.stringify(this.toDict().configuration),
+    );
+  }
+
+  async decode(data: Uint8Array): Promise<Uint8Array> {
+    const { shape, dtype } = this.chunkMeta();
+    const core = await loadWasmCore();
+    return core.nd_zfp_decode(
+      data,
+      Uint32Array.from(shape),
+      dtype,
+      JSON.stringify(this.toDict().configuration),
+    );
   }
 }
 

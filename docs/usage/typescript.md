@@ -7,8 +7,8 @@ description: 'Using nd-image-codecs from TypeScript and the browser: the codecSe
 # TypeScript / Browser
 
 :::{caution} Status: Partial
-The `codecSeries` builder and the `htj2k` WASM core work
-(`npm run build:wasm`); the `nd_lift` and `nd_zfp` WASM paths land per the
+The `codecSeries` builder and the `htj2k` and `nd_zfp` WASM cores work
+(`npm run build:wasm`); the `nd_lift` WASM path lands per the
 [roadmap](../development/roadmap/index.md).
 :::
 
@@ -61,17 +61,18 @@ module built from the same Rust core as the native codecs (run
 
 ```typescript
 import * as zarrita from "zarrita";
-import { Htj2k } from "@fideus-labs/nd-image-codecs";
+import { Htj2k, NdZfp } from "@fideus-labs/nd-image-codecs";
 
 zarrita.registry.set("htj2k", () => Htj2k);
+zarrita.registry.set("nd_zfp", () => NdZfp);
 const arr = await zarrita.open(store, { kind: "array" });
 const view = await zarrita.get(arr, [null, null, null]);
 ```
 
-`NdLift` and `NdZfp` register the same way once their WASM encode/decode
-paths land (see the status note above) — today they are config/validation
-classes only, so reading an `nd_lift`-decorrelated array from the browser
-still needs those phases.
+Both WASM-backed codecs register the same way. `NdLift` remains a
+config/validation class until its WASM path lands (see the status note
+above), so reading an `nd_lift`-decorrelated array from the browser still
+needs that phase.
 
 nd-delta pipelines need no registration at all — they use codecs zarrita.js
 already ships (`transpose`, `blosc`, …).

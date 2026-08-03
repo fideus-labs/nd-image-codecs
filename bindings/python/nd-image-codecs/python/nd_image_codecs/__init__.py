@@ -158,27 +158,53 @@ class Htj2k:
 class NdZfp:
     """Zarr v3 array-to-bytes ZFP codec (``nd_zfp``).
 
-    Scaffold: roadmap Phase 5.
+    This config class serializes exactly the configurations the Rust codec
+    accepts: ``mode`` (``reversible``/``fixed_rate``/``fixed_accuracy``/
+    ``fixed_precision``) with the corresponding parameter
+    (``rate``/``tolerance``/``precision``) and the ZFP field
+    dimensionality ``dims``. For ``zarr-python`` pipelines use
+    :mod:`nd_image_codecs.zarr_codec`, which runs the native core.
     """
 
     name = "nd_zfp"
 
-    def __init__(self, *, mode: str = "reversible", rate: float | None = None, dims: int = 3) -> None:
+    def __init__(
+        self,
+        *,
+        mode: str = "reversible",
+        rate: float | None = None,
+        tolerance: float | None = None,
+        precision: int | None = None,
+        dims: int = 3,
+    ) -> None:
         self.mode = mode
         self.rate = rate
+        self.tolerance = tolerance
+        self.precision = precision
         self.dims = dims
 
     def to_dict(self) -> dict[str, Any]:
         """Return the Zarr v3 codec metadata object."""
-        cfg: dict[str, Any] = {"mode": self.mode, "dims": self.dims}
+        cfg: dict[str, Any] = {"mode": self.mode}
         if self.rate is not None:
             cfg["rate"] = self.rate
+        if self.tolerance is not None:
+            cfg["tolerance"] = self.tolerance
+        if self.precision is not None:
+            cfg["precision"] = self.precision
+        cfg["dims"] = self.dims
         return {"name": self.name, "configuration": cfg}
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> NdZfp:
         """Construct from a Zarr v3 ``configuration`` object."""
-        return cls(mode=config.get("mode", "reversible"), rate=config.get("rate"), dims=config.get("dims", 3))
+        return cls(
+            mode=config.get("mode", "reversible"),
+            rate=config.get("rate"),
+            tolerance=config.get("tolerance"),
+            precision=config.get("precision"),
+            dims=config.get("dims", 3),
+        )
 
 
 # --------------------------------------------------------------------------

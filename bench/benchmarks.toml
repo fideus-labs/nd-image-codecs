@@ -78,6 +78,13 @@ simd = true
 irreversible = true
 lift_levels = 0
 
+[[config]]
+label = "zfp-reversible"
+family = "nd-zfp"
+simd = true
+irreversible = false
+lift_levels = 0
+
 # Reference lanes: pinned external implementations, identical fixtures.
 [[ref_lane]]
 label = "ref-openjph"
@@ -113,7 +120,7 @@ gate = "ratio"
 
 [contexts.nightly]
 tiers = ["micro", "meso", "macro"]
-configs = ["blosc-zstd", "nd-delta-zstd", "nd-delta-lz4", "nd-lift-delta-zstd", "nd-lift-53-zstd", "scalar-53-ht", "simd-53-ht", "simd-97-ht", "simd-53-lift-z2", "zfp-rate8"]
+configs = ["blosc-zstd", "nd-delta-zstd", "nd-delta-lz4", "nd-lift-delta-zstd", "nd-lift-53-zstd", "scalar-53-ht", "simd-53-ht", "simd-97-ht", "simd-53-lift-z2", "zfp-rate8", "zfp-reversible"]
 ref_lanes = true
 
 [contexts.on-demand]

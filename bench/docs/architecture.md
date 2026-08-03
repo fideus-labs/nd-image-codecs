@@ -46,7 +46,7 @@ own harness.
 ### BenchConfig (the matrix)
 
 Built-in configs: `blosc-zstd` (the plain-compressor reference lane),
-`nd-delta-zstd`, `nd-delta-lz4`, `scalar-53-ht`, `simd-53-ht`, `simd-97-ht`, `simd-53-lift-z2`, `zfp-rate8`. Later phases
+`nd-delta-zstd`, `nd-delta-lz4`, `scalar-53-ht`, `simd-53-ht`, `simd-97-ht`, `simd-53-lift-z2`, `zfp-rate8`, `zfp-reversible`. Later phases
 add reference lanes (`ref-openjph`, `ref-imagecodecs`) that shell out to pinned
 external implementations on identical fixtures and emit the same record schema.
 `bench/benchmarks.toml` maps configs and workload tiers (micro/meso/macro) to CI

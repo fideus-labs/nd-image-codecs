@@ -39,6 +39,14 @@ jobs:
       - name: Run the nd-lift lanes
         run: python3 bench/py/run_nd_lift.py --samples 10
 
+      # The nd-zfp lanes run the native codec through zarr-python, so they
+      # need the built wheel (the pure-Python source tree has no ZFP core).
+      - name: Build and install the nd-image-codecs wheel
+        run: pip install bindings/python/nd-image-codecs
+
+      - name: Run the nd-zfp lanes
+        run: python3 bench/py/run_nd_zfp.py --samples 10
+
       # Rust-side workloads register via inventory as codec phases land;
       # this writes their records into the same tree.
       - name: Run Rust benchmarks

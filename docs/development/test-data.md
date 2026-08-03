@@ -15,9 +15,12 @@ Hand-constructed, byte-stable, < 100 KB total:
   used by parser unit tests; each has a `.md` sibling describing every byte region.
 - Synthetic raw planes/volumes with closed-form wavelet/lifting answers (impulse,
   ramp, DC) for the 2D DWT and the `nd_lift` kinds.
-- **ZFP checksum vectors** — the upstream C test suite's per-configuration
-  checksums (dimension × type × mode × rate), extracted into a committed table
-  that `ndic-zfp`'s conformance tests reproduce bit-exactly
+- **ZFP stream pins** (`fixtures/zfp/`) — FNV-1a checksums of `nd_zfp`
+  streams across the dims × dtype × mode matrix plus a pinned chunk, all
+  reproduced bit-exactly by `ndic-zfp`'s tests (and re-encoded byte-for-byte
+  from Python). Upstream C-suite checksum parity is carried by the
+  [`zfp-rs`](https://crates.io/crates/zfp-rs) core's own CI; the in-repo
+  differential against the C library runs through `imagecodecs`
   ([LLNL/zfp tests](https://github.com/LLNL/zfp)).
 - The `codec_series` cross-language fixture matrix (axis layouts × chunk shapes ×
   dtypes × families) with expected pipeline JSON, shared by the Rust, Python,

@@ -10,7 +10,8 @@ The builder and nd-delta work since
 [Phase 1](../development/roadmap/phase-1-baselines-and-series.md); the
 nd-lift-ht family (`transpose → nd_lift → htj2k`) round-trips across zarrs
 and zarr-python since
-[Phase 4](../development/roadmap/phase-4-nd-lift-ht.md). nd-zfp lands in
+[Phase 4](../development/roadmap/phase-4-nd-lift-ht.md); nd-zfp
+(`transpose → nd_zfp`) since
 [Phase 5](../development/roadmap/phase-5-nd-zfp.md).
 :::
 

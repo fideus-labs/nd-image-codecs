@@ -49,6 +49,7 @@ Every workload is swept across the **codec-configuration** matrix:
 | `simd-97-ht` | nd-lift-ht | on | 9/7 | 0 |
 | `simd-53-lift-z2` | nd-lift-ht | on | 5/3 | 2 (z) |
 | `zfp-rate8` | nd-zfp | on | — | — |
+| `zfp-reversible` | nd-zfp | on | — | — |
 
 plus **reference lanes**: OpenJPH's `ojph_compress`/`ojph_expand` binaries, the
 reference C ZFP library (`ref-zfp`, via `zfp-sys`), and Python `imagecodecs` on
@@ -66,6 +67,15 @@ on the correlated fixture — ~13 % smaller chunks — with the blosc-backed
 analog on the Python correlated fixture at 0.4007 (`nd-lift-delta-zstd`,
 the nd-delta-style differencing) vs 0.3766 (`nd-lift-53-zstd`). Thumbnail
 plans fetch 2.1–2.4 % of the chunk in ≤ 3 ranges.
+
+The nd-zfp lanes run the Phase-5 `zfp/*` workloads over a correlated float
+volume: `chunk_encode`/`chunk_decode` (ratio + throughput; `zfp-rate8`
+pins the fixed-rate 0.25 ratio by construction, `zfp-reversible` the
+lossless ratio) and `brick_bytes` — the fixed-rate random-access economy:
+the timed region decodes one `4³` brick at its computed offset and
+`bytes_out` is that brick's byte span, ~0.05 % of the chunk. The
+zarr-python analog (`bench/py/run_nd_zfp.py`) runs `transpose → nd_zfp`
+against a stock `bytes → blosc(zstd)` float baseline on the same fixture.
 
 ## Records & baselines
 

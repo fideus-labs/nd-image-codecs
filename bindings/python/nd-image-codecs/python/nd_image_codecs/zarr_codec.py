@@ -1,4 +1,4 @@
-"""``nd_lift`` and ``htj2k`` as ``zarr-python`` (v3) codecs.
+"""``nd_lift``, ``htj2k``, and ``nd_zfp`` as ``zarr-python`` (v3) codecs.
 
 Importing this module requires ``zarr >= 3.1`` — the release that introduced
 ``zarr.core.dtype`` and the ``to_native_dtype()`` accessor these codecs
@@ -14,15 +14,16 @@ through :func:`register`, so pipelines authored by
 The ``nd_lift`` transform math lives in :mod:`nd_image_codecs._lift`, the
 NumPy port of the Rust ``ndic-lift`` crate; both are pinned bit-identical by
 the committed conformance vectors (``fixtures/nd-lift/vectors.json``). The
-``htj2k`` codec has no pure-Python port — it calls the native extension
-module (the same Rust core as the ``zarrs`` codec and the WASM binding, so
-every ecosystem produces byte-identical chunks) and raises a clear error
-when the package was installed without it.
+``htj2k`` and ``nd_zfp`` codecs have no pure-Python port — they call the
+native extension module (the same Rust cores as the ``zarrs`` codecs and
+the WASM binding, so every ecosystem produces byte-identical chunks) and
+raise a clear error when the package was installed without it.
 """
 
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Self
 
@@ -38,7 +39,7 @@ from . import _lift
 if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, NDBuffer
 
-__all__ = ["Htj2kCodec", "NdLiftCodec", "register"]
+__all__ = ["Htj2kCodec", "NdLiftCodec", "NdZfpCodec", "register"]
 
 
 @dataclass(frozen=True)
@@ -148,9 +149,9 @@ def _native():
         from . import _nd_image_codecs
     except ImportError as err:  # pragma: no cover - build-environment issue
         raise RuntimeError(
-            "the htj2k codec needs nd-image-codecs's native extension module; "
-            "install a built wheel (or `maturin develop`) rather than the "
-            "pure-Python source tree"
+            "the htj2k and nd_zfp codecs need nd-image-codecs's native "
+            "extension module; install a built wheel (or `maturin develop`) "
+            "rather than the pure-Python source tree"
         ) from err
     return _nd_image_codecs
 
@@ -234,10 +235,126 @@ class Htj2kCodec(ArrayBytesCodec):
         raise NotImplementedError("htj2k chunks have no fixed encoded size")
 
 
+#: Zarr dtype names the nd_zfp codec accepts: ZFP's native types plus the
+#: narrow integers the core promotes to int32.
+_ND_ZFP_DTYPES = frozenset(
+    {"uint8", "int8", "uint16", "int16", "int32", "int64", "float32", "float64"}
+)
+
+#: nd_zfp compression modes and the parameter each one takes.
+_ND_ZFP_MODES: dict[str, str | None] = {
+    "reversible": None,
+    "fixed_rate": "rate",
+    "fixed_accuracy": "tolerance",
+    "fixed_precision": "precision",
+}
+
+
+@dataclass(frozen=True)
+class NdZfpCodec(ArrayBytesCodec):
+    """The ``nd_zfp`` ZFP codec: singleton chunk dimensions squeezed away,
+    the remainder compressed as a ``dims``-dimensional ZFP field with the
+    full ZFP header (``docs/architecture/zfp.md``)."""
+
+    is_fixed_size = False
+
+    mode: str = "reversible"
+    rate: float | None = None
+    tolerance: float | None = None
+    precision: int | None = None
+    dims: int = 3
+
+    def __post_init__(self) -> None:
+        if self.mode not in _ND_ZFP_MODES:
+            raise ValueError(f"nd_zfp: unknown mode {self.mode!r}")
+        needed = _ND_ZFP_MODES[self.mode]
+        for name in ("rate", "tolerance", "precision"):
+            value = getattr(self, name)
+            if name == needed and value is None:
+                raise ValueError(f'nd_zfp: {self.mode} mode needs a "{name}"')
+            if name != needed and value is not None:
+                raise ValueError(f"nd_zfp: {self.mode!r} mode does not take {name!r}")
+        # Mirror the Rust core's numeric bounds (`ZfpMode::validate`), so a
+        # bad configuration fails here rather than inside the native call.
+        if self.rate is not None and not (math.isfinite(self.rate) and self.rate > 0):
+            raise ValueError(f"nd_zfp: rate must be a positive finite number, got {self.rate}")
+        if self.tolerance is not None and not (
+            math.isfinite(self.tolerance) and self.tolerance >= 0
+        ):
+            raise ValueError(
+                f"nd_zfp: tolerance must be a non-negative finite number, got {self.tolerance}"
+            )
+        if self.precision is not None and not (
+            isinstance(self.precision, int) and 1 <= self.precision <= 64
+        ):
+            raise ValueError(f"nd_zfp: precision must be an integer in 1..=64, got {self.precision}")
+        if not 1 <= int(self.dims) <= 4:
+            raise ValueError("nd_zfp: dims must be in 1..=4")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
+        _, configuration = parse_named_configuration(
+            data, "nd_zfp", require_configuration=False
+        )
+        return cls(**(configuration or {}))  # type: ignore[arg-type]
+
+    def to_dict(self) -> dict[str, JSON]:
+        configuration: dict[str, JSON] = {"mode": self.mode}
+        for name in ("rate", "tolerance", "precision"):
+            value = getattr(self, name)
+            if value is not None:
+                configuration[name] = value
+        configuration["dims"] = self.dims
+        return {"name": "nd_zfp", "configuration": configuration}
+
+    def _mode_kwargs(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "rate": self.rate,
+            "tolerance": self.tolerance,
+            "precision": self.precision,
+            "dims": self.dims,
+        }
+
+    def validate(self, *, shape: tuple[int, ...], dtype: Any, chunk_grid: Any) -> None:
+        name = dtype.to_native_dtype().name
+        if name not in _ND_ZFP_DTYPES:
+            raise ValueError(f"nd_zfp has no path for dtype {name!r}")
+
+    async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
+        data = np.ascontiguousarray(chunk_array.as_numpy_array())
+        # Off the event loop, like htj2k: the native call is CPU-bound and
+        # releases the GIL.
+        blob = await asyncio.to_thread(
+            _native().nd_zfp_encode,
+            data.tobytes(),
+            list(data.shape),
+            data.dtype.name,
+            **self._mode_kwargs(),
+        )
+        return chunk_spec.prototype.buffer.from_bytes(blob)
+
+    async def _decode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        dtype = chunk_spec.dtype.to_native_dtype()
+        raw = await asyncio.to_thread(
+            _native().nd_zfp_decode,
+            chunk_bytes.to_bytes(),
+            list(chunk_spec.shape),
+            dtype.name,
+            **self._mode_kwargs(),
+        )
+        data = np.frombuffer(raw, dtype=dtype).reshape(chunk_spec.shape)
+        return chunk_spec.prototype.nd_buffer.from_numpy_array(data)
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        raise NotImplementedError("nd_zfp chunks have no fixed encoded size")
+
+
 def register() -> None:
     """Register the codecs with the zarr-python codec registry."""
     register_codec("nd_lift", NdLiftCodec)
     register_codec("htj2k", Htj2kCodec)
+    register_codec("nd_zfp", NdZfpCodec)
 
 
 register()

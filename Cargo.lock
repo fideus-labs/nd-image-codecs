@@ -820,6 +820,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
+name = "libm"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+
+[[package]]
 name = "libz-sys"
 version = "1.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1014,6 +1020,7 @@ dependencies = [
  "ndic-htj2k",
  "ndic-lift",
  "ndic-zarr",
+ "ndic-zfp",
  "serde_json",
  "zarrs",
 ]
@@ -1091,6 +1098,7 @@ version = "0.0.2"
 dependencies = [
  "ndic-core",
  "ndic-zarr",
+ "ndic-zfp",
  "numpy",
  "pyo3",
 ]
@@ -1118,8 +1126,12 @@ dependencies = [
 name = "ndic-zfp"
 version = "0.0.2"
 dependencies = [
+ "bytemuck",
  "ndic-core",
  "proptest",
+ "serde",
+ "serde_json",
+ "zfp-rs",
 ]
 
 [[package]]
@@ -2505,6 +2517,17 @@ name = "zeroize"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+
+[[package]]
+name = "zfp-rs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07c1848c699b72e8c5d89f7fe45a81165cb931e260b094470d458973cd80f449"
+dependencies = [
+ "bitflags 2.13.1",
+ "bytemuck",
+ "libm",
+]
 
 [[package]]
 name = "zmij"

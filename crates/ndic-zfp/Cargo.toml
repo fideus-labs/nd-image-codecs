@@ -1,6 +1,6 @@
 [package]
 name = "ndic-zfp"
-description = "Pure-Rust ZFP block compression (2D/3D/4D) reproducing the reference C implementation — the `nd_zfp` Zarr v3 array-to-bytes codec."
+description = "ZFP block compression (1D–4D) over the pure-Rust zfp-rs core — the `nd_zfp` Zarr v3 array-to-bytes codec."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,12 +12,23 @@ homepage.workspace = true
 [features]
 default = ["std"]
 std = ["ndic-core/std"]
+# Serde derives for the codec configuration type (implies std).
+serde = ["dep:serde", "std"]
 
 [dependencies]
 ndic-core.workspace = true
+zfp-rs.workspace = true
+bytemuck.workspace = true
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
+serde_json.workspace = true
+
+# Regenerates fixtures/zfp/ (deliberate format changes only).
+[[example]]
+name = "gen_fixtures"
+required-features = ["serde"]
 
 [lints]
 workspace = true

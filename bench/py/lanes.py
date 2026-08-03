@@ -33,9 +33,13 @@ def git_hash() -> str:
         return "unknown"
 
 
+#: Array-to-bytes codecs a lane pipeline may use as its serializer.
+SERIALIZERS = frozenset({"bytes", "htj2k", "nd_zfp"})
+
+
 def split_pipeline(pipeline: list[dict]) -> dict:
     """Split a flat codec list into zarr-python's filters/serializer/compressors."""
-    at = next(i for i, c in enumerate(pipeline) if c["name"] == "bytes")
+    at = next(i for i, c in enumerate(pipeline) if c["name"] in SERIALIZERS)
     return {
         "filters": pipeline[:at],
         "serializer": pipeline[at],
@@ -57,6 +61,7 @@ def bench_lane(
     axes: list[str],
     samples: int,
     warmup: int,
+    atol: float | None = None,
 ) -> list[dict]:
     """Time encode (write all chunks) and decode (read all chunks) for one lane."""
     encode_ns: list[int] = []
@@ -79,7 +84,12 @@ def bench_lane(
         back = zarr.open_array(store, mode="r")[:]
         t2 = time.perf_counter_ns()
         if i == 0:
-            np.testing.assert_array_equal(back, data)  # never benchmark a broken lane
+            # Never benchmark a broken lane: lossless lanes must round-trip
+            # exactly; lossy lanes (`atol`) within their declared bound.
+            if atol is None:
+                np.testing.assert_array_equal(back, data)
+            else:
+                np.testing.assert_allclose(back, data, rtol=0, atol=atol)
             bytes_out = stored_bytes(store)
         if i >= warmup:
             encode_ns.append(t1 - t0)
@@ -116,6 +126,7 @@ def run_lanes(
     data: np.ndarray,
     chunks: tuple[int, ...],
     axes: list[str],
+    lossy_atol: dict[str, float] | None = None,
 ) -> int:
     """The shared lane-runner CLI: parse args, run lanes, write records."""
     parser = argparse.ArgumentParser(description=description)
@@ -148,6 +159,7 @@ def run_lanes(
         records = bench_lane(
             module, fixture_slug, lane, lanes[lane], data, chunks, axes,
             args.samples, args.warmup,
+            atol=(lossy_atol or {}).get(lane),
         )
         for record in records:
             lane_dir = out / lane
