@@ -20,6 +20,7 @@ ndic-lift.workspace = true
 ndic-zarr.workspace = true
 serde_json.workspace = true
 clap.workspace = true
+png.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
