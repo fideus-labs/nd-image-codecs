@@ -62,8 +62,10 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets
-      # Feature-gated surfaces: the zarrs codec registration + bench workloads.
-      - run: cargo clippy --workspace --all-targets --features ndic-zarr/zarrs,ndic-lift/serde,ndic-lift/bench
+      # Feature-gated surfaces: the zarrs codec registration and the
+      # serde-gated config types. The bench workloads are no longer a feature —
+      # they live in ndic-bench-cli and are covered by --all-targets.
+      - run: cargo clippy --workspace --all-targets --features ndic-zarr/zarrs,ndic-lift/serde
 
   test:
     name: test (${{ matrix.os }})

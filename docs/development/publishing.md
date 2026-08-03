@@ -1,6 +1,6 @@
 ---
 title: Publishing
-description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand, including the 0.0.1 name-reservation release.
+description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand, including the 0.0.2 release that completes the crates.io set.
 ---
 
 # Publishing
