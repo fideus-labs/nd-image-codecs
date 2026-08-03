@@ -32,7 +32,7 @@ test = ["pytest", "imagecodecs", "zarr>=3.1"]
 [project.entry-points."zarr.codecs"]
 "nd_lift" = "nd_image_codecs.zarr_codec:NdLiftCodec"
 "htj2k" = "nd_image_codecs.zarr_codec:Htj2kCodec"
-"nd_zfp" = "nd_image_codecs:NdZfp"
+"nd_zfp" = "nd_image_codecs.zarr_codec:NdZfpCodec"
 
 [project.urls]
 Repository = "https://github.com/fideus-labs/nd-image-codecs"

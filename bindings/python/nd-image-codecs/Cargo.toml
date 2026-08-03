@@ -16,6 +16,7 @@ crate-type = ["cdylib"]
 [dependencies]
 ndic-core = { workspace = true }
 ndic-zarr = { workspace = true }
+ndic-zfp = { workspace = true }
 pyo3 = { workspace = true }
 numpy = { workspace = true }
 

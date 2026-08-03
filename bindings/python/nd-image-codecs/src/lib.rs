@@ -15,6 +15,7 @@ use pyo3::types::PyBytes;
 
 use ndic_core::SampleType;
 use ndic_zarr::htj2k::{Htj2kConfig, decode_chunk, encode_chunk};
+use ndic_zfp::{NdZfpConfig, ZfpDtype};
 
 /// Version string reported by `nd_image_codecs.__version__`.
 #[pyfunction]
@@ -87,11 +88,88 @@ fn htj2k_decode<'py>(
     Ok(PyBytes::new(py, &out))
 }
 
+fn zfp_dtype(dtype: &str) -> PyResult<ZfpDtype> {
+    ZfpDtype::from_zarr_name(dtype)
+        .ok_or_else(|| PyValueError::new_err(format!("nd_zfp has no path for dtype {dtype:?}")))
+}
+
+fn zfp_config(
+    mode: &str,
+    rate: Option<f64>,
+    tolerance: Option<f64>,
+    precision: Option<u32>,
+    dims: u8,
+) -> NdZfpConfig {
+    NdZfpConfig {
+        mode: mode.to_owned(),
+        rate,
+        tolerance,
+        precision,
+        dims,
+    }
+}
+
+/// Encodes a chunk (native-endian elements, C order) into an `nd_zfp` ZFP
+/// stream (full ZFP header + payload).
+#[pyfunction]
+#[pyo3(signature = (chunk, shape, dtype, *, mode="reversible", rate=None, tolerance=None, precision=None, dims=3))]
+#[allow(clippy::too_many_arguments)]
+// `Vec<usize>`: pyo3 extracts owned collections from Python lists.
+#[allow(clippy::needless_pass_by_value)]
+fn nd_zfp_encode<'py>(
+    py: Python<'py>,
+    chunk: &[u8],
+    shape: Vec<usize>,
+    dtype: &str,
+    mode: &str,
+    rate: Option<f64>,
+    tolerance: Option<f64>,
+    precision: Option<u32>,
+    dims: u8,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let config = zfp_config(mode, rate, tolerance, precision, dims);
+    let dtype = zfp_dtype(dtype)?;
+    // See `htj2k_encode`: GIL released for the CPU-bound encode.
+    let out = py
+        .allow_threads(|| ndic_zfp::encode_chunk(chunk, &shape, dtype, &config))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(PyBytes::new(py, &out))
+}
+
+/// Decodes an `nd_zfp` chunk back to native-endian elements in C order.
+/// The stream's header must match the configuration.
+#[pyfunction]
+#[pyo3(signature = (chunk, shape, dtype, *, mode="reversible", rate=None, tolerance=None, precision=None, dims=3))]
+#[allow(clippy::too_many_arguments)]
+// `Vec<usize>`: pyo3 extracts owned collections from Python lists.
+#[allow(clippy::needless_pass_by_value)]
+fn nd_zfp_decode<'py>(
+    py: Python<'py>,
+    chunk: &[u8],
+    shape: Vec<usize>,
+    dtype: &str,
+    mode: &str,
+    rate: Option<f64>,
+    tolerance: Option<f64>,
+    precision: Option<u32>,
+    dims: u8,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let config = zfp_config(mode, rate, tolerance, precision, dims);
+    let dtype = zfp_dtype(dtype)?;
+    // See `htj2k_encode`: GIL released for the CPU-bound decode.
+    let out = py
+        .allow_threads(|| ndic_zfp::decode_chunk(chunk, &shape, dtype, &config))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(PyBytes::new(py, &out))
+}
+
 /// The native module. Registered as `nd_image_codecs._nd_image_codecs`.
 #[pymodule]
 fn _nd_image_codecs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(htj2k_encode, m)?)?;
     m.add_function(wrap_pyfunction!(htj2k_decode, m)?)?;
+    m.add_function(wrap_pyfunction!(nd_zfp_encode, m)?)?;
+    m.add_function(wrap_pyfunction!(nd_zfp_decode, m)?)?;
     Ok(())
 }

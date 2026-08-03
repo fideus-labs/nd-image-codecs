@@ -156,7 +156,7 @@ jobs:
       - run: pip install --no-index --find-links target/wheels nd-image-codecs
       - run: python -m pytest bindings/python/nd-image-codecs/tests -q
       # The htj2k lane must have actually run, not skipped.
-      - run: python -c "from nd_image_codecs import _nd_image_codecs as m; assert hasattr(m, 'htj2k_encode')"
+      - run: python -c "from nd_image_codecs import _nd_image_codecs as m; assert hasattr(m, 'htj2k_encode') and hasattr(m, 'nd_zfp_encode')"
 
   typescript:
     runs-on: ubuntu-24.04
