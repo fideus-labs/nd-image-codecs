@@ -81,20 +81,20 @@ mod neon {
         step: impl Fn(int32x4_t, int32x4_t, int32x4_t) -> int32x4_t,
         tail: impl Fn(i32, i32, i32) -> i32,
     ) {
-        let n = dst.len();
+        let len = dst.len();
         let mut i = 0;
         // SAFETY: NEON is part of the aarch64 baseline ABI; all loads and
-        // stores stay within `..n - 3` of equally sized slices.
+        // stores stay within `..len - 3` of equally sized slices.
         unsafe {
-            while i + 4 <= n {
-                let d = vld1q_s32(dst.as_ptr().add(i));
-                let x = vld1q_s32(a.as_ptr().add(i));
-                let y = vld1q_s32(b.as_ptr().add(i));
-                vst1q_s32(dst.as_mut_ptr().add(i), step(d, x, y));
+            while i + 4 <= len {
+                let vd = vld1q_s32(dst.as_ptr().add(i));
+                let va = vld1q_s32(a.as_ptr().add(i));
+                let vb = vld1q_s32(b.as_ptr().add(i));
+                vst1q_s32(dst.as_mut_ptr().add(i), step(vd, va, vb));
                 i += 4;
             }
         }
-        while i < n {
+        while i < len {
             dst[i] = tail(dst[i], a[i], b[i]);
             i += 1;
         }
@@ -183,20 +183,20 @@ mod avx2 {
         step: impl Fn(__m256i, __m256i, __m256i) -> __m256i,
         tail: impl Fn(i32, i32, i32) -> i32,
     ) {
-        let n = dst.len();
+        let len = dst.len();
         let mut i = 0;
         // SAFETY: caller guarantees AVX2; unaligned intrinsics; all loads
-        // and stores stay within `..n - 7` of equally sized slices.
+        // and stores stay within `..len - 7` of equally sized slices.
         unsafe {
-            while i + 8 <= n {
-                let d = _mm256_loadu_si256(dst.as_ptr().add(i).cast());
-                let x = _mm256_loadu_si256(a.as_ptr().add(i).cast());
-                let y = _mm256_loadu_si256(b.as_ptr().add(i).cast());
-                _mm256_storeu_si256(dst.as_mut_ptr().add(i).cast(), step(d, x, y));
+            while i + 8 <= len {
+                let vd = _mm256_loadu_si256(dst.as_ptr().add(i).cast());
+                let va = _mm256_loadu_si256(a.as_ptr().add(i).cast());
+                let vb = _mm256_loadu_si256(b.as_ptr().add(i).cast());
+                _mm256_storeu_si256(dst.as_mut_ptr().add(i).cast(), step(vd, va, vb));
                 i += 8;
             }
         }
-        while i < n {
+        while i < len {
             dst[i] = tail(dst[i], a[i], b[i]);
             i += 1;
         }
@@ -294,7 +294,7 @@ pub fn lane_name() -> &'static str {
 
 /// Vertical forward lifting over rows 0..h of the region, in place, then
 /// de-interleave even/odd rows into the top/bottom halves.
-fn vertical_forward(plane: &mut [i32], width: usize, w: usize, h: usize, k: &Kernels) {
+fn vertical_forward(plane: &mut [i32], width: usize, w: usize, h: usize, kern: &Kernels) {
     let nl = h.div_ceil(2);
     let nh = h / 2;
     let row = |r: usize| r * width;
@@ -303,21 +303,21 @@ fn vertical_forward(plane: &mut [i32], width: usize, w: usize, h: usize, k: &Ker
     for i in 0..nh {
         let up = 2 * i;
         let down = if 2 * i + 2 < h { 2 * i + 2 } else { 2 * i };
-        let (a, d, b) = split_three(plane, row(up), row(2 * i + 1), row(down), w, width);
-        (k.predict_sub)(d, a, b);
+        let (above, dst, below) = split_three(plane, row(up), row(2 * i + 1), row(down), w, width);
+        (kern.predict_sub)(dst, above, below);
     }
     // Update all even rows: s(2i) += (d(2i-1 | mirror) + d(2i+1 | mirror) + 2) >> 2.
     for i in 0..nl {
         let dl = if i == 0 { 1 } else { 2 * i - 1 };
         let dr = if 2 * i + 1 < h { 2 * i + 1 } else { 2 * nh - 1 };
-        let (a, d, b) = split_three(plane, row(dl), row(2 * i), row(dr), w, width);
-        (k.update_add)(d, a, b);
+        let (above, dst, below) = split_three(plane, row(dl), row(2 * i), row(dr), w, width);
+        (kern.update_add)(dst, above, below);
     }
     deinterleave_rows(plane, width, w, h);
 }
 
 /// Inverse of [`vertical_forward`].
-fn vertical_inverse(plane: &mut [i32], width: usize, w: usize, h: usize, k: &Kernels) {
+fn vertical_inverse(plane: &mut [i32], width: usize, w: usize, h: usize, kern: &Kernels) {
     interleave_rows(plane, width, w, h);
     let nl = h.div_ceil(2);
     let nh = h / 2;
@@ -325,14 +325,14 @@ fn vertical_inverse(plane: &mut [i32], width: usize, w: usize, h: usize, k: &Ker
     for i in 0..nl {
         let dl = if i == 0 { 1 } else { 2 * i - 1 };
         let dr = if 2 * i + 1 < h { 2 * i + 1 } else { 2 * nh - 1 };
-        let (a, d, b) = split_three(plane, row(dl), row(2 * i), row(dr), w, width);
-        (k.update_sub)(d, a, b);
+        let (above, dst, below) = split_three(plane, row(dl), row(2 * i), row(dr), w, width);
+        (kern.update_sub)(dst, above, below);
     }
     for i in 0..nh {
         let up = 2 * i;
         let down = if 2 * i + 2 < h { 2 * i + 2 } else { 2 * i };
-        let (a, d, b) = split_three(plane, row(up), row(2 * i + 1), row(down), w, width);
-        (k.predict_add)(d, a, b);
+        let (above, dst, below) = split_three(plane, row(up), row(2 * i + 1), row(down), w, width);
+        (kern.predict_add)(dst, above, below);
     }
 }
 

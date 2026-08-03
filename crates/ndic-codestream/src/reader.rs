@@ -517,9 +517,13 @@ impl<'a> Codestream<'a> {
 
         // Inverse RCT, then the DC level un-shift with clamping.
         if self.cod.mct == 1 && ncomps >= 3 {
-            let (a, rest) = comps_out.split_at_mut(1);
-            let (b, c) = rest.split_at_mut(1);
-            for ((y, cb), cr) in a[0].iter_mut().zip(b[0].iter_mut()).zip(c[0].iter_mut()) {
+            let (y_plane, rest) = comps_out.split_at_mut(1);
+            let (cb_plane, cr_plane) = rest.split_at_mut(1);
+            for ((y, cb), cr) in y_plane[0]
+                .iter_mut()
+                .zip(cb_plane[0].iter_mut())
+                .zip(cr_plane[0].iter_mut())
+            {
                 let g = *y - ((*cb + *cr) >> 2);
                 let r = *cr + g;
                 let bl = *cb + g;

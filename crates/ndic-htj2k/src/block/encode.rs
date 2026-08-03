@@ -46,25 +46,25 @@ impl Quad {
         y: usize,
         p: u32,
     ) -> Self {
-        let mut q = Self::default();
+        let mut quad = Self::default();
         for n in 0..4usize {
             let sx = x + n / 2;
             let sy = y + n % 2;
             if sx >= width || sy >= height {
                 continue;
             }
-            let t = buf[sy * stride + sx];
-            // (t + t) drops the sign bit; >> p aligns the coding LSB.
-            let mut val = (t.wrapping_add(t) >> p) & !1; // 2 mu_p
+            let raw = buf[sy * stride + sx];
+            // (raw + raw) drops the sign bit; >> p aligns the coding LSB.
+            let mut val = (raw.wrapping_add(raw) >> p) & !1; // 2 mu_p
             if val != 0 {
-                q.rho |= 1 << n;
+                quad.rho |= 1 << n;
                 val -= 1; // 2 mu_p - 1
-                q.e_q[n] = 32 - val.leading_zeros();
-                q.e_qmax = q.e_qmax.max(q.e_q[n]);
-                q.s[n] = (val - 1) + (t >> 31); // 2 (mu_p - 1) + sign
+                quad.e_q[n] = 32 - val.leading_zeros();
+                quad.e_qmax = quad.e_qmax.max(quad.e_q[n]);
+                quad.s[n] = (val - 1) + (raw >> 31); // 2 (mu_p - 1) + sign
             }
         }
-        q
+        quad
     }
 
     /// EMB pattern: which samples attain the quad's maximum exponent
