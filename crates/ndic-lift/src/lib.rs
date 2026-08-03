@@ -40,9 +40,6 @@ mod chunk;
 mod kernel;
 mod sample;
 
-#[cfg(feature = "bench")]
-mod bench;
-
 pub use chunk::{forward, inverse};
 pub use sample::PlaneSample;
 

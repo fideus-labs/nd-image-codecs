@@ -1,6 +1,6 @@
 ---
 title: Publishing
-description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand, including the 0.0.1 name-reservation release.
+description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand, including the 0.0.2 release that completes the crates.io set.
 ---
 
 # Publishing
@@ -8,12 +8,20 @@ description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand,
 How to publish nd-image-codecs to crates.io, PyPI, and npm **by hand**. There is
 no release automation yet; every step here is run from a workstation.
 
-The current target is **0.0.1** — a name-reservation release. The `codec_series`
-builder is real and works in all three languages; the codec encode/decode paths
-are scaffolds (see the [roadmap](./roadmap/index.md)). Publishing 0.0.1 claims
-the names on every registry and gives each one a real README, repository link,
-and license so the packages read as an early-stage project rather than an empty
-squat.
+The current target is **0.0.2**. The `codec_series` builder is real and works in
+all three languages; the codec encode/decode paths are scaffolds (see the
+[roadmap](./roadmap/index.md)). The release claims the names on every registry
+and gives each one a real README, repository link, and license so the packages
+read as an early-stage project rather than an empty squat.
+
+> **0.0.1 shipped incomplete (2026-08-01).** PyPI and both npm packages went out
+> fine, and five crates reached crates.io — `ndic-core`, `ndic-htj2k`,
+> `ndic-lift`, `ndic-zfp`, `ndic-codestream`. `ndic-zarr` and `ndic-cli` did
+> **not**: the run stopped on `ndic-zarr`, whose `ndic-lift/serde` feature had
+> been added after `ndic-lift 0.0.1` was uploaded, and a published version
+> cannot be amended. 0.0.2 re-publishes the whole set in lockstep to complete
+> crates.io. Until then, `cargo publish -p ndic-zarr --dry-run` cannot pass on
+> its own — see the `--workspace` dry run below.
 
 ## Package inventory
 
@@ -36,18 +44,35 @@ skipped automatically by `cargo publish --workspace`:
 - `ndic-py` — the PyO3 shim; it ships to PyPI inside the wheel, not to crates.io.
 - `ndic-bench-core`, `ndic-bench-cli` — internal benchmark harness.
 
-All ten names above were confirmed unregistered on 2026-08-01. Check again
-immediately before you publish:
+Eight of the ten names are now ours; only `ndic-zarr` and `ndic-cli` remain
+unregistered on crates.io. Confirm which versions are live before you publish —
+a version already on a registry cannot be re-uploaded:
 
 ```bash
-curl -s -H "User-Agent: nd-image-codecs (matt@fideus.io)" \
-  -o /dev/null -w '%{http_code}\n' https://crates.io/api/v1/crates/ndic-core   # 404 = free
-curl -s -o /dev/null -w '%{http_code}\n' https://pypi.org/pypi/nd-image-codecs/json
-curl -s -o /dev/null -w '%{http_code}\n' https://registry.npmjs.org/nd-image-codecs
+# `-sS` keeps the progress meter off but still prints transfer errors, and an
+# unparseable body reports QUERY FAILED rather than being read as "unpublished".
+# A 404 for a name that is genuinely free returns valid JSON and prints `none`.
+versions() { python3 -c '
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+except json.JSONDecodeError:
+    print("QUERY FAILED"); raise SystemExit(1)
+print(",".join(v["num"] for v in d.get("versions", [])) or "none")'; }
+
+for c in ndic-core ndic-htj2k ndic-lift ndic-zfp ndic-codestream ndic-zarr ndic-cli; do
+  printf '%-16s ' "$c"
+  curl -sS -H "User-Agent: nd-image-codecs (matt@fideus.io)" \
+    "https://crates.io/api/v1/crates/$c" | versions
+done
+curl -sS https://pypi.org/pypi/nd-image-codecs/json \
+  | python3 -c "import sys,json;print(sorted(json.load(sys.stdin)['releases']))"
+npm view @fideus-labs/nd-image-codecs versions
+npm view nd-image-codecs versions
 ```
 
 > crates.io returns `403` to requests without a `User-Agent`; that is not a name
-> collision. Only `200` means taken.
+> collision.
 
 ## Prerequisites
 
@@ -61,7 +86,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://registry.npmjs.org/nd-image-cod
 | twine | `pipx install twine` |
 | Node 20+ | for `npm publish` |
 
-`wasm-pack` is **not** required for 0.0.1 — `bindings/typescript/src/index.ts` is
+`wasm-pack` is **not** required for 0.0.2 — `bindings/typescript/src/index.ts` is
 pure TypeScript today, so `tsc` alone produces the published artifact. It becomes
 required once the WASM codec cores land (Phases 2–5).
 
@@ -74,11 +99,25 @@ Run from the repository root.
 git status --porcelain          # must be empty
 git switch main && git pull
 
-# 2. Version must read 0.0.1 in every manifest.
-rg -n '"0\.0\.1"|version = "0\.0\.1"' Cargo.toml \
+# 2. Version must read 0.0.2 in every location under "Where the version lives".
+#    Assert per file: a single `rg` across all of them exits 0 on one match and
+#    would pass with the rest stale.
+for f in Cargo.toml \
+         bindings/python/nd-image-codecs/pyproject.toml \
+         bindings/python/nd-image-codecs/python/nd_image_codecs/__init__.py \
+         bindings/typescript/package.json \
+         bindings/typescript/package-lock.json \
+         bindings/javascript/package.json; do
+  rg -q '0\.0\.2' "$f" || printf 'MISSING 0.0.2: %s\n' "$f"
+done
+
+#    ...and nothing may still carry the previous version. This is what catches a
+#    partial bump: one of the two package-lock.json fields, or one internal path
+#    dep in Cargo.toml. Expect no output.
+rg -n '0\.0\.1' Cargo.toml bindings/javascript/package.json \
+  bindings/typescript/package.json bindings/typescript/package-lock.json \
   bindings/python/nd-image-codecs/pyproject.toml \
-  bindings/typescript/package.json \
-  bindings/javascript/package.json
+  bindings/python/nd-image-codecs/python/nd_image_codecs/__init__.py
 
 # 3. Everything green.
 cargo fmt --all --check
@@ -95,15 +134,23 @@ Bumping a release means editing exactly these, then running `cargo check
 | File | Field |
 | --- | --- |
 | `Cargo.toml` | `[workspace.package] version` |
-| `Cargo.toml` | `[workspace.dependencies]` — the `version = "…"` on all 7 internal path deps |
+| `Cargo.toml` | `[workspace.dependencies]` — the `version = "…"` on all 6 internal path deps |
 | `bindings/python/nd-image-codecs/pyproject.toml` | `[project] version` |
 | `bindings/python/nd-image-codecs/python/nd_image_codecs/__init__.py` | `__version__` import fallback |
 | `bindings/typescript/package.json` | `version` |
+| `bindings/typescript/package-lock.json` | `version`, twice (top level and `packages.""`) |
 | `bindings/javascript/package.json` | `version` |
 
 The internal path deps carry both `path` and `version`. cargo strips `path` when
 packaging and publishes the `version` requirement, so a stale `version = "0.0.0"`
 there makes every downstream crate unresolvable on crates.io. Bump them together.
+
+`ndic-bench-core` is deliberately **not** in `[workspace.dependencies]`. It is
+`publish = false`, and packaging rewrites every `version`-carrying path dep into
+a registry dep — so any published crate naming it fails `cargo publish`, even
+behind an off-by-default feature. `ndic-bench-cli` depends on it by bare path,
+and the benchmark workloads live in the driver (`bench/rs/ndic-bench-cli/src/workloads/`)
+rather than in the codec crates. Do not add it back.
 
 ## 1. Rust → crates.io
 
@@ -172,10 +219,10 @@ Verify:
 
 ```bash
 cargo search ndic-
-cargo install ndic-cli --version 0.0.1 && ndic --help
+cargo install ndic-cli --version 0.0.2 && ndic --help
 ```
 
-> Published versions are **permanent**. `cargo yank --version 0.0.1 <crate>`
+> Published versions are **permanent**. `cargo yank --version 0.0.2 <crate>`
 > hides a version from new resolution but does not delete it, and the version
 > number can never be reused.
 
@@ -203,7 +250,7 @@ Smoke-test the wheel before uploading:
 ```bash
 uv venv "$SP/venv" --python 3.12
 uv pip install --python "$SP/venv/bin/python" "$SP"/*.whl
-"$SP/venv/bin/python" -c "import nd_image_codecs as m; print(m.__version__)"   # 0.0.1
+"$SP/venv/bin/python" -c "import nd_image_codecs as m; print(m.__version__)"   # 0.0.2
 ```
 
 Upload — TestPyPI first, then the real index:
@@ -220,7 +267,7 @@ run `twine check` and the import smoke-test against exactly the files you ship.
 ### Wheel coverage
 
 `abi3-py311` means **one wheel per platform** covers Python 3.11+ — but each
-platform still needs its own build. For 0.0.1, shipping the sdist plus whatever
+platform still needs its own build. For 0.0.2, shipping the sdist plus whatever
 wheels you can build locally is enough; users on other platforms fall back to
 building from the sdist (which needs a Rust toolchain). A full
 linux/macOS/Windows × x86_64/aarch64 matrix is a job for `maturin-action` in CI
@@ -249,7 +296,7 @@ npm pack --dry-run       # inspect the file list
 ```
 
 > `npm test` currently exits `1` with `No test files found`: no `*.test.ts`
-> exists yet. That is expected for 0.0.1 and is not a publish blocker — the
+> exists yet. That is expected at this stage and is not a publish blocker — the
 > build is what matters. Once the first test lands the command goes green.
 
 Expected tarball: `README.md`, `package.json`, `dist/index.{js,d.ts,js.map,d.ts.map}`,
@@ -297,36 +344,37 @@ curl -s -H "User-Agent: nd-image-codecs (matt@fideus.io)" \
   https://crates.io/api/v1/crates/ndic-zarr | head -c 200
 
 # PyPI
-pip download --no-deps --no-binary :all: nd-image-codecs==0.0.1 -d /tmp/verify
+pip download --no-deps --no-binary :all: nd-image-codecs==0.0.2 -d /tmp/verify
 
 # npm
-npm view @fideus-labs/nd-image-codecs@0.0.1
-npm view nd-image-codecs@0.0.1
+npm view @fideus-labs/nd-image-codecs@0.0.2
+npm view nd-image-codecs@0.0.2
 ```
 
 Then tag the commit that was published:
 
 ```bash
-git tag -a v0.0.1 -m "Release 0.0.1 — name reservation"
-git push origin v0.0.1
+git tag -a v0.0.2 -m "Release 0.0.2 — completes the crates.io set"
+git push origin v0.0.2
 ```
 
-Create a GitHub release against the tag noting that 0.0.1 reserves the names and
-ships only the `codec_series` builder.
+Create a GitHub release against the tag noting that 0.0.2 completes the name
+reservation across all three registries and ships only the `codec_series`
+builder.
 
 ## Release checklist
 
 - [ ] `main` clean, pulled, and CI green
-- [ ] Version reads `0.0.1` in all six locations (table above)
+- [ ] Version reads `0.0.2` in all seven locations (table above)
 - [ ] `cargo publish --workspace --dry-run` clean
 - [ ] `cargo publish --workspace`
 - [ ] `cargo owner --add` on all seven crates
 - [ ] `maturin sdist` + `maturin build --release`, `twine check`, import smoke-test
 - [ ] `twine upload --repository testpypi`, then `twine upload`
-- [ ] `bindings/typescript`: build, test, `npm publish --access public`
+- [ ] `bindings/typescript`: build; `npm test` may report no test files; `npm publish --access public`
 - [ ] `bindings/javascript`: `npm publish`
 - [ ] Installs verified from all three registries
-- [ ] `v0.0.1` tagged and pushed; GitHub release created
+- [ ] `v0.0.2` tagged and pushed; GitHub release created
 
 ## Notes
 
@@ -337,7 +385,7 @@ ships only the `codec_series` builder.
   version number; npm allows unpublish within 72 hours, and only if nothing
   depends on the package. Rehearse with the dry runs and TestPyPI.
 - **Registry policy.** crates.io and npm both reserve the right to reclaim names
-  held purely for squatting. Each 0.0.1 package therefore ships a real README, a
+  held purely for squatting. Each published package therefore ships a real README, a
   license, a repository link, and — for Rust and Python — working
   `codec_series` code. Keep publishing as the roadmap phases land so the names
   stay clearly in use.

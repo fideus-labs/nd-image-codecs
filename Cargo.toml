@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
@@ -25,13 +25,16 @@ readme = "README.md"
 
 [workspace.dependencies]
 # --- Internal crates -------------------------------------------------
-ndic-core = { path = "crates/ndic-core", version = "0.0.1" }
-ndic-htj2k = { path = "crates/ndic-htj2k", version = "0.0.1" }
-ndic-codestream = { path = "crates/ndic-codestream", version = "0.0.1" }
-ndic-lift = { path = "crates/ndic-lift", version = "0.0.1" }
-ndic-zfp = { path = "crates/ndic-zfp", version = "0.0.1" }
-ndic-zarr = { path = "crates/ndic-zarr", version = "0.0.1" }
-ndic-bench-core = { path = "bench/rs/ndic-bench-core", version = "0.0.1" }
+ndic-core = { path = "crates/ndic-core", version = "0.0.2" }
+ndic-htj2k = { path = "crates/ndic-htj2k", version = "0.0.2" }
+ndic-codestream = { path = "crates/ndic-codestream", version = "0.0.2" }
+ndic-lift = { path = "crates/ndic-lift", version = "0.0.2" }
+ndic-zfp = { path = "crates/ndic-zfp", version = "0.0.2" }
+ndic-zarr = { path = "crates/ndic-zarr", version = "0.0.2" }
+# ndic-bench-core is deliberately absent: it is `publish = false`, and a
+# `version`-carrying workspace dep would be rewritten into a registry dep at
+# package time and break `cargo publish` for anything naming it. The bench
+# driver depends on it by bare path instead.
 
 # --- Error handling / diagnostics ------------------------------------
 thiserror = "2"

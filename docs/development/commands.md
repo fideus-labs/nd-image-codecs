@@ -19,7 +19,7 @@ All commands run from the repository root.
 | Command | Purpose |
 | --- | --- |
 | `cargo test --workspace` | All unit, integration, and doc tests |
-| `cargo test --workspace --features ndic-zarr/zarrs,ndic-lift/serde,ndic-lift/bench` | Plus the feature-gated surfaces (zarrs codec registration, conformance vectors, bench workloads) — what CI runs |
+| `cargo test --workspace --features ndic-zarr/zarrs,ndic-lift/serde` | Plus the feature-gated surfaces (zarrs codec registration, conformance vectors) — what CI runs |
 | `cargo test -p ndic-htj2k` | One crate |
 | `cargo test --workspace --release` | Slow proptest/round-trip suites at full speed |
 | `PROPTEST_CASES=4096 cargo test -p ndic-lift` | Deeper property-test runs |
