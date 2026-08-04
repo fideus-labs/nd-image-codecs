@@ -9,9 +9,11 @@
 use wasm_bindgen::prelude::*;
 
 use ndic_core::SampleType;
+use ndic_lift::NdLiftConfig;
 use ndic_zfp::{NdZfpConfig, ZfpDtype};
 
 use crate::htj2k::{Htj2kConfig, decode_chunk, encode_chunk};
+use crate::lift::LiftDtype;
 
 fn sample_type(dtype: &str) -> Result<SampleType, JsError> {
     match dtype {
@@ -52,6 +54,53 @@ pub fn htj2k_encode(
 pub fn htj2k_decode(chunk: &[u8], shape: &[u32], dtype: &str) -> Result<Vec<u8>, JsError> {
     decode_chunk(chunk, &shape_usize(shape), sample_type(dtype)?)
         .map_err(|e| JsError::new(&e.to_string()))
+}
+
+fn lift_dtype(dtype: &str) -> Result<LiftDtype, JsError> {
+    LiftDtype::from_zarr_name(dtype)
+        .ok_or_else(|| JsError::new(&format!("nd_lift has no integer path for dtype {dtype:?}")))
+}
+
+fn lift_config(config_json: &str) -> Result<NdLiftConfig, JsError> {
+    serde_json::from_str(config_json)
+        .map_err(|e| JsError::new(&format!("nd_lift configuration: {e}")))
+}
+
+/// Encodes a chunk (little-endian elements, C order) into its widened,
+/// decorrelated `nd_lift` coefficient plane (little-endian `int32` or
+/// `int64`). `config_json` is the Zarr v3 `configuration` object.
+#[wasm_bindgen]
+pub fn nd_lift_encode(
+    chunk: &[u8],
+    shape: &[u32],
+    dtype: &str,
+    config_json: &str,
+) -> Result<Vec<u8>, JsError> {
+    crate::lift::forward_chunk(
+        chunk,
+        &shape_usize(shape),
+        lift_dtype(dtype)?,
+        &lift_config(config_json)?,
+    )
+    .map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Decodes an `nd_lift` coefficient plane back to little-endian `dtype`
+/// elements in C order.
+#[wasm_bindgen]
+pub fn nd_lift_decode(
+    chunk: &[u8],
+    shape: &[u32],
+    dtype: &str,
+    config_json: &str,
+) -> Result<Vec<u8>, JsError> {
+    crate::lift::inverse_chunk(
+        chunk,
+        &shape_usize(shape),
+        lift_dtype(dtype)?,
+        &lift_config(config_json)?,
+    )
+    .map_err(|e| JsError::new(&e.to_string()))
 }
 
 fn zfp_dtype(dtype: &str) -> Result<ZfpDtype, JsError> {

@@ -13,8 +13,9 @@
  * The individual codec classes follow the numcodecs.js convention (one JS
  * wrapper + one .wasm artifact, https://github.com/manzt/numcodecs.js) with a
  * static `fromConfig` so they register with zarrita.js / zarr.js registries.
- * The `htj2k` and `nd_zfp` WASM cores are live; `codecSeries` is pure
- * TypeScript and is cross-checked against the Rust and Python builders in CI.
+ * The `nd_lift`, `htj2k`, and `nd_zfp` WASM cores are live; `codecSeries` is
+ * pure TypeScript and is cross-checked against the Rust and Python builders
+ * in CI.
  *
  * No component uses JPEG 2000 Part 2 (MCT) syntax; cross-axis decorrelation is
  * the explicit `nd_lift` array-to-array codec.
@@ -23,7 +24,7 @@
 export type ZarrCodec = { name: string; configuration?: Record<string, unknown> };
 
 // ---------------------------------------------------------------------------
-// Registered codec classes (scaffolds; see roadmap)
+// Registered codec classes
 // ---------------------------------------------------------------------------
 /**
  * One `nd_lift` decorrelation step (the schema the Rust codec accepts).
@@ -102,17 +103,33 @@ function ndLiftUintField(
   return raw;
 }
 
+/** Chunk geometry the nd_lift codec needs beyond its configuration. */
+export interface NdLiftChunkMeta {
+  /** Chunk shape in stored (post-transpose) order. */
+  shape: number[];
+  /** Zarr dtype name of the *array* elements, e.g. `"uint16"` (integer dtypes). */
+  dtype: string;
+}
+
 /**
- * Config class for the `nd_lift` Zarr v3 array-to-array codec. Serializes
- * exactly the configurations the Rust codec accepts and applies the same
- * validation: the version gate, unknown transform fields, `levels >= 1` for
- * lifting kinds, and a non-negative `group`. The WASM encode/decode core
- * lands with the nd-lift-ht integration (roadmap Phase 4).
+ * The `nd_lift` Zarr v3 array-to-array codec: explicit cross-axis integer
+ * lifting. Serializes exactly the configurations the Rust codec accepts and
+ * applies the same validation: the version gate, unknown transform fields,
+ * `levels >= 1` for lifting kinds, and a non-negative `group`.
+ *
+ * `encode` widens little-endian chunk bytes into the decorrelated `int32`
+ * (or, for 64-bit dtypes, `int64`) coefficient plane; `decode` inverts it.
+ * Backed by the WASM build of the same Rust core as the `zarrs` codec, so
+ * every ecosystem produces byte-identical planes. The chunk `shape`/`dtype`
+ * come from the second `fromConfig` argument.
  */
 export class NdLift {
   static codecName = "nd_lift" as const;
 
-  constructor(public readonly config: NdLiftConfig) {
+  constructor(
+    public readonly config: NdLiftConfig,
+    public readonly meta?: NdLiftChunkMeta,
+  ) {
     const configuration = config.configuration;
     // Rust's `NdLiftConfig` has no serde default for `version`, so a
     // configuration object read off storage without one is refused there.
@@ -182,8 +199,8 @@ export class NdLift {
     }
   }
 
-  static fromConfig(config: NdLiftConfig): NdLift {
-    return new NdLift(config);
+  static fromConfig(config: NdLiftConfig, meta?: NdLiftChunkMeta): NdLift {
+    return new NdLift(config, meta);
   }
 
   /** The Zarr v3 codec metadata object (the schema the Rust codec parses). */
@@ -192,11 +209,36 @@ export class NdLift {
     return { name: "nd_lift", configuration: { version, transforms } };
   }
 
-  async encode(_data: Uint8Array): Promise<Uint8Array> {
-    throw new Error("nd_lift encode: the WASM core lands with roadmap Phase 4 (nd-lift-ht)");
+  private chunkMeta(): NdLiftChunkMeta {
+    if (this.meta === undefined) {
+      throw new Error(
+        "nd_lift encode/decode needs the chunk shape and dtype: " +
+          "construct with NdLift.fromConfig(config, { shape, dtype })",
+      );
+    }
+    return this.meta;
   }
-  async decode(_data: Uint8Array): Promise<Uint8Array> {
-    throw new Error("nd_lift decode: the WASM core lands with roadmap Phase 4 (nd-lift-ht)");
+
+  async encode(data: Uint8Array): Promise<Uint8Array> {
+    const { shape, dtype } = this.chunkMeta();
+    const core = await loadWasmCore();
+    return core.nd_lift_encode(
+      data,
+      Uint32Array.from(shape),
+      dtype,
+      JSON.stringify(this.toDict().configuration),
+    );
+  }
+
+  async decode(data: Uint8Array): Promise<Uint8Array> {
+    const { shape, dtype } = this.chunkMeta();
+    const core = await loadWasmCore();
+    return core.nd_lift_decode(
+      data,
+      Uint32Array.from(shape),
+      dtype,
+      JSON.stringify(this.toDict().configuration),
+    );
   }
 }
 
@@ -226,6 +268,8 @@ declare const process: { versions?: { node?: string } } | undefined;
 
 /** The lazily-initialized WASM core (`npm run build:wasm`). */
 let wasmCore: Promise<{
+  nd_lift_encode(chunk: Uint8Array, shape: Uint32Array, dtype: string, config: string): Uint8Array;
+  nd_lift_decode(chunk: Uint8Array, shape: Uint32Array, dtype: string, config: string): Uint8Array;
   htj2k_encode(chunk: Uint8Array, shape: Uint32Array, dtype: string, config: string): Uint8Array;
   htj2k_decode(chunk: Uint8Array, shape: Uint32Array, dtype: string): Uint8Array;
   nd_zfp_encode(chunk: Uint8Array, shape: Uint32Array, dtype: string, config: string): Uint8Array;
@@ -254,7 +298,7 @@ function loadWasmCore() {
       .catch((cause) => {
         wasmCore = null;
         throw new Error(
-          "the htj2k/nd_zfp codecs need the nd-image-codecs WASM core; " +
+          "the nd_lift/htj2k/nd_zfp codecs need the nd-image-codecs WASM core; " +
             "run `npm run build:wasm` (wasm-pack) first",
           { cause },
         );

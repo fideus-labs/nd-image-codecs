@@ -53,10 +53,11 @@ zarrita.registry.set("nd_zfp", () => NdZfp);
 ## Status
 
 **Pre-alpha.** `codecSeries` is fully implemented in pure TypeScript and is
-cross-checked against the Rust and Python implementations in CI. The codec
-encode/decode paths are scaffolds backed by the Rust core compiled to WASM —
-they land across the six
-[roadmap phases](https://github.com/fideus-labs/nd-image-codecs/blob/main/docs/development/roadmap/index.md).
+cross-checked against the Rust and Python implementations in CI. The
+`nd_lift`, `htj2k`, and `nd_zfp` encode/decode paths are backed by the same
+Rust core as the `zarrs` codecs and the Python extension, compiled to WASM,
+so every ecosystem produces byte-identical chunks — CI pins the committed
+micro-fixtures and the `nd_lift` conformance vectors in all three languages.
 
 ## Links
 

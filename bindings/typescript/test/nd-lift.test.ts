@@ -3,9 +3,13 @@
  * cross-language `codecSeries` builder emits (the committed fixture matrix)
  * must construct and re-serialize byte-identically — the same configs the
  * Rust codec accepts — and the version gate must refuse unknown versions.
+ *
+ * When the WASM core has been built (`npm run build:wasm`), the committed
+ * conformance vectors (`fixtures/nd-lift/vectors.json`) additionally pin the
+ * transform itself — the same file the Rust and Python test suites consume.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { NdLift, type NdLiftConfig, type NdLiftTransform } from "../src/index.ts";
@@ -15,6 +19,10 @@ const matrixPath = fileURLToPath(
 );
 const cases: { name: string; expected?: { name: string; configuration?: unknown }[] }[] =
   JSON.parse(readFileSync(matrixPath, "utf8")).cases;
+
+const wasmBuilt = existsSync(
+  fileURLToPath(new URL("../src/wasm/ndic_zarr_bg.wasm", import.meta.url)),
+);
 
 const liftConfigs = cases.flatMap(
   (c) => (c.expected ?? []).filter((codec) => codec.name === "nd_lift") as NdLiftConfig[],
@@ -190,5 +198,94 @@ describe("NdLift config class", () => {
     // TypeError on property access.
     const nulled = { name: "nd_lift", configuration: null } as unknown as NdLiftConfig;
     expect(new NdLift(nulled).toDict().configuration.version).toBe("0.1");
+  });
+
+  it("demands chunk meta before coding", async () => {
+    await expect(NdLift.fromConfig({ name: "nd_lift" }).encode(new Uint8Array(4))).rejects.toThrow(
+      /shape and dtype/,
+    );
+  });
+});
+
+// The committed conformance vectors: plane values, a configuration, and the
+// exact forward output. The vectors store already-widened plane values, so
+// they run through the identity dtypes (`int32`/`int64`).
+interface LiftVector {
+  name: string;
+  plane: "i32" | "i64";
+  shape: number[];
+  configuration: NonNullable<NdLiftConfig["configuration"]>;
+  input: number[];
+  expected: number[];
+}
+
+const vectorsPath = fileURLToPath(
+  new URL("../../../fixtures/nd-lift/vectors.json", import.meta.url),
+);
+const vectorsDoc: { version: string; cases: LiftVector[] } = JSON.parse(
+  readFileSync(vectorsPath, "utf8"),
+);
+
+/** Little-endian bytes of plane values in the vector's plane type. */
+function planeBytes(plane: "i32" | "i64", values: number[]): Uint8Array {
+  const typed =
+    plane === "i32" ? Int32Array.from(values) : BigInt64Array.from(values, (v) => BigInt(v));
+  return new Uint8Array(typed.buffer.slice(0));
+}
+
+describe.skipIf(!wasmBuilt)("NdLift WASM core", () => {
+  it("implements the vectors' transform version", () => {
+    expect(vectorsDoc.version).toBe("0.1");
+    expect(vectorsDoc.cases.length).toBeGreaterThan(0);
+  });
+
+  it("matches every committed conformance vector, both directions", async () => {
+    for (const vector of vectorsDoc.cases) {
+      const dtype = vector.plane === "i32" ? "int32" : "int64";
+      const codec = NdLift.fromConfig(
+        { name: "nd_lift", configuration: vector.configuration },
+        { shape: vector.shape, dtype },
+      );
+      const input = planeBytes(vector.plane, vector.input);
+      const expected = planeBytes(vector.plane, vector.expected);
+      expect(await codec.encode(input), `${vector.name}: forward`).toEqual(expected);
+      expect(await codec.decode(expected), `${vector.name}: inverse`).toEqual(input);
+    }
+  });
+
+  it("widens a uint16 chunk into an int32 plane and narrows it back", async () => {
+    const shape = [4, 3, 3];
+    const samples = Uint16Array.from({ length: 36 }, (_, i) => (i * 7) % 4096);
+    const bytes = new Uint8Array(samples.buffer.slice(0));
+    const codec = NdLift.fromConfig(
+      {
+        name: "nd_lift",
+        configuration: {
+          version: "0.1",
+          transforms: [{ axis: "z", dimension: 0, kind: "lift53", levels: 1, group: 0 }],
+        },
+      },
+      { shape, dtype: "uint16" },
+    );
+    const plane = await codec.encode(bytes);
+    expect(plane.byteLength).toBe(36 * 4);
+    expect(await codec.decode(plane)).toEqual(bytes);
+  });
+
+  it("refuses coefficients that do not narrow back to the dtype", async () => {
+    const codec = NdLift.fromConfig(
+      { name: "nd_lift", configuration: { version: "0.1", transforms: [] } },
+      { shape: [1], dtype: "uint16" },
+    );
+    const plane = new Uint8Array(Int32Array.from([70_000]).buffer);
+    await expect(codec.decode(plane)).rejects.toThrow(/does not narrow back/);
+  });
+
+  it("reports dtypes without an integer path", async () => {
+    const codec = NdLift.fromConfig(
+      { name: "nd_lift" },
+      { shape: [4], dtype: "float32" },
+    );
+    await expect(codec.encode(new Uint8Array(16))).rejects.toThrow(/no integer path/);
   });
 });

@@ -21,6 +21,7 @@
 pub mod htj2k;
 #[cfg(feature = "zarrs")]
 pub mod htj2k_codec;
+pub mod lift;
 #[cfg(feature = "zarrs")]
 pub mod lift_codec;
 pub mod series;
