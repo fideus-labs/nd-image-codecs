@@ -80,14 +80,20 @@ def test_vendored_schemas_are_valid_json_schema(name: str) -> None:
     jsonschema.Draft202012Validator.check_schema(schema_for(name))
 
 
-#: Configurations the codecs refuse. Each must fail its schema too — the
-#: schema is a contract about what a conforming writer may emit, so it has to
-#: be at least as strict as the parser.
+#: Configurations the schemas must reject. Most are things the codecs refuse
+#: too; the exception is deliberate: the schemas are a contract about what a
+#: conforming **writer** may emit, while the parsers are **readers** and may
+#: accept more. Legacy ``dims`` is exactly that case — `NdZfpCodec.from_dict`
+#: and the Rust ``NdZfpConfig`` keep accepting it so pre-adoption ``nd_zfp``
+#: stores stay decodable, but the registered ``zfp`` schema (and therefore
+#: every builder) must never emit it. Do not "fix" the parsers to match the
+#: schema here.
 REJECTED = [
     # Unknown members are errors, not ignored fields.
     ("htj2k", {"name": "htj2k", "configuration": {"xy_levels": 5, "bogus": 1}}),
     # The registered zfp schema: exactly the mode's own parameter, and no
-    # legacy `dims` — a builder emitting either would break interop.
+    # legacy `dims` — a writer emitting either would break interop (readers
+    # still accept `dims`; see the note above).
     ("zfp", {"name": "zfp", "configuration": {"mode": "reversible", "rate": 8.0}}),
     ("zfp", {"name": "zfp", "configuration": {"mode": "reversible", "dims": 3}}),
     ("zfp", {"name": "zfp", "configuration": {"mode": "fixed_rate"}}),

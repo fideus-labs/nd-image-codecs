@@ -36,6 +36,7 @@ __all__ = [
     "Htj2k",
     "NdLift",
     "NdZfp",
+    "Zfp",
     "__version__",
     "codec_series",
 ]
