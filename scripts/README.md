@@ -1,20 +1,35 @@
 # scripts/
 
-Helper scripts, created as their roadmap phases land:
+Helper scripts for CI and development.
 
-| Script | Phase | Purpose |
-| --- | --- | --- |
-| `gen-series-fixtures.py` | 1 | Regenerate the `codec_series` cross-language fixture matrix (`fixtures/codec-series/matrix.json`) |
-| `ci/check-series-equality.py` | 1 | Assert Rust / Python / TypeScript `codec_series` output is byte-identical across the fixture matrix (the `series-equality` CI job) |
-| `ci/check-cross-validation.py` | 6 | The cross-ecosystem validation matrix: every `fixtures/cross-validation` case written by zarrs / zarr-python / zarrita.js and read back by all three (the `cross-validation` CI job) |
-| `cross-validation/zarr_python_io.py` | 6 | zarr-python writer/reader corner of the matrix (the zarrita.js corner is `bindings/typescript/scripts/zarrita-io.mts`; the zarrs corner is `ndic zarr`) |
-| `ci/check-docs-links.py` | 1 | Check the outbound `http(s)` links cited by `docs/` — manual/pre-release, deliberately not a CI gate (external specification hosts are too flaky) |
-| `fetch-conformance.sh` | 3 | Fetch + cache the OpenJPH conformance corpus (Tier 2 test data) |
-| `fetch-bench-data.sh` | 6 | Fetch, verify, and cache the Tier 3 benchmark volumes pinned in `bench-data.lock.toml` (implementation: `bench/py/tier3.py`) |
-| `range-server.py` | 6 | Static file server honoring HTTP `Range:` (`python3 -m http.server` does not) — what the usage docs' byte-range examples run against, in CI and by hand |
-| `profile.sh` | 6 | `perf record`/flamegraph wrapper for one bench workload (workspace `profiling` profile) |
-| `asm.sh` | 5 | Inspect release codegen of hot functions per SIMD lane |
-| `ci/check-usage-docs.py` | 6 | Extract and execute every code block in `docs/usage/*` against the current API (the `usage-docs` CI job) |
+## CI checks
 
-See [docs/development/test-data.md](../docs/development/test-data.md) and the
-[roadmap](../docs/development/roadmap/index.md).
+| Script | Purpose |
+| --- | --- |
+| `ci/check-series-equality.py` | Assert Rust / Python / TypeScript `codec_series` output is byte-identical across the fixture matrix (the `series-equality` CI job) |
+| `ci/check-cross-validation.py` | The cross-ecosystem validation matrix: every `fixtures/cross-validation` case written by zarrs / zarr-python / zarrita.js and read back by all three (the `cross-validation` CI job) |
+| `ci/check-usage-docs.py` | Extract and execute every code block in `docs/usage/*` against the current API (the `usage-docs` CI job) |
+| `ci/check-docs-toc.py` | Assert `docs/myst.yml`'s hand-maintained `toc` and `docs/**/*.md` list the same pages, each once — the strict MyST build catches neither direction (the `docs` CI job) |
+| `ci/check-package-versions.py` | Assert the published version agrees across every manifest, lockfile, and `__version__` fallback |
+| `ci/check-docs-links.py` | Check the outbound `http(s)` links cited by `docs/` — manual/pre-release, deliberately not a CI gate (external specification hosts are too flaky) |
+
+## Fixtures and test data
+
+| Script | Purpose |
+| --- | --- |
+| `gen-series-fixtures.py` | Regenerate the `codec_series` cross-language fixture matrix (`fixtures/codec-series/matrix.json`) |
+| `gen-ht-tables.py` | Regenerate `crates/ndic-htj2k/src/block/tables_data.rs` (CxtVLC / UVLC lookup tables) from an OpenJPH checkout |
+| `cross-validation/zarr_python_io.py` | zarr-python writer/reader corner of the validation matrix (the zarrita.js corner is `bindings/typescript/scripts/zarrita-io.mts`; the zarrs corner is `ndic zarr`) |
+| `fetch-conformance.sh` | Fetch + cache the OpenJPH conformance corpus (Tier 2 test data) |
+| `fetch-bench-data.sh` | Fetch, verify, and cache the Tier 3 benchmark volumes pinned in `bench-data.lock.toml` (implementation: `bench/py/tier3.py`) |
+| `ht-differential.sh` | Build the OpenJPH block-coder oracle (`ht_oracle.cpp`), generate differential vectors, and run the `ndic-htj2k` differential test against them |
+
+## Development tools
+
+| Script | Purpose |
+| --- | --- |
+| `range-server.py` | Static file server honoring HTTP `Range:` (`python3 -m http.server` does not) — what the usage docs' byte-range examples run against, in CI and by hand |
+| `profile.sh` | `perf record`/flamegraph wrapper for one bench workload (workspace `profiling` profile) |
+
+See [docs/development/test-data.md](../docs/development/test-data.md) and
+[docs/development/commands.md](../docs/development/commands.md).

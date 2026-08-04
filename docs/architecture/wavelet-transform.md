@@ -3,8 +3,7 @@ title: In-Plane Wavelet Transform
 description: The two JPEG 2000 Part 1 wavelet kernels — reversible 5/3 and irreversible 9/7 — applied to each trailing 2D (y, x) plane before HT block coding.
 ---
 
-**Crate:** [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) (2D DWT) · **Roadmap:**
-[Phase 3](../development/roadmap/phase-3-htj2k-core.md)
+**Crate:** [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) (2D DWT)
 
 :::{note} Scope
 The **cross-axis** (z/t/c) transform is a separate, explicit codec — see

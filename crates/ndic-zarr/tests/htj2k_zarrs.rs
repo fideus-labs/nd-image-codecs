@@ -41,7 +41,7 @@ fn named_data_type(dtype_name: &str) -> (DataType, usize) {
     }
 }
 
-/// The Phase 4 flagship pipeline over a `(z, c, y, x)` array: transpose to
+/// The nd-lift-ht flagship pipeline over a `(z, c, y, x)` array: transpose to
 /// `(c, z, y, x)`, lift along z, `htj2k` planes. `kind: "none"` drops the
 /// lift (bare `transpose → htj2k`).
 fn build_array(store: Arc<MemoryStore>, dtype_name: &str, kind: &str) -> Array<MemoryStore> {

@@ -4,8 +4,7 @@ short_title: Byte-Range Access
 description: Thumbnails, single planes, and low-resolution 3D previews decode from plain HTTP Range requests against any static file server or object store — no JPIP, tile server, or sidecar index.
 ---
 
-**Crate:** [`ndic-codestream`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-codestream) · **Roadmap:**
-[Phase 4](../development/roadmap/phase-4-nd-lift-ht.md)
+**Crate:** [`ndic-codestream`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-codestream)
 
 A core requirement of the nd-lift-ht family: **thumbnails, single planes, and
 low-resolution 3D previews must decode from plain HTTP `Range:` requests**

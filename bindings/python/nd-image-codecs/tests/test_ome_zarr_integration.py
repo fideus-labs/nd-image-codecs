@@ -1,6 +1,6 @@
 """OME-Zarr 0.5 integration: multiscales written with each codec family.
 
-The Phase 6 OME-Zarr lane: `ngff-zarr <https://github.com/fideus-labs/ngff-zarr>`_
+The OME-Zarr lane: `ngff-zarr <https://github.com/fideus-labs/ngff-zarr>`_
 writes OME-Zarr 0.5 multiscales (its ``to_ngff_zarr`` forwards codec kwargs
 to ``zarr.create_array``, so the codec-series pipelines drop straight in),
 then the store must

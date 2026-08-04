@@ -2,7 +2,7 @@
 //!
 //! Writes an array to a filesystem store with a codec-series pipeline built
 //! by [`ndic_zarr::series::codec_series`], and reads one back to raw
-//! little-endian element bytes. This is the `zarrs` corner of the Phase 6
+//! little-endian element bytes. This is the `zarrs` corner of the
 //! cross-ecosystem validation matrix: the same case spec drives the
 //! zarr-python and zarrita.js writers/readers, and the orchestrator
 //! (`scripts/ci/check-cross-validation.py`) compares the decoded bytes

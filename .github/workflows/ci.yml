@@ -126,7 +126,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # MyST first: the site builds in well under a minute, so putting it ahead
+      # Ahead of even the Node install: this is a stdlib-only script over two
+      # inputs, so it costs milliseconds, and it covers the one class of docs
+      # breakage the strict MyST build does not. A page missing from the toc
+      # builds clean and silently never appears on the site; a toc entry naming
+      # a deleted file prints a ⛔️ and still exits 0. Both stay green in
+      # `npm run check` — measured, not assumed.
+      - run: python3 scripts/ci/check-docs-toc.py
+
+      # MyST next: the site builds in well under a minute, so putting it ahead
       # of the Rust toolchain install, the cache restore, and rustdoc means a
       # broken link fails the job in about a tenth of the time.
       - uses: actions/setup-node@v4
@@ -253,7 +261,7 @@ jobs:
         working-directory: bindings/typescript
       - run: python3 scripts/ci/check-usage-docs.py
 
-  # The Phase 6 cross-ecosystem validation matrix: every case in
+  # The cross-ecosystem validation matrix: every case in
   # fixtures/cross-validation/cases.json is written by zarrs (ndic zarr),
   # zarr-python (our entry points), and zarrita.js (our WASM classes), and
   # read back by all three — 3×3 direction pairs per case, with chunk-level

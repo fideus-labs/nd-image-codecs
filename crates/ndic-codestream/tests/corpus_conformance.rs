@@ -2,7 +2,7 @@
 
 //! Conformance decode against the `OpenJPH` test corpus
 //! (`aous72/jp2k_test_codestreams`): every reversible-5/3 file within the
-//! Phase-3 reader's scope must decode **bit-exactly** to its reference.
+//! reader's supported scope must decode **bit-exactly** to its reference.
 //!
 //! Streams outside the scope (tiled, subsampled YUV, 9/7) are reported as
 //! skipped. Fetch the corpus with `scripts/fetch-conformance.sh`.

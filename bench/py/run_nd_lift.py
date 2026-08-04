@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Phase 2 nd-lift benchmark lanes.
+"""nd-lift benchmark lanes.
 
 Measures the ``nd_lift`` decorrelation gain in isolation — behind a stock
-Blosc-Zstd backend, before the HTJ2K plane codec exists. The validation
+Blosc-Zstd backend rather than the HTJ2K plane codec. The validation
 series is ``transpose → nd_lift → bytes → blosc(zstd)``; the pipeline head is
 authored by ``nd_image_codecs.codec_series`` (the nd-lift-ht family, with the
 ``htj2k`` tail swapped for ``bytes → blosc``) and the ``nd_lift`` codec runs
@@ -12,7 +12,7 @@ the Rust crate by the committed conformance vectors.
 Lanes, all on the strongly correlated z-stack fixture
 (:func:`synthetic.correlated_zstack`):
 
-- ``nd-delta-zstd`` — the Phase 1 family on this fixture, the comparison bar.
+- ``nd-delta-zstd`` — the nd-delta family on this fixture, the comparison bar.
 - ``nd-lift-delta-zstd`` — ``nd_lift`` first-order delta along t and z.
 - ``nd-lift-53-zstd`` — ``nd_lift`` two-level 5/3 lifting along t and z.
 

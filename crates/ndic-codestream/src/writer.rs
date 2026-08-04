@@ -27,7 +27,7 @@ use crate::quant::Quant;
 ///
 /// # Errors
 /// [`Error::InvalidArgument`] on inconsistent inputs, [`Error::Unsupported`]
-/// for parameter combinations outside the Phase-3 writer (9/7, multiple
+/// for parameter combinations the writer does not support (9/7, multiple
 /// layers, custom precincts).
 pub fn encode_image(
     comps: &[CoeffPlane<'_>],
@@ -76,17 +76,17 @@ pub fn encode_image_with_depth(
     }
     if params.wavelet != ndic_core::WaveletKind::Reversible53 {
         return Err(Error::Unsupported {
-            message: "phase-3 writer is lossless (5/3) only".into(),
+            message: "writer is lossless (5/3) only".into(),
         });
     }
     if params.quality_layers != 1 {
         return Err(Error::Unsupported {
-            message: "phase-3 writer emits a single quality layer".into(),
+            message: "writer emits a single quality layer".into(),
         });
     }
     if !params.precincts.is_empty() {
         return Err(Error::Unsupported {
-            message: "phase-3 writer uses maximal precincts".into(),
+            message: "writer uses maximal precincts".into(),
         });
     }
     let (cbw, cbh) = (

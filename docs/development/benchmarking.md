@@ -20,8 +20,8 @@ committed baselines with a statistical regression gate. Full design:
   `list`; `--filter`, `--config`, `--format ascii|json|both|markdown|csv`,
   `--baseline`, `--fail-on-regression`, `--gate time|ratio|both`, `--quiet`.
 - **`bench/py/`** — Python-side lanes that exercise codecs through
-  `zarr-python` (`run_nd_delta.py` for the Phase 1 nd-delta family;
-  `run_nd_lift.py` for the Phase 2 `transpose → nd_lift → bytes → blosc`
+  `zarr-python` (`run_nd_delta.py` for the nd-delta family;
+  `run_nd_lift.py` for the `transpose → nd_lift → bytes → blosc`
   validation series on the correlated z-stack fixture; shared machinery in
   `lanes.py`) plus the deterministic synthetic-fixture generators
   (`synthetic.py`). They emit the same `BenchRecord` JSON into the same
@@ -51,24 +51,38 @@ Every workload is swept across the **codec-configuration** matrix:
 | `zfp-rate8` | nd-zfp | on | — | — |
 | `zfp-reversible` | nd-zfp | on | — | — |
 
-plus **reference lanes**: OpenJPH's `ojph_compress`/`ojph_expand` binaries, the
-reference C ZFP library (`ref-zfp`, via `zfp-sys`), and Python `imagecodecs` on
-identical fixtures, so speed/ratio claims are grounded against the C/C++ state
-of the art.
+The `blosc-zstd` lane is the standing comparison bar: a stock
+`bytes → blosc(zstd)` pipeline on the same fixtures, so every ratio in the table
+is read against what a user gets today without this project.
 
-The nd-lift-ht lanes are told apart by the Phase-4 `lift_ht/*` workloads:
+:::{note} Reference lanes are specified, not yet wired up
+`bench/benchmarks.toml` declares three lanes that would shell out to external
+implementations — OpenJPH's `ojph_compress`/`ojph_expand`, the C ZFP library via
+`zfp-sys`, and Python `imagecodecs` — to ground speed and ratio claims against
+the C/C++ state of the art. All three carry `enabled = false`, no driver code
+reads them, and no baseline records exist for them, so **no published number
+here is a comparison against a C/C++ implementation.**
+
+What *is* verified today is correctness rather than speed, in the test suite
+rather than the bench suite: `imagecodecs` interop runs in the `python` CI job
+(`test_imagecodecs_interop.py`, `test_nd_zfp_roundtrip.py`), and OpenJPH
+round-trip interop runs from `crates/ndic-codestream/tests/openjph_interop.rs`
+when a local OpenJPH build is present — it skips otherwise, including in CI.
+:::
+
+The nd-lift-ht lanes are told apart by the `lift_ht/*` workloads:
 the composed `nd_lift → htj2k` chunk path over a correlated z-stack
 (`chunk_encode`/`chunk_decode`, ratio + throughput) and the byte-range plan
 economy (`thumbnail_bytes`: bytes a 16-px thumbnail plan fetches, as a
 fraction of the chunk). The committed dev-box baselines record the
-**z-decorrelation gain** the roadmap asks for: ratio 0.2933 undecorrelated
+**z-decorrelation gain**: ratio 0.2933 undecorrelated
 (`simd-53-ht`) vs **0.2549** with two z-lifting levels (`simd-53-lift-z2`)
 on the correlated fixture — ~13 % smaller chunks — with the blosc-backed
 analog on the Python correlated fixture at 0.4007 (`nd-lift-delta-zstd`,
 the nd-delta-style differencing) vs 0.3766 (`nd-lift-53-zstd`). Thumbnail
 plans fetch 2.1–2.4 % of the chunk in ≤ 3 ranges.
 
-The nd-zfp lanes run the Phase-5 `zfp/*` workloads over a correlated float
+The nd-zfp lanes run the `zfp/*` workloads over a correlated float
 volume: `chunk_encode`/`chunk_decode` (ratio + throughput; `zfp-rate8`
 pins the fixed-rate 0.25 ratio by construction, `zfp-reversible` the
 lossless ratio) and `brick_bytes` — the fixed-rate random-access economy:

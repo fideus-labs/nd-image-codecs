@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 5 nd-zfp benchmark lanes.
+"""nd-zfp benchmark lanes.
 
 Measures the ``nd_zfp`` codec through ``zarr-python`` on a correlated
 **float32** volume — the family's target data. The pipeline is authored by

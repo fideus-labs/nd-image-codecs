@@ -3,8 +3,7 @@ title: HT Block Coder (FBCOT)
 description: The FBCOT block coder of ISO/IEC 15444-15 replaces Part 1's EBCOT Tier-1 MQ arithmetic coder, trading roughly 5-10 % compression efficiency for an order-of-magnitude speedup.
 ---
 
-**Crate:** [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k) · **Roadmap:**
-[Phase 3](../development/roadmap/phase-3-htj2k-core.md)
+**Crate:** [`ndic-htj2k`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-htj2k)
 
 nd-image-codecs implements the **FBCOT** (Fast Block Coding with Optimized Truncation) algorithm
 of ISO/IEC 15444-15 / [ITU-T T.814](https://www.itu.int/rec/T-REC-T.814). FBCOT replaces

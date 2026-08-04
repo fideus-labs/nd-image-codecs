@@ -1,7 +1,7 @@
 //! Codestream reader: a pull parser over an in-memory codestream with a
 //! `TLM`/`PLT`-driven packet index and partial (by-resolution) decode.
 //!
-//! Phase-3 scope: single tile anchored at the canvas origin, HT blocks,
+//! Supported scope: single tile anchored at the canvas origin, HT blocks,
 //! one quality layer, maximal precincts, reversible 5/3. Multi-component
 //! streams decode independently, with the reversible colour transform
 //! (RCT) inverted when `COD` signals it.
@@ -95,7 +95,7 @@ impl<'a> Codestream<'a> {
     ///
     /// # Errors
     /// [`Error::Codestream`] on malformed streams, [`Error::Unsupported`]
-    /// for syntax outside the Phase-3 reader.
+    /// for syntax outside the reader's supported scope.
     pub fn parse(data: &'a [u8]) -> Result<Self> {
         Self::parse_impl(data, true)
     }
@@ -301,7 +301,7 @@ impl<'a> Codestream<'a> {
         self.total_len
     }
 
-    /// Validates that the stream is within the Phase-3 decoding scope.
+    /// Validates that the stream is within the supported decoding scope.
     fn check_supported(&self) -> Result<()> {
         if self.siz.tile_grid() != (1, 1)
             || self.siz.xosiz != 0

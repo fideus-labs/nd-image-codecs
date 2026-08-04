@@ -55,7 +55,7 @@ implementations cannot *write* transposed pipelines correctly.
 
 ## Status
 
-**Pre-alpha.** `codecSeries` is fully implemented in pure TypeScript and is
+**Alpha.** `codecSeries` is fully implemented in pure TypeScript and is
 cross-checked against the Rust and Python implementations in CI. The
 `nd_lift`, `htj2k`, and `zfp` encode/decode paths are backed by the same
 Rust core as the `zarrs` codecs and the Python extension, compiled to WASM,

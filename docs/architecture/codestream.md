@@ -3,8 +3,7 @@ title: Codestream Syntax
 description: How the htj2k codec reads and writes raw JPEG 2000 codestreams and JPH boxes, following ITU-T T.800 Annex A with the Part 15 additions of T.814 — and never a Part 2 MCT marker.
 ---
 
-**Crate:** [`ndic-codestream`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-codestream) · **Roadmap:**
-[Phase 3](../development/roadmap/phase-3-htj2k-core.md) (core + indexing)
+**Crate:** [`ndic-codestream`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-codestream)
 
 The `htj2k` codec reads and writes raw JPEG 2000 codestreams (`.j2c`) and the
 JPH box format (`.jph`, the Part 15 analogue of `.jp2`) for each trailing 2D

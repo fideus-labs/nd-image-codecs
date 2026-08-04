@@ -9,10 +9,10 @@ How to publish nd-image-codecs to crates.io, PyPI, and npm **by hand**. There is
 no release automation yet; every step here is run from a workstation.
 
 The current target is **0.1.0** — the first release with working codecs rather
-than name reservations. `nd_lift`, `nd_lift_ht`, and `nd_zfp` encode and decode
+than name reservations. `nd_lift`, `htj2k`, and `zfp` encode and decode
 for real, the `codec_series` builder works in all three languages, and the
-TypeScript package ships a WASM core (see the [roadmap](./roadmap/index.md)).
-The minor bump signals that: 0.0.x was a placeholder series.
+TypeScript package ships a WASM core. The minor bump signals that: 0.0.x was a
+placeholder series.
 
 > **The 0.0.x releases were name reservations, and 0.0.2 only landed in part.**
 > 0.0.1 (2026-08-01) reached PyPI and both npm packages, plus five crates —
@@ -346,7 +346,7 @@ npm view nd-image-codecs@0.1.0
 Then tag the commit that was published:
 
 ```bash
-git tag -a v0.1.0 -m "Release 0.1.0 — working nd_lift, nd_lift_ht, and nd_zfp codecs"
+git tag -a v0.1.0 -m "Release 0.1.0 — working nd_lift, htj2k, and zfp codecs"
 git push origin v0.1.0
 ```
 
@@ -378,5 +378,5 @@ with working codecs, and that it is the first PyPI/npm upload since 0.0.1.
 - **Registry policy.** crates.io and npm both reserve the right to reclaim names
   held purely for squatting. Each published package therefore ships a real README, a
   license, a repository link, and — for Rust and Python — working
-  `codec_series` code. Keep publishing as the roadmap phases land so the names
-  stay clearly in use.
+  `codec_series` code. Keep publishing as releases land so the names stay
+  clearly in use.

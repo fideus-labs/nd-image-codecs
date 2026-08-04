@@ -32,14 +32,11 @@ Open the page that matches the task in front of you.
 | --- | --- |
 | [ADR 001 — Docs Toolchain](./decisions/adr-001-documentation-toolchain.md) | Why the documentation site is mystmd rooted at `docs/`, deployed to Read the Docs through `build.commands`, and gated on a strict build — plus the two things it deliberately does not do |
 
-## What to build next
+## Before you change code
 
-| Section | What's inside | Open |
-| --- | --- | --- |
-| Roadmap | The six strictly ordered implementation phases: what to build, against which spec clauses and reference implementations, with which tests and benchmarks, and what "done" means | [Roadmap](./roadmap/index.md) |
-
-Deciding what to implement next always starts at the
-[roadmap](./roadmap/index.md) — phases are strictly ordered, and a phase's
-acceptance criteria gate the next. Read the linked
-[architecture docs](../architecture/index.md) before the phase document: the phase doc
-tells you *what and when*, the architecture doc *how and why*.
+Read the [architecture docs](../architecture/index.md) covering the component you
+are touching — they carry the *how and why* behind the code, and a change that
+contradicts them needs the page updated in the same PR. What is planned next
+lives in the
+[open issues](https://github.com/fideus-labs/nd-image-codecs/issues), not in
+this tree.

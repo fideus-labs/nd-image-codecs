@@ -42,7 +42,7 @@ fn named_data_type(dtype_name: &str) -> (DataType, usize) {
     }
 }
 
-/// The Phase 5 flagship pipeline over a `(z, c, y, x)` array: transpose to
+/// The nd-zfp flagship pipeline over a `(z, c, y, x)` array: transpose to
 /// `(c, z, y, x)`, ZFP over the three non-singleton chunk dims.
 /// `zfp_config` is the `nd_zfp` configuration object.
 fn build_array(store: Arc<MemoryStore>, dtype_name: &str, zfp_config: Value) -> Array<MemoryStore> {

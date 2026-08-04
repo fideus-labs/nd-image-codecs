@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 1 nd-delta benchmark lanes.
+"""nd-delta benchmark lanes.
 
 Measures encode/decode throughput and compression ratio for the nd-delta
 family (``nd-delta-zstd``, ``nd-delta-lz4``) against the plain ``blosc-zstd``

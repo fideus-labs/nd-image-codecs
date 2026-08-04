@@ -1,6 +1,6 @@
 //! `inventory`-registered HTJ2K workloads.
 //!
-//! Phase-3 lanes: the 5/3 DWT (scalar vs SIMD, selected by
+//! Core HTJ2K lanes: the 5/3 DWT (scalar vs SIMD, selected by
 //! [`BenchConfig::simd`]) and the full HTJ2K plane codec (encode + decode
 //! with ratio tracking). The plane codec always runs its shipped
 //! (SIMD-lane) DWT — the `dwt53` entry is the lane comparison.
@@ -56,7 +56,7 @@ fn dwt53_fwd(config: &BenchConfig) -> BenchOutput {
 
 fn ht_encode(config: &BenchConfig) -> BenchOutput {
     if config.irreversible {
-        return BenchOutput::default(); // 9/7 encode lands post-Phase 3
+        return BenchOutput::default(); // 9/7 encode is not implemented yet
     }
     let (w, h) = (1024usize, 1024usize);
     let samples = synthetic_plane(w, h);

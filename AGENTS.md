@@ -15,8 +15,9 @@ metadata. Three families are provided:
 Cross-axis correlation (z, time, channel) is captured by an **explicit**
 array-to-array codec, `nd_lift`, and never by JPEG 2000 Part 2 (MCT) syntax —
 this is a deliberate IP choice. The `htj2k` codec emits only conforming JPEG
-2000 **Part 1 / Part 15** codestreams. Work proceeds in six roadmap phases;
-consult the roadmap before implementing anything.
+2000 **Part 1 / Part 15** codestreams. All three families encode and decode as
+of 0.1.0; read the architecture page for the component you are touching before
+implementing anything.
 
 ## Crates
 
@@ -38,7 +39,6 @@ consult the roadmap before implementing anything.
 | Task | Read |
 | --- | --- |
 | Understand the overall design | [./docs/architecture/index.md](./docs/architecture/index.md), [./docs/architecture/overview.md](./docs/architecture/overview.md) |
-| Decide what to implement next | [./docs/development/roadmap/index.md](./docs/development/roadmap/index.md) |
 | Work on the codec-series builder | [./docs/architecture/codec-series.md](./docs/architecture/codec-series.md) |
 | Work on the `nd_lift` transform | [./docs/architecture/nd-transform.md](./docs/architecture/nd-transform.md) |
 | Work on the HT block coder | [./docs/architecture/ht-block-coder.md](./docs/architecture/ht-block-coder.md) |
@@ -76,11 +76,11 @@ consult the roadmap before implementing anything.
   decorrelation is exclusively the `nd_lift` codec.
 - New performance-sensitive code must register a benchmark
   (`inventory::submit! { BenchEntry::new(...) }`) in the same PR.
-- Roadmap phases are strictly ordered; do not start a phase's work before its
-  predecessors' acceptance criteria are met.
 - Any new page added under `docs/` must also be added to the `toc` in
   `docs/myst.yml`, or it will not appear on the documentation site — the toc is
-  explicit, not filesystem-discovered.
+  explicit, not filesystem-discovered. `scripts/ci/check-docs-toc.py` enforces
+  this in both directions (it runs first in the `docs` CI job); the strict MyST
+  build does not, so without it a forgotten toc entry ships silently.
 - Links from `docs/` into source code, benchmarks, or scripts must be absolute
   `https://github.com/fideus-labs/nd-image-codecs/blob/main/…` (or
   `/tree/main/…` for a directory) URLs. The MyST project root is `docs/`, so a

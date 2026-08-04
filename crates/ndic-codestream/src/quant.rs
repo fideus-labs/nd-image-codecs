@@ -13,7 +13,7 @@ use ndic_core::{Error, Result};
 
 /// `ceil(log2(.))` of the squared/mixed 5/3 BIBO gain bounds, precomputed
 /// from `OpenJPH`'s `bibo_gains::gain_5x3_{l,h}` float tables (see
-/// `scripts/gen-ht-tables.py`'s sibling derivation in the phase-3 notes):
+/// `scripts/gen-ht-tables.py`'s sibling derivation):
 /// `X_LL[nd] = ceil(log2(L[nd]^2))`.
 const X_LL: [u32; 34] = [
     0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,

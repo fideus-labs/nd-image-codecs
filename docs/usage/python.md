@@ -159,8 +159,10 @@ assert chunk == imagecodecs.zfp_encode(field)           # byte-identical
 np.testing.assert_array_equal(imagecodecs.zfp_decode(chunk), field)
 ```
 
-The [Phase 6 matrix](../development/roadmap/phase-6-validation-and-docs.md)
-automates this in CI for ZFP, JPEG 2000, and delta.
+The third-party interop tests
+([`test_imagecodecs_interop.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/bindings/python/nd-image-codecs/tests/test_imagecodecs_interop.py)
+and [`test_nd_zfp_roundtrip.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/bindings/python/nd-image-codecs/tests/test_nd_zfp_roundtrip.py))
+automate this in the `python` CI job for ZFP, JPEG 2000, and delta.
 
 ## Notes
 

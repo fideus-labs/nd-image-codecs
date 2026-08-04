@@ -7,11 +7,9 @@ description: 'The ndic command-line tool: build a codec series from an array''s 
 # CLI — `ndic`
 
 :::{note} Status
-All subcommands work: `series` (Phase 1), `compress`/`expand`/`inspect`
-(Phase 3), `index`/`thumbnail` with HTTP Range execution
-([Phase 4](../development/roadmap/phase-4-nd-lift-ht.md)), and `zarr`
-([Phase 6](../development/roadmap/phase-6-validation-and-docs.md)). Every
-command line on this page is executed by CI.
+All subcommands work: `series`, `compress`/`expand`/`inspect`,
+`index`/`thumbnail` with HTTP Range execution, and `zarr`. Every command line
+on this page is executed by CI.
 :::
 
 <!-- docs-check: skip — installs into the user's cargo bin; the checker uses the workspace build -->
@@ -128,8 +126,9 @@ this works.
 
 `ndic zarr` writes and reads Zarr v3 stores through the registered codecs —
 the Rust corner of the [cross-ecosystem validation
-matrix](../development/roadmap/phase-6-validation-and-docs.md), and a quick
-way to produce a store that any zarr-python or zarrita.js reader can open.
+matrix](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/ci/check-cross-validation.py),
+and a quick way to produce a store that any zarr-python or zarrita.js reader
+can open.
 It is behind a feature flag because it pulls in `zarrs`:
 
 <!-- docs-check: skip — builds the workspace; the checker's ndic already carries the feature -->

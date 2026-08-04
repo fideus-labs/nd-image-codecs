@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """zarr-python writer/reader for the cross-ecosystem validation matrix.
 
-One corner of the Phase 6 matrix: ``write`` builds the codec pipeline with
+One corner of the matrix: ``write`` builds the codec pipeline with
 :func:`nd_image_codecs.codec_series` (the pure-Python builder), splits it
 into zarr-python's filters/serializer/compressors, and writes the raw input
 bytes into a Zarr v3 directory store; ``read`` decodes any store written by

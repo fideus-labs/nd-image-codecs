@@ -5,7 +5,7 @@ OME-Zarr-shaped arrays through ``zarr-python`` v3, and asserts bit-exact
 round-trips on realistic microscopy-like data. Every codec in the nd-delta
 family already exists (``transpose``, ``numcodecs.delta``, ``bytes``,
 ``blosc``), so this validates the builder's output against real
-implementations — roadmap Phase 1, acceptance criterion 2.
+implementations.
 """
 
 from __future__ import annotations

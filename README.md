@@ -17,7 +17,7 @@
 
 <p align="center">
   📖 <a href="https://nd-image-codecs.readthedocs.io/en/latest/"><strong>Read the documentation</strong></a>
-  — architecture, usage guides, and the roadmap, rendered and searchable.
+  — architecture, usage guides, and contributor docs, rendered and searchable.
 </p>
 
 <p align="center">
@@ -58,10 +58,14 @@ which chooses a transpose order and decorrelation axes from the axis names
   (HTJ2K) codestream, with an outer coefficient-plane byte index for
   range-request thumbnails. The FBCOT block coder (MEL / VLC / MagSgn) decodes
   roughly an order of magnitude faster than classic JPEG 2000.
-- **`zfp`** — an **array-to-bytes** codec (the zarr-extensions registered name): a clean-room Rust port of
-  [LLNL ZFP](https://github.com/LLNL/zfp) for 2D/3D/4D blocks with fixed-rate,
+- **`zfp`** — an **array-to-bytes** codec (the zarr-extensions registered name):
+  [ZFP](https://github.com/LLNL/zfp) for 1D–4D blocks with fixed-rate,
   fixed-accuracy, fixed-precision, and reversible modes, plus a brick index for
-  random access. See [`docs/architecture/zfp.md`](docs/architecture/zfp.md).
+  random access. The block transform and coder are not maintained here —
+  `ndic-zfp` delegates to the pure-Rust
+  [`zfp-rs`](https://crates.io/crates/zfp-rs) crate, which is bit-for-bit
+  identical to the LLNL C reference on little-endian targets. See
+  [`docs/architecture/zfp.md`](docs/architecture/zfp.md).
 
 ## 🧩 Crates
 
@@ -71,7 +75,7 @@ which chooses a transpose order and decorrelation axes from the axis names
 | [`crates/ndic-lift`](crates/ndic-lift/) | The `nd_lift` cross-axis lifting transform (`delta` / `haar` / `5/3`) |
 | [`crates/ndic-htj2k`](crates/ndic-htj2k/) | The HT (FBCOT) block coder: cleanup, SigProp, MagRef passes and inverses |
 | [`crates/ndic-codestream`](crates/ndic-codestream/) | Part 1 / Part 15 codestream reader/writer, marker segments (`SIZ`/`COD`/`CAP`/`TLM`/`PLT`), byte-range index |
-| [`crates/ndic-zfp`](crates/ndic-zfp/) | The `zfp` Rust ZFP port (2D/3D/4D), reproducing upstream test vectors |
+| [`crates/ndic-zfp`](crates/ndic-zfp/) | The `zfp` codec (1D–4D) over the pure-Rust `zfp-rs` core, with committed stream fixtures |
 | [`crates/ndic-zarr`](crates/ndic-zarr/) | The three Zarr v3 codecs + the `codec_series` builder (also the WASM core for TypeScript) |
 | [`crates/ndic-cli`](crates/ndic-cli/) | `ndic` CLI: `compress` / `expand` / `series` / `inspect` / `index` / `thumbnail` |
 
@@ -108,9 +112,9 @@ codecs = codec_series(["t", "c", "z", "y", "x"], [8, 1, 32, 256, 256],
                       "uint16", "nd-lift-ht")
 ```
 
-> The codec encode/decode paths are scaffolded; the `codec_series` builder is
-> fully implemented today. Codecs land across the six
-> [roadmap phases](docs/development/roadmap/index.md).
+> All three families encode and decode for real as of 0.1.0. The API is not
+> stable before 1.0 — see [publishing](docs/development/publishing.md) for what
+> is on each registry.
 
 ## 🛠️ Development
 
@@ -136,7 +140,7 @@ nd-image-codecs/
 ├── crates/            # Rust core (core, lift, htj2k, codestream, zfp, zarr, cli)
 ├── bindings/          # python/ (PyO3+maturin), typescript/ (wasm-bindgen)
 ├── bench/             # benchmark driver, baselines, viewer, docs
-├── docs/              # architecture/, development/ (incl. roadmap/), usage/
+├── docs/              # architecture/, development/, usage/
 ├── scripts/           # CI and development helper scripts
 └── .github/workflows/ # ci.yml, bench-pr-gate.yml
 ```
@@ -162,14 +166,14 @@ Read the Docs setup: [docs/development/read-the-docs.md](docs/development/read-t
 
 - [Architecture](docs/architecture/index.md) — the codec series builder, the `nd_lift` transform, the HTJ2K plane codec, the ZFP port, codestream syntax, and range access
 - [Development](docs/development/) — commands, style, commits, benchmarking, test data, [publishing](docs/development/publishing.md)
-- [Roadmap](docs/development/roadmap/index.md) — six implementation phases with detailed guidance and references
 - [Usage](docs/usage/index.md) — CLI, Rust, Python, TypeScript, and Zarr/OME-Zarr guides
 
 ## 🤝 Contributing
 
 Start with [AGENTS.md](AGENTS.md) for the repository map and conventions, and the
-[roadmap](docs/development/roadmap/index.md) for what to build next. All participation is
-governed by our [Code of Conduct](CODE_OF_CONDUCT.md).
+[open issues](https://github.com/fideus-labs/nd-image-codecs/issues) for what to
+pick up next. All participation is governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## 📄 License
 
@@ -177,6 +181,8 @@ MIT — see [LICENSE.txt](LICENSE.txt). Copyright (c) Fideus Labs LLC.
 
 nd-image-codecs is an independent clean-room Rust project. Its HTJ2K coding is
 inspired by [OpenJPH](https://github.com/aous72/OpenJPH) (BSD-2-Clause, © Aous
-Naman) and its ZFP codec is a clean-room port of
-[LLNL ZFP](https://github.com/LLNL/zfp) (BSD-3-Clause); both port ideas and
-conformance behavior, not source code. No JPEG 2000 Part 2 (MCT) syntax is used.
+Naman): it takes ideas and conformance behavior, not source code. Its ZFP codec
+ports nothing at all — it depends on
+[`zfp-rs`](https://github.com/LDeakin/zfp-rs) (MIT OR Apache-2.0), a third-party
+pure-Rust implementation of the [LLNL ZFP](https://github.com/LLNL/zfp)
+(BSD-3-Clause) format. No JPEG 2000 Part 2 (MCT) syntax is used.

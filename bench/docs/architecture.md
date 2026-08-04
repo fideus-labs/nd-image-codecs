@@ -45,16 +45,23 @@ own harness.
 
 ### BenchConfig (the matrix)
 
-Built-in configs: `blosc-zstd` (the plain-compressor reference lane),
-`nd-delta-zstd`, `nd-delta-lz4`, `scalar-53-ht`, `simd-53-ht`, `simd-97-ht`, `simd-53-lift-z2`, `zfp-rate8`, `zfp-reversible`. Later phases
-add reference lanes (`ref-openjph`, `ref-imagecodecs`) that shell out to pinned
-external implementations on identical fixtures and emit the same record schema.
-`bench/benchmarks.toml` maps configs and workload tiers (micro/meso/macro) to CI
-contexts (pr-gate / nightly / on-demand).
+Built-in configs: `blosc-zstd` (the plain-compressor comparison bar),
+`nd-delta-zstd`, `nd-delta-lz4`, `scalar-53-ht`, `simd-53-ht`, `simd-97-ht`,
+`simd-53-lift-z2`, `zfp-rate8`, `zfp-reversible` — the matrix is compiled into
+`ndic-bench-cli`, not read from a file.
+
+`bench/benchmarks.toml` records the intended mapping of configs and workload
+tiers (micro/meso/macro) onto CI contexts (pr-gate / nightly / on-demand), plus
+three `ref_lane` entries that would shell out to pinned external
+implementations (`ref-openjph`, `ref-imagecodecs`, `ref-zfp`). **Nothing parses
+this file yet**: the lanes are `enabled = false`, no `RefLane` type exists, and
+the workflows under `.github/workflows/bench-*.yml` drive `ndic-bench` directly
+rather than reading these contexts. Treat it as a design record, not
+configuration.
 
 ### Python-side lanes (`bench/py/`)
 
-The Phase 1 nd-delta family is composed entirely of existing Zarr codecs, so
+The nd-delta family is composed entirely of existing Zarr codecs, so
 its lanes (`run_nd_delta.py`) exercise the real consumer path — pipelines
 authored by `nd_image_codecs.codec_series`, executed by `zarr-python` — on the
 deterministic synthetic microscopy fixture (`synthetic.py`). They emit the
@@ -68,7 +75,7 @@ median/min/max ns, and raw per-sample ns; codec workloads add
 `bytes_in`/`bytes_out` so compression ratio is tracked alongside throughput.
 Raw samples are kept so the comparer can
 compute noise envelopes without re-running, and so the viewer can plot distributions.
-Phase 6 extends records with `psnr` for rate–distortion gating.
+A `psnr` field for rate–distortion gating is a planned extension.
 
 ### Baselines
 

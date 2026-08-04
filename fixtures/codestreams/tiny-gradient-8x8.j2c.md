@@ -10,7 +10,7 @@ deterministic and the test re-encodes and compares.
   64x64 nominal code-blocks, RPCL, one layer, maximal precincts,
   `TLM`/`PLT` emitted.
 - **Produced by**: `ndic compress -i gradient.pgm -o tiny-gradient-8x8.j2c
-  --levels 1` (nd-image-codecs Phase 3).
+  --levels 1`.
 
 ## Byte regions
 

@@ -1,5 +1,5 @@
 # Suite manifest: which workloads run where, with what sampling.
-# Consumed by ndic-bench-cli (Phase 1) and CI workflows.
+# Consumed by ndic-bench-cli and CI workflows.
 
 [suite]
 default_samples = 30
@@ -27,8 +27,8 @@ simd = false
 irreversible = false
 lift_levels = 0
 
-# Phase 2 validation lanes: transpose → nd_lift → bytes → blosc(zstd), so the
-# nd_lift decorrelation gain is measurable before the htj2k plane codec lands.
+# nd_lift validation lanes: transpose → nd_lift → bytes → blosc(zstd), which
+# isolate the nd_lift decorrelation gain from the htj2k plane codec.
 [[config]]
 label = "nd-lift-delta-zstd"
 family = "nd-lift"
@@ -86,27 +86,29 @@ irreversible = false
 lift_levels = 0
 
 # Reference lanes: pinned external implementations, identical fixtures.
+# DESIGN RECORD ONLY — all three are enabled = false, no driver code reads this
+# file, and there is no RefLane type. Nothing below runs today.
 [[ref_lane]]
 label = "ref-openjph"
 kind = "cli"
 encode = "ojph_compress"
 expand = "ojph_expand"
 version = "0.24.0"          # pin; update deliberately
-enabled = false              # enabled in Phase 5
+enabled = false              # not wired up yet
 
 [[ref_lane]]
 label = "ref-imagecodecs"
 kind = "python"
 module = "imagecodecs"
 version = "2025.1.1"
-enabled = false
+enabled = false              # not wired up yet
 
 [[ref_lane]]
 label = "ref-zfp"
 kind = "ffi"
 crate = "zfp-sys"
 version = "1.0"             # tracks the reference C library
-enabled = false              # enabled in Phase 5
+enabled = false              # not wired up yet
 
 # CI contexts: which (workload-tier × config) combinations run when.
 [contexts.pr-gate]

@@ -16,17 +16,18 @@ tags:
 ## Context
 
 The `docs/` tree existed long before it was a website. It was written as
-CommonMark for GitHub: 34 pages of architecture, usage, contributor, and roadmap
-documentation, heavy on multi-column tables, cross-linked with relative
+CommonMark for GitHub: dozens of pages of architecture, usage, contributor, and
+roadmap documentation (the roadmap pages were retired once their phases
+landed), heavy on multi-column tables, cross-linked with relative
 `./page.md` paths, and read directly in the repository by both humans and coding
 agents (`AGENTS.md` routes to it by task).
 
 Publishing it needed a static site generator, a host, and a way to keep the two
 honest. The constraints that decided the shape of the answer:
 
-- The existing markdown had to render essentially **as-is**. Rewriting 34 pages
-  into another markup dialect would have been the largest part of the work and
-  would have made the in-repository reading experience worse.
+- The existing markdown had to render essentially **as-is**. Rewriting the whole
+  tree into another markup dialect would have been the largest part of the work
+  and would have made the in-repository reading experience worse.
 - The repository is a **Rust monorepo**. Nothing in `docs/` depends on Python,
   and neither does the build, the test suite, or CI's critical path.
 - Whatever gates documentation had to be **the same command** a contributor runs
@@ -85,7 +86,7 @@ reason to carry.
   the generated URLs already carry the `docs/` prefix
   (`…/edit/main/docs/architecture/zfp.md`), at every depth. `edit_url` does not
   need to be set by hand — verified against a top-level page, an
-  `architecture/` page, and a `development/roadmap/` page.
+  `architecture/` page, and a `development/decisions/` page.
 
 ## Decision 3 — Read the Docs via `build.commands`
 
@@ -263,12 +264,11 @@ three times — Rust, Python, TypeScript — and a mechanically generated refere
 would present it as three unrelated APIs rather than one contract with three
 bindings.
 
-### Executable code blocks — resolved in Phase 6
+### Executable code blocks — since resolved
 
-This was listed as out of scope when the ADR was written; the
-[Phase 6](../roadmap/phase-6-validation-and-docs.md) usage-docs item closed it,
-and the note stays here because the *mechanism* was left open and is worth
-recording.
+This was listed as out of scope when the ADR was written; the `usage-docs` CI
+job closed it, and the note stays here because the *mechanism* was left open
+and is worth recording.
 
 Every block under `docs/usage/` is now executed by the `usage-docs` CI job via
 [`scripts/ci/check-usage-docs.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/ci/check-usage-docs.py).

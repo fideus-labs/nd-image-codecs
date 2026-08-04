@@ -1,5 +1,5 @@
 {
-  "$comment": "Phase 6 cross-ecosystem validation corpus. Each case is written by all three ecosystems (zarrs via `ndic zarr write`, zarr-python via scripts/cross-validation/zarr_python_io.py, zarrita.js via bindings/typescript/scripts/zarrita-io.mts) and read back by all three — every write x read direction pair must agree, and lossless cases must equal the generated input. Deterministic input data is derived from each case's name by scripts/ci/check-cross-validation.py; value ranges respect the nd_lift overflow budget and the HT datapath. Schema: the fixture-matrix case schema plus the array `shape`.",
+  "$comment": "Cross-ecosystem validation corpus. Each case is written by all three ecosystems (zarrs via `ndic zarr write`, zarr-python via scripts/cross-validation/zarr_python_io.py, zarrita.js via bindings/typescript/scripts/zarrita-io.mts) and read back by all three — every write x read direction pair must agree, and lossless cases must equal the generated input. Deterministic input data is derived from each case's name by scripts/ci/check-cross-validation.py; value ranges respect the nd_lift overflow budget and the HT datapath. Schema: the fixture-matrix case schema plus the array `shape`.",
   "cases": [
     {
       "name": "delta-zyx-uint16",
