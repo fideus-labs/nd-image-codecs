@@ -28,7 +28,7 @@ working on.
 | nd_lift transform | The explicit array-to-array cross-axis transform: lifting math (delta / haar / 5/3), axis roles, boundary handling, versioning | [nd_lift Transform](./nd-transform.md) |
 | HT block coder | FBCOT cleanup/SigProp/MagRef passes, MEL + VLC + MagSgn sub-streams, HT Sets, SIMD strategy | [HT Block Coder](./ht-block-coder.md) |
 | Wavelet transform | Reversible 5/3 and irreversible 9/7 lifting, 2D in-plane geometry, boundary extension, fixed-point choices | [Wavelet Transform](./wavelet-transform.md) |
-| ZFP codec | The clean-room Rust ZFP port: 2D/3D/4D blocks, the four modes, brick index, upstream parity strategy | [zfp Codec](./zfp.md) |
+| ZFP codec | ZFP over the pure-Rust `zfp-rs` core: 1D–4D blocks, the four modes, brick index, upstream parity strategy | [zfp Codec](./zfp.md) |
 | Codestream | Part 1 / Part 15 marker segments (`SIZ`/`COD`/`CAP`/`QCD`/`TLM`/`PLT`), progression orders, tile/precinct/packet anatomy, `.jph` boxes | [Codestream Syntax](./codestream.md) |
 | Range access | How RPCL + `TLM`/`PLT` and the coefficient-plane index yield a byte-offset index; thumbnail fetch plans over HTTP Range | [Byte-Range Access](./range-access.md) |
 | Zarr codecs | The Zarr v3 codec model, the three registered/composed codecs, `zarrs`/numcodecs/numcodecs.js integration, OME-Zarr fit | [Zarr Codecs](./zarr-codec.md) |
@@ -39,10 +39,10 @@ nd-image-codecs deliberately **avoids JPEG 2000 Part 2 (the Multiple Component
 Transformation, MCT)**. Cross-axis (z, time, channel) decorrelation is instead
 expressed as an explicit, independently specified Zarr array-to-array codec,
 `nd_lift`. The `htj2k` codec emits only JPEG 2000 **Part 1** (T.800) and
-**Part 15 / HTJ2K** (T.814) syntax; the `zfp` codec is a clean-room port of
-LLNL ZFP. This keeps the whole system clear of Part 2 MCT patent/IP concerns
-while still capturing the spatial correlation that makes scientific volumes
-compressible.
+**Part 15 / HTJ2K** (T.814) syntax; the `zfp` codec stores the standard LLNL ZFP
+format via the pure-Rust `zfp-rs` crate. This keeps the whole system clear of
+Part 2 MCT patent/IP concerns while still capturing the spatial correlation that
+makes scientific volumes compressible.
 
 ## Authoritative external references
 
@@ -52,7 +52,8 @@ compressible.
 - Taubman et al., "High throughput block coding in the HTJ2K compression standard" (ICIP 2019): <https://kakadusoftware.com/wp-content/uploads/icip2019.pdf>
 - Taubman et al., "High Throughput JPEG 2000 (HTJ2K): Algorithm, Performance and Potential" (Frontiers in Signal Processing, 2022): <https://www.frontiersin.org/articles/10.3389/frsip.2022.885644/full>
 - OpenJPH — the C++ HTJ2K reference this project re-imagines in Rust: <https://github.com/aous72/OpenJPH>
-- LLNL ZFP — the C++ ZFP reference `ndic-zfp` ports: <https://github.com/LLNL/zfp>, <https://computing.llnl.gov/projects/zfp>
+- LLNL ZFP — the C reference defining the format `ndic-zfp` stores: <https://github.com/LLNL/zfp>, <https://computing.llnl.gov/projects/zfp>
+- `zfp-rs` — the third-party pure-Rust ZFP implementation `ndic-zfp` depends on: <https://github.com/LDeakin/zfp-rs>
 - Zarr v3 core specification: <https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html>
 - Zarr extension / codec naming (ZEP 2): <https://zarr.dev/zeps/accepted/ZEP0002.html>
 - numcodecs (delta, blosc, bitshuffle): <https://numcodecs.readthedocs.io>

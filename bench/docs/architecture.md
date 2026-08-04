@@ -45,12 +45,19 @@ own harness.
 
 ### BenchConfig (the matrix)
 
-Built-in configs: `blosc-zstd` (the plain-compressor reference lane),
-`nd-delta-zstd`, `nd-delta-lz4`, `scalar-53-ht`, `simd-53-ht`, `simd-97-ht`, `simd-53-lift-z2`, `zfp-rate8`, `zfp-reversible`. Later phases
-add reference lanes (`ref-openjph`, `ref-imagecodecs`) that shell out to pinned
-external implementations on identical fixtures and emit the same record schema.
-`bench/benchmarks.toml` maps configs and workload tiers (micro/meso/macro) to CI
-contexts (pr-gate / nightly / on-demand).
+Built-in configs: `blosc-zstd` (the plain-compressor comparison bar),
+`nd-delta-zstd`, `nd-delta-lz4`, `scalar-53-ht`, `simd-53-ht`, `simd-97-ht`,
+`simd-53-lift-z2`, `zfp-rate8`, `zfp-reversible` — the matrix is compiled into
+`ndic-bench-cli`, not read from a file.
+
+`bench/benchmarks.toml` records the intended mapping of configs and workload
+tiers (micro/meso/macro) onto CI contexts (pr-gate / nightly / on-demand), plus
+three `ref_lane` entries that would shell out to pinned external
+implementations (`ref-openjph`, `ref-imagecodecs`, `ref-zfp`). **Nothing parses
+this file yet**: the lanes are `enabled = false`, no `RefLane` type exists, and
+the workflows under `.github/workflows/bench-*.yml` drive `ndic-bench` directly
+rather than reading these contexts. Treat it as a design record, not
+configuration.
 
 ### Python-side lanes (`bench/py/`)
 

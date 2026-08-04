@@ -86,6 +86,8 @@ irreversible = false
 lift_levels = 0
 
 # Reference lanes: pinned external implementations, identical fixtures.
+# DESIGN RECORD ONLY — all three are enabled = false, no driver code reads this
+# file, and there is no RefLane type. Nothing below runs today.
 [[ref_lane]]
 label = "ref-openjph"
 kind = "cli"
@@ -99,7 +101,7 @@ label = "ref-imagecodecs"
 kind = "python"
 module = "imagecodecs"
 version = "2025.1.1"
-enabled = false
+enabled = false              # not wired up yet
 
 [[ref_lane]]
 label = "ref-zfp"

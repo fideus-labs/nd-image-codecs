@@ -51,10 +51,24 @@ Every workload is swept across the **codec-configuration** matrix:
 | `zfp-rate8` | nd-zfp | on | — | — |
 | `zfp-reversible` | nd-zfp | on | — | — |
 
-plus **reference lanes**: OpenJPH's `ojph_compress`/`ojph_expand` binaries, the
-reference C ZFP library (`ref-zfp`, via `zfp-sys`), and Python `imagecodecs` on
-identical fixtures, so speed/ratio claims are grounded against the C/C++ state
-of the art.
+The `blosc-zstd` lane is the standing comparison bar: a stock
+`bytes → blosc(zstd)` pipeline on the same fixtures, so every ratio in the table
+is read against what a user gets today without this project.
+
+:::{note} Reference lanes are specified, not yet wired up
+`bench/benchmarks.toml` declares three lanes that would shell out to external
+implementations — OpenJPH's `ojph_compress`/`ojph_expand`, the C ZFP library via
+`zfp-sys`, and Python `imagecodecs` — to ground speed and ratio claims against
+the C/C++ state of the art. All three carry `enabled = false`, no driver code
+reads them, and no baseline records exist for them, so **no published number
+here is a comparison against a C/C++ implementation.**
+
+What *is* verified today is correctness rather than speed, in the test suite
+rather than the bench suite: `imagecodecs` interop runs in the `python` CI job
+(`test_imagecodecs_interop.py`, `test_nd_zfp_roundtrip.py`), and OpenJPH
+round-trip interop runs from `crates/ndic-codestream/tests/openjph_interop.rs`
+when a local OpenJPH build is present — it skips otherwise, including in CI.
+:::
 
 The nd-lift-ht lanes are told apart by the `lift_ht/*` workloads:
 the composed `nd_lift → htj2k` chunk path over a correlated z-stack

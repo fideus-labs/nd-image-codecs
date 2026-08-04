@@ -32,10 +32,15 @@ Hand-constructed, byte-stable, < 100 KB total:
   the corpus OpenJPH's own GoogleTest suite decodes; our decoder must match its
   reference outputs (`scripts/fetch-conformance.sh`).
 - **ISO/IEC 15444-4 (conformance) HT streams** where publicly redistributable.
-- **Cross-implementation streams** — encoded by OpenJPH CLI, `imagecodecs`, and
-  the reference ZFP library (via `zfp-sys`) in CI to test decode interop; our
-  encodes are decoded back through those implementations in the same job (see
-  the `ci.yml` interop matrix).
+- **Cross-implementation streams** — `imagecodecs` encodes and decodes against
+  ours in the `python` CI job (`test_imagecodecs_interop.py` for JPEG 2000 and
+  delta, `test_nd_zfp_roundtrip.py` for ZFP byte-identity both ways). The
+  OpenJPH CLI direction lives in
+  `crates/ndic-codestream/tests/openjph_interop.rs`, which needs a local
+  OpenJPH build (`scripts/ht-differential.sh` produces one) and **skips when the
+  tools are absent — including in CI**, so it is a local-only check today. The C
+  ZFP library is not exercised here at all; `zfp-rs` verifies itself against
+  `zfp-sys` and upstream's checksums in its own CI.
 
 ## Tier 3 — domain volumes (benchmarks, fetched)
 

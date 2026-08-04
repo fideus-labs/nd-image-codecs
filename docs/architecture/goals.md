@@ -19,10 +19,14 @@ description: What nd-image-codecs optimizes for — composability, explicit cros
 - **Standards-only plane coding.** The `htj2k` codec emits only conforming
   JPEG 2000 Part 1 (T.800) + Part 15 (T.814) codestreams; any HTJ2K decoder can
   read a plane.
-- **Faithful ZFP.** The `zfp` codec is a clean-room Rust port of
-  [LLNL ZFP](https://github.com/LLNL/zfp) for 2D/3D/4D blocks that reproduces
-  upstream's bitstreams and test vectors, verified against the C library via an
-  FFI reference lane (see [the Rust ZFP port](./zfp.md)).
+- **Faithful ZFP.** The `zfp` codec stores standard
+  [LLNL ZFP](https://github.com/LLNL/zfp) streams for 1D–4D blocks, delegating
+  the block transform and coder to the pure-Rust
+  [`zfp-rs`](https://crates.io/crates/zfp-rs) crate rather than maintaining a
+  port here; `zfp-rs` is bit-for-bit identical to the C reference on
+  little-endian targets and proves it against upstream's checksums in its own
+  CI. Our tests pin byte-identity with `imagecodecs`' ZFP in both directions
+  (see [the zfp codec](./zfp.md)).
 - **Thumbnails from dumb storage.** With nd-lift-ht, 2D and low-resolution 3D
   thumbnails must be fetchable with plain HTTP Range requests against
   S3/GCS/any static server — no JPIP, no server-side smarts — using RPCL
@@ -40,8 +44,10 @@ description: What nd-image-codecs optimizes for — composability, explicit cros
   output decodes with third-party codecs and vice-versa (see
   [validating with independent implementations](../usage/zarr.md)).
 - **Benchmarks as a contract.** Every performance-sensitive change runs against
-  committed baselines with a ≥10 % + noise-envelope regression gate in CI,
-  including comparison lanes against `imagecodecs` and reference ZFP.
+  committed baselines with a ≥10 % + noise-envelope regression gate in CI. A
+  stock `blosc-zstd` lane is the standing comparison bar; lanes that shell out
+  to external implementations (OpenJPH, `imagecodecs`, the C ZFP library) are
+  specified but not yet wired up (see [benchmarking](../development/benchmarking.md)).
 - **Agent-discoverable docs.** Hierarchical documentation (index → section →
   topic) written so both humans and coding agents can locate exactly the
   context they need.
@@ -54,10 +60,10 @@ description: What nd-image-codecs optimizes for — composability, explicit cros
 - **No JP3D (Part 10).** The market abandoned it (OpenJPEG removed it in
   [2.5.0](https://www.openjpeg.org/2022/05/13/OpenJPEG-2.5.0-released); Kakadu
   never shipped it).
-- **No C++ source port.** nd-image-codecs is a clean-room implementation guided
-  by public specs (T.814, T.800, the ZFP papers) and the published architecture
-  of OpenJPH and LLNL ZFP — it ports conformance behavior and performance ideas,
-  not code.
+- **No C++ source port.** The HTJ2K path is a clean-room implementation guided
+  by public specs (T.814, T.800) and the published architecture of OpenJPH — it
+  ports conformance behavior and performance ideas, not code. The ZFP path ports
+  nothing at all: it depends on the third-party `zfp-rs` crate.
 - **No classic EBCOT Tier-1 encoder.** The `htj2k` codec decodes HT codestreams
   and encodes HT; producing legacy J2K-1 (MQ-coded) codestreams is out of scope.
 - **No JPIP.** Interactive-protocol support is explicitly replaced by the static

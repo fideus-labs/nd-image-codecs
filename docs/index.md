@@ -47,10 +47,11 @@ Transformation, MCT)**. Cross-axis decorrelation is instead expressed as
 `nd_lift`, an explicit, independently specified Zarr array-to-array codec, so the
 transform runs first and ordinary 2D coding compresses the resulting planes. The
 `htj2k` codec emits only conforming JPEG 2000 **Part 1** (T.800) and **Part 15 /
-HTJ2K** (T.814) syntax, and `zfp` is a clean-room port of
-[LLNL ZFP](https://github.com/LLNL/zfp). This keeps the whole system clear of
-Part 2 MCT patent concerns while still capturing the correlation that makes
-scientific volumes compressible.
+HTJ2K** (T.814) syntax, and `zfp` stores the standard
+[LLNL ZFP](https://github.com/LLNL/zfp) format via the pure-Rust
+[`zfp-rs`](https://crates.io/crates/zfp-rs) crate. This keeps the whole system
+clear of Part 2 MCT patent concerns while still capturing the correlation that
+makes scientific volumes compressible.
 
 ## Where to go next
 

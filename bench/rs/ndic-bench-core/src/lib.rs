@@ -16,8 +16,10 @@
 //!
 //! The nd-image-codecs "backend matrix" is a **codec-configuration** matrix rather
 //! than a compute-backend matrix: scalar vs SIMD block coder, 5/3 vs 9/7,
-//! lift levels 0 (per-plane) vs >0 (`nd_lift` z-decorrelation), and the reference lane
-//! (`OpenJPH` `ojph_compress`/`ojph_expand`, and `imagecodecs` HTJ2K).
+//! lift levels 0 (per-plane) vs >0 (`nd_lift` z-decorrelation), against a stock
+//! `blosc-zstd` bar. Lanes shelling out to external implementations
+//! (`OpenJPH`, `imagecodecs`, C ZFP) are declared in `bench/benchmarks.toml`
+//! but not implemented; nothing here reads them.
 
 use std::fs;
 use std::io;

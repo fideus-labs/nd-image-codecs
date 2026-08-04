@@ -58,10 +58,14 @@ which chooses a transpose order and decorrelation axes from the axis names
   (HTJ2K) codestream, with an outer coefficient-plane byte index for
   range-request thumbnails. The FBCOT block coder (MEL / VLC / MagSgn) decodes
   roughly an order of magnitude faster than classic JPEG 2000.
-- **`zfp`** — an **array-to-bytes** codec (the zarr-extensions registered name): a clean-room Rust port of
-  [LLNL ZFP](https://github.com/LLNL/zfp) for 2D/3D/4D blocks with fixed-rate,
+- **`zfp`** — an **array-to-bytes** codec (the zarr-extensions registered name):
+  [ZFP](https://github.com/LLNL/zfp) for 1D–4D blocks with fixed-rate,
   fixed-accuracy, fixed-precision, and reversible modes, plus a brick index for
-  random access. See [`docs/architecture/zfp.md`](docs/architecture/zfp.md).
+  random access. The block transform and coder are not maintained here —
+  `ndic-zfp` delegates to the pure-Rust
+  [`zfp-rs`](https://crates.io/crates/zfp-rs) crate, which is bit-for-bit
+  identical to the LLNL C reference on little-endian targets. See
+  [`docs/architecture/zfp.md`](docs/architecture/zfp.md).
 
 ## 🧩 Crates
 
@@ -71,7 +75,7 @@ which chooses a transpose order and decorrelation axes from the axis names
 | [`crates/ndic-lift`](crates/ndic-lift/) | The `nd_lift` cross-axis lifting transform (`delta` / `haar` / `5/3`) |
 | [`crates/ndic-htj2k`](crates/ndic-htj2k/) | The HT (FBCOT) block coder: cleanup, SigProp, MagRef passes and inverses |
 | [`crates/ndic-codestream`](crates/ndic-codestream/) | Part 1 / Part 15 codestream reader/writer, marker segments (`SIZ`/`COD`/`CAP`/`TLM`/`PLT`), byte-range index |
-| [`crates/ndic-zfp`](crates/ndic-zfp/) | The `zfp` Rust ZFP port (2D/3D/4D), reproducing upstream test vectors |
+| [`crates/ndic-zfp`](crates/ndic-zfp/) | The `zfp` codec (1D–4D) over the pure-Rust `zfp-rs` core, with committed stream fixtures |
 | [`crates/ndic-zarr`](crates/ndic-zarr/) | The three Zarr v3 codecs + the `codec_series` builder (also the WASM core for TypeScript) |
 | [`crates/ndic-cli`](crates/ndic-cli/) | `ndic` CLI: `compress` / `expand` / `series` / `inspect` / `index` / `thumbnail` |
 
@@ -177,6 +181,8 @@ MIT — see [LICENSE.txt](LICENSE.txt). Copyright (c) Fideus Labs LLC.
 
 nd-image-codecs is an independent clean-room Rust project. Its HTJ2K coding is
 inspired by [OpenJPH](https://github.com/aous72/OpenJPH) (BSD-2-Clause, © Aous
-Naman) and its ZFP codec is a clean-room port of
-[LLNL ZFP](https://github.com/LLNL/zfp) (BSD-3-Clause); both port ideas and
-conformance behavior, not source code. No JPEG 2000 Part 2 (MCT) syntax is used.
+Naman): it takes ideas and conformance behavior, not source code. Its ZFP codec
+ports nothing at all — it depends on
+[`zfp-rs`](https://github.com/LDeakin/zfp-rs) (MIT OR Apache-2.0), a third-party
+pure-Rust implementation of the [LLNL ZFP](https://github.com/LLNL/zfp)
+(BSD-3-Clause) format. No JPEG 2000 Part 2 (MCT) syntax is used.
