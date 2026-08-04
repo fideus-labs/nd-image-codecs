@@ -21,8 +21,31 @@ from __future__ import annotations
 import argparse
 import functools
 import http.server
-import io
-import pathlib
+import os
+
+
+class _Span:
+    """A bounded view of an open file: reads at most ``remaining`` bytes.
+
+    ``SimpleHTTPRequestHandler.copyfile`` streams whatever ``send_head``
+    returns until ``read`` comes back empty, so the cap is what turns an
+    open file into exactly one range — without ever holding the span (let
+    alone the file) in memory.
+    """
+
+    def __init__(self, f, remaining: int) -> None:
+        self._f = f
+        self._remaining = remaining
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0 or size > self._remaining:
+            size = self._remaining
+        data = self._f.read(size)
+        self._remaining -= len(data)
+        return data
+
+    def close(self) -> None:
+        self._f.close()
 
 
 class RangeHandler(http.server.SimpleHTTPRequestHandler):
@@ -37,26 +60,44 @@ class RangeHandler(http.server.SimpleHTTPRequestHandler):
             return super().send_head()
         path = self.translate_path(self.path)
         try:
-            data = pathlib.Path(path).read_bytes()
+            f = open(path, "rb")  # noqa: SIM115 - handed to copyfile, closed by do_GET
         except OSError:
             self.send_error(404)
             return None
-        spans = []
-        for part in header.removeprefix("bytes=").split(","):
-            lo, _, hi = part.partition("-")
-            start = int(lo) if lo else 0
-            end = int(hi) if hi else len(data) - 1
-            spans.append((start, min(end, len(data) - 1)))
+        size = os.fstat(f.fileno()).st_size
+        try:
+            spans = []
+            for part in header.removeprefix("bytes=").split(","):
+                lo, _, hi = part.partition("-")
+                if lo:
+                    start = int(lo)
+                    end = int(hi) if hi else size - 1
+                else:
+                    # Suffix range: the last `hi` bytes of the file.
+                    start = max(size - int(hi), 0)
+                    end = size - 1
+                spans.append((start, min(end, size - 1)))
+        except ValueError:
+            # Malformed Range: ignore it and serve the whole file, as real
+            # static hosts do.
+            f.close()
+            return super().send_head()
         start = min(s for s, _ in spans)
         end = max(e for _, e in spans)
-        body = data[start : end + 1]
+        if start > end or start >= size:
+            f.close()
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{size}")
+            self.end_headers()
+            return None
+        f.seek(start)
         self.send_response(206)
         self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Length", str(end - start + 1))
         self.send_header("Accept-Ranges", "bytes")
         self.end_headers()
-        return io.BytesIO(body)
+        return _Span(f, end - start + 1)
 
 
 def main() -> None:

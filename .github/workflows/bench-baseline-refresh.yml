@@ -49,6 +49,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
+      # `baseline` names the directory the refresh later `rm -rf`s (and a
+      # branch suffix), so it must be one plain path segment — a separator
+      # or traversal component must never reach those steps. First, before
+      # anything else runs, so a bad name fails in seconds.
+      - name: Validate the baseline name
+        env:
+          BASELINE: ${{ inputs.baseline }}
+        run: |
+          if [[ ! "$BASELINE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "baseline must be a plain directory name" \
+                 "([A-Za-z0-9][A-Za-z0-9._-]*), got: $BASELINE" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
