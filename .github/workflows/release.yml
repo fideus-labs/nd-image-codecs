@@ -1,0 +1,622 @@
+name: Release
+
+# Push a `vX.Y.Z` tag and this publishes the release to crates.io, PyPI, and
+# npm (twice), then opens a GitHub release carrying the changelog and the
+# Python distributions. `docs/development/publishing.md` is the runbook;
+# `docs/development/trusted-publishing.md` is the one-time registry setup that
+# has to exist before any of this can authenticate.
+#
+# Three properties this file is built around:
+#
+# 1. **The tag decides the version.** Every job stamps the version parsed out
+#    of the tag into all 23 manifest locations before it builds anything
+#    (`scripts/release/set-version.py`), so a tag can never publish artifacts
+#    carrying a stale number. What is committed on `main` is a convenience,
+#    not the source of truth.
+# 2. **No long-lived registry tokens exist.** All four uploads authenticate
+#    with OpenID Connect. There is nothing in this repository's secrets to
+#    steal, and every token minted here dies with its job.
+# 3. **Re-running is safe.** Publishing is not reversible and half a release is
+#    the realistic failure mode, so every upload step skips what is already on
+#    its registry. `workflow_dispatch` re-runs the whole thing against an
+#    existing tag to finish a release that died partway.
+#
+# **The filename is load-bearing.** crates.io and npm bind their trusted
+# publishers to `release.yml` specifically. Renaming this file silently breaks
+# authentication on both, and only at release time.
+#
+# **Nothing here is cached** — no `Swatinem/rust-cache`, no `sccache`, no
+# `setup-node` package-manager cache (which is on by default in v7, hence the
+# explicit `package-manager-cache: false`). GitHub Actions caches are writable
+# from any branch and readable by the default branch, so a cache entry poisoned
+# from an unreviewed branch would be restored straight into the build that
+# produces a published artifact. `ci.yml` caches freely because nothing it
+# builds is shipped; this file trades ten minutes of cold build for that
+# guarantee. Verified with `zizmor` (the `cache-poisoning` audit).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, e.g. v0.2.0"
+        required: true
+        type: string
+
+# Nothing by default; each job opts in to exactly what it needs. The three
+# publishing jobs get `id-token: write` and no repository access at all.
+permissions: {}
+
+# Never cancel a release in flight — a cancelled `cargo publish --workspace`
+# leaves crates.io holding some of the seven crates, and those uploads cannot
+# be undone. Queue instead.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Everything downstream reads the version from here rather than re-deriving
+  # it from `github.ref_name`, and this job is where a release stops if it
+  # should not happen at all.
+  meta:
+    name: Resolve and gate the tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read      # to read the CI run's conclusion for this commit
+    outputs:
+      tag: ${{ steps.parse.outputs.tag }}
+      version: ${{ steps.parse.outputs.version }}
+      prerelease: ${{ steps.parse.outputs.prerelease }}
+      npm-tag: ${{ steps.parse.outputs.npm-tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          # Full history: the changelog job needs every commit and tag, and
+          # the ancestry check below needs `main`.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # `v*` matches far more than a release — `v2-experiment`, a typo'd
+      # `v0.2`. Anything that is not `v<SemVer>` stops here, before a registry
+      # is contacted. The tag reaches the script through the environment, never
+      # through the shell, because on `workflow_dispatch` it is user input.
+      - id: parse
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: python3 scripts/release/parse-tag.py "$RELEASE_TAG"
+
+      - id: resolve
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # A tag is not a review. Anyone who can push a tag could otherwise
+      # publish an arbitrary commit to four registries under this project's
+      # name; requiring the commit to be on `main` puts every release behind
+      # whatever protection `main` already has.
+      - name: Require the tagged commit to be on main
+        env:
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          git fetch --no-tags --quiet origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$SHA" refs/remotes/origin/main; then
+            echo "::error::$SHA is not an ancestor of origin/main. Releases are cut from main."
+            exit 1
+          fi
+          echo "$SHA is on main."
+
+      # CI does not run on tag pushes, so without this a release could ship a
+      # commit whose test matrix never went green — or went red and was tagged
+      # anyway. The run being checked is the one from the push to `main`.
+      - name: Require CI to have passed for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          successes=$(gh api \
+            "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+          if [ "${successes:-0}" -eq 0 ]; then
+            echo "::error::No successful CI run for $SHA. Wait for CI on main to finish before tagging."
+            exit 1
+          fi
+          echo "CI is green for $SHA."
+
+  # The gate that costs the most and catches the most: it packages all seven
+  # crates and builds each from its own tarball, which is the only way to learn
+  # that a crate is missing a file or naming an unpublishable dependency. The
+  # workspace test matrix is deliberately *not* repeated here — the `meta` job
+  # already required it to have passed on this exact commit.
+  verify:
+    name: Verify the release tree
+    needs: meta
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
+
+      # Writes the tag's version into all 23 locations and then proves it with
+      # the independent reader. Every other job runs exactly this first.
+      - name: Stamp the version from the tag
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/release/set-version.py "$VERSION"
+
+      # Not a failure: the tag is what decides the version, and the artifacts
+      # above are already correct. But `main` now disagrees with what shipped,
+      # and that is worth saying loudly enough to act on.
+      - name: Report drift between main and the tag
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          if git diff --quiet; then
+            echo "The tagged tree already reads $VERSION everywhere." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### ⚠️ Version drift"
+            echo
+            echo "The tagged commit does not read \`$VERSION\` in every manifest."
+            echo "The published artifacts are correct — the tag was stamped in — but"
+            echo "\`main\` still carries the previous number. Run:"
+            echo
+            echo '```bash'
+            echo "scripts/release/prepare-release.sh $VERSION"
+            echo '```'
+            echo
+            echo "and merge the result, so the repository records what was released."
+            echo
+            echo '<details><summary>Files that had to be rewritten</summary>'
+            echo
+            echo '```'
+            git diff --stat
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::main does not carry $VERSION; see the job summary."
+
+      # `--dry-run` downgrades "crate already exists" to a warning, so this
+      # verifies the whole workspace even on a re-run of a partly-published
+      # release.
+      - name: Package and verify every crate
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/release/publish-crates.py "$VERSION" --dry-run
+
+  # Split out from the GitHub release so the notes are readable in the run log
+  # (and downloadable) even if a later publishing job fails.
+  changelog:
+    name: Build the release notes
+    needs: meta
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+          # commitizen walks history back to the previous tag to decide the
+          # range, so both the commits and the tags have to be present.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      # `cz changelog <tag>` emits only that tag's section, bounded by the
+      # previous tag. The configuration — including the emoji section titles —
+      # is .cz.toml, the same file `scripts/release/prepare-release.sh` uses,
+      # so the release body and CHANGELOG.md cannot say different things.
+      - name: Generate the notes
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          pip install --disable-pip-version-check commitizen==4.17.0
+          cz changelog "$TAG" --dry-run > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::warning::No conventional commits found for $TAG; the release notes are empty."
+            printf '_No changelog entries were found for this release._\n' > release-notes.md
+          fi
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- crates.io
+  # `cargo publish` has to build to verify, so unlike the PyPI and npm lanes
+  # this one cannot separate building from publishing. The `release`
+  # environment is what contains that: the trusted publisher on each of the
+  # seven crates requires the `release` environment claim, so an OIDC token
+  # minted by any other job in this workflow is useless to crates.io.
+  crates-io:
+    name: Publish to crates.io
+    needs: [meta, verify]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
+
+      - name: Stamp the version from the tag
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/release/set-version.py "$VERSION"
+
+      # Exchanges the job's OIDC token for a crates.io token that expires in 30
+      # minutes; the action's own post step revokes it as the job ends.
+      - id: auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18  # v1.0.5
+
+      # Excludes crates already at this version, so a re-run finishes a
+      # half-published release instead of aborting on the first one that
+      # landed. Order and index-propagation waits stay cargo's job.
+      - name: Publish the workspace
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/release/publish-crates.py "$VERSION"
+
+  # -------------------------------------------------------------------- PyPI
+  # `abi3-py311` means one wheel per platform covers Python 3.11 and every
+  # later version, but each platform still needs its own build. This matrix
+  # mirrors the CI test matrix, plus musl for the container distributions.
+  build-python:
+    name: Build ${{ matrix.name }}
+    needs: [meta, verify]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      # One platform failing should not hide whether the others build.
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, manylinux: "2_28" }
+          - { name: linux-aarch64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, manylinux: "2_28" }
+          - { name: musllinux-x86_64, os: ubuntu-24.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2 }
+          - { name: musllinux-aarch64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2 }
+          - { name: macos-x86_64, os: macos-15-intel, target: x86_64-apple-darwin, manylinux: "auto" }
+          - { name: macos-aarch64, os: macos-15, target: aarch64-apple-darwin, manylinux: "auto" }
+          - { name: windows-x86_64, os: windows-2022, target: x86_64-pc-windows-msvc, manylinux: "auto" }
+          - { name: windows-aarch64, os: windows-11-arm, target: aarch64-pc-windows-msvc, manylinux: "auto" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Stamp the version from the tag
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/release/set-version.py "$VERSION"
+
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
+        with:
+          command: build
+          # `--out dist` rather than the workspace target/, so the upload below
+          # picks up this leg's wheel and nothing else.
+          args: --release --locked --manifest-path bindings/python/nd-image-codecs/Cargo.toml --out dist
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+
+      # An abi3 wheel that quietly did not get built is the failure this
+      # catches; without it the PyPI upload just ships fewer platforms.
+      - name: Check the wheel imports
+        if: matrix.name == 'linux-x86_64' || matrix.name == 'macos-aarch64' || matrix.name == 'windows-x86_64'
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check --no-index --find-links dist nd-image-codecs
+          python -c "
+          import nd_image_codecs as m
+          from nd_image_codecs import _nd_image_codecs as native
+          assert hasattr(native, 'htj2k_encode') and hasattr(native, 'nd_zfp_encode'), 'native extension is missing codecs'
+          print(m.__version__)
+          "
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: python-dist-${{ matrix.name }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  # The artifact that matters most for a scientific package: anyone on a
+  # platform this matrix does not cover can still build from it.
+  build-sdist:
+    name: Build the sdist
+    needs: [meta, verify]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Stamp the version from the tag
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/release/set-version.py "$VERSION"
+
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
+        with:
+          command: sdist
+          args: --manifest-path bindings/python/nd-image-codecs/Cargo.toml --out dist
+
+      - name: Check the metadata
+        run: |
+          pip install --disable-pip-version-check twine==7.0.0
+          twine check dist/*
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: python-dist-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  # No checkout, no toolchain, no repository access: this job downloads the
+  # artifacts the build jobs produced and uploads them. `id-token: write` is
+  # the only permission it has, and the `release` environment is what makes
+  # that token acceptable to PyPI.
+  pypi:
+    name: Publish to PyPI
+    needs: [meta, build-python, build-sdist]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: python-dist-*
+          merge-multiple: true
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+        with:
+          packages-dir: dist
+          # A re-run after a partial upload finishes the job rather than
+          # failing on the files that already landed.
+          skip-existing: true
+          # PEP 740 attestations, signed with the same OIDC identity. On by
+          # default; named here because it is a property worth stating.
+          attestations: true
+          print-hash: true
+
+  # --------------------------------------------------------------------- npm
+  # Unlike the PyPI lane, this builds and publishes in one job. That is npm's
+  # own documented shape for trusted publishing, and splitting it would mean
+  # publishing a tarball built elsewhere — a path with enough uncertainty
+  # around provenance generation that it is not worth taking on a release
+  # that cannot be undone. The `release` environment is again the containment.
+  npm:
+    name: Publish to npm
+    needs: [meta, verify]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          # See the note on caching above.
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60  # v2.85.7
+        with:
+          tool: wasm-pack
+
+      # Trusted publishing needs npm 11.5.1+; Node 24 does not yet ship it
+      # everywhere, and the failure mode is a confusing auth error rather than
+      # a version complaint.
+      - run: npm install --global npm@12.0.2  # zizmor: ignore[adhoc-packages] pinned exactly, and npm cannot install itself from a lockfile
+
+      - name: Stamp the version from the tag
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/release/set-version.py "$VERSION"
+
+      - run: npm ci
+        working-directory: bindings/typescript
+      # The WASM core first: `tsc` neither builds it nor notices it is absent,
+      # and a package published without it installs fine and then fails to
+      # initialize any codec at run time.
+      - run: npm run build:wasm
+        working-directory: bindings/typescript
+      - run: npm run build
+        working-directory: bindings/typescript
+      - run: npm test
+        working-directory: bindings/typescript
+      # `test -f` alone would only prove the build produced the file, not that
+      # `files` in package.json ships it. A tarball missing the WASM core
+      # installs cleanly and then fails to initialize any codec at run time,
+      # which is exactly the failure worth catching before an irreversible
+      # publish — so assert against the packed file list, not the working tree.
+      - name: Check the WASM core is in the tarball
+        working-directory: bindings/typescript
+        run: |
+          test -f dist/wasm/ndic_zarr_bg.wasm
+          npm pack --dry-run --json > pack.json
+          node -e "
+          const packed = JSON.parse(require('node:fs').readFileSync('pack.json', 'utf8'));
+          const files = packed[0].files.map((f) => f.path);
+          const wasm = files.filter((p) => p.endsWith('.wasm'));
+          if (!wasm.includes('dist/wasm/ndic_zarr_bg.wasm')) {
+            console.error('dist/wasm/ndic_zarr_bg.wasm is not in the tarball. Packed:');
+            console.error(files.join('\n'));
+            process.exit(1);
+          }
+          console.log('tarball carries ' + files.length + ' files, including ' + wasm.join(', '));
+          "
+          rm pack.json
+
+      # `--tag next` keeps a prerelease from becoming what `npm install`
+      # resolves to. `--access public` is only required on a scoped package's
+      # first publish, but it is idempotent and cheap insurance.
+      - name: Publish
+        working-directory: bindings/typescript
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          NPM_TAG: ${{ needs.meta.outputs.npm-tag }}
+        run: |
+          # The registry's own REST endpoint rather than `npm view`: setup-node
+          # writes an .npmrc with an empty auth token (trusted publishing
+          # supplies its own), and a read through that can fail for reasons
+          # that have nothing to do with whether the version exists.
+          if curl -fsS -o /dev/null "https://registry.npmjs.org/@fideus-labs%2Fnd-image-codecs/$VERSION"; then
+            echo "@fideus-labs/nd-image-codecs@$VERSION is already on npm — skipping."
+            exit 0
+          fi
+          npm publish --access public --tag "$NPM_TAG"
+
+  # The unscoped name, held so nobody else takes it. README and package.json
+  # only — no code, no build, no dependency on the scoped package.
+  npm-placeholder:
+    name: Publish the npm name placeholder
+    needs: [meta, verify]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          # See the note on caching above.
+          package-manager-cache: false
+      - run: npm install --global npm@12.0.2  # zizmor: ignore[adhoc-packages] pinned exactly, and npm cannot install itself from a lockfile
+
+      - name: Stamp the version from the tag
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/release/set-version.py "$VERSION"
+
+      - name: Publish
+        working-directory: bindings/javascript
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          NPM_TAG: ${{ needs.meta.outputs.npm-tag }}
+        run: |
+          if curl -fsS -o /dev/null "https://registry.npmjs.org/nd-image-codecs/$VERSION"; then
+            echo "nd-image-codecs@$VERSION is already on npm — skipping."
+            exit 0
+          fi
+          npm publish --tag "$NPM_TAG"
+
+  # ---------------------------------------------------------------- assemble
+  # Last, and only once every registry has the release: a GitHub release that
+  # fails to publish is fixable, so it should not be the thing that exists
+  # while the packages do not.
+  github-release:
+    name: Create the GitHub release
+    needs: [meta, changelog, crates-io, pypi, npm, npm-placeholder]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write        # create the release and upload its assets
+      id-token: write        # sign the attestation
+      attestations: write    # record it
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: release-notes
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: python-dist-*
+          merge-multiple: true
+          path: dist
+
+      # Attested here rather than in the build jobs so those keep
+      # `contents: read` and nothing else — a build step cannot mint an OIDC
+      # token at all, which is the point.
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
+        with:
+          subject-path: dist/*
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          args=(--repo "$REPO" --title "$VERSION" --notes-file release-notes.md --verify-tag)
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$REPO" --notes-file release-notes.md
+            gh release upload "$TAG" --repo "$REPO" --clobber dist/*
+          else
+            gh release create "$TAG" "${args[@]}" dist/*
+          fi
+
+      - name: Summarize
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          {
+            echo "### 🚀 $VERSION released"
+            echo
+            echo "| Registry | Package |"
+            echo "| --- | --- |"
+            echo "| crates.io | \`ndic-core\`, \`ndic-htj2k\`, \`ndic-lift\`, \`ndic-zfp\`, \`ndic-codestream\`, \`ndic-zarr\`, \`ndic-cli\` |"
+            echo "| PyPI | \`nd-image-codecs\` |"
+            echo "| npm | \`@fideus-labs/nd-image-codecs\`, \`nd-image-codecs\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

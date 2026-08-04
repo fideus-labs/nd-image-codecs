@@ -49,7 +49,8 @@ implementing anything.
 | Zarr codecs (Rust/Python/TS) | [./docs/architecture/zarr-codec.md](./docs/architecture/zarr-codec.md) |
 | Run or add benchmarks | [./docs/development/benchmarking.md](./docs/development/benchmarking.md), [./bench/README.md](./bench/README.md) |
 | Everyday commands | [./docs/development/commands.md](./docs/development/commands.md) |
-| Publish a release (crates.io, PyPI, npm) | [./docs/development/publishing.md](./docs/development/publishing.md) |
+| Publish a release (crates.io, PyPI, npm) | [./docs/development/publishing.md](./docs/development/publishing.md), [./.github/workflows/release.yml](./.github/workflows/release.yml) |
+| Set up or debug registry authentication | [./docs/development/trusted-publishing.md](./docs/development/trusted-publishing.md) |
 | Rust style rules | [./docs/development/style/rust.md](./docs/development/style/rust.md) |
 | Commit message format | [./docs/development/commits.md](./docs/development/commits.md) |
 | Test data & conformance corpus | [./docs/development/test-data.md](./docs/development/test-data.md) |

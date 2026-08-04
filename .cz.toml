@@ -1,0 +1,150 @@
+# Commitizen configuration — the changelog generator for this repository.
+#
+# `cz changelog` turns the Conventional Commits described in
+# docs/development/commits.md into CHANGELOG.md, and the release workflow
+# (.github/workflows/release.yml) reuses the same command to build the body of
+# the GitHub release. Run it locally with:
+#
+#     uvx --from commitizen cz changelog --incremental
+#
+# Commitizen is deliberately *not* the version bumper here. The one published
+# version number is written out 23 times across seven files (see
+# docs/development/publishing.md, "Where the version lives"); commitizen's
+# `version_files` matches a regex per line, which cannot tell the two project
+# fields in package-lock.json from the ~40 third-party `"version"` keys around
+# them. `scripts/release/set-version.py` writes all 23 precisely, and
+# `scripts/ci/check-package-versions.py` proves it. `version_provider = "cargo"`
+# below is only so `cz version -p` reports the truth.
+[tool.commitizen]
+name = "cz_customize"
+# Releases are tagged `v0.2.0`, and the release workflow triggers on `v*`.
+tag_format = "v$version"
+version_provider = "cargo"
+changelog_file = "CHANGELOG.md"
+# A release candidate's entries are folded into the final release rather than
+# left stranded under a version nobody installs.
+changelog_merge_prerelease = true
+# 0.x: a `!` breaking change is a MINOR bump, not a MAJOR one. Drop this when
+# 1.0 ships.
+major_version_zero = true
+
+[tool.commitizen.customize]
+# Conventional Commits, widened past commitizen's built-in rule.
+#
+# `cz_conventional_commits` parses only feat/fix/refactor/perf, so every
+# `docs:`, `test:`, `ci:`, and `bench:` commit is silently dropped from the
+# changelog — and in this repository those are 30 of the first 85 commits.
+# `commit_parser` is read from the commitizen *class*, not from top-level
+# settings, so widening it requires `cz_customize`; the questions below keep
+# `cz commit` and `cz check` working exactly as they did.
+#
+# `release` is deliberately absent from the list: those commits carry version
+# bumps, which the release notes already state in their heading.
+commit_parser = "^((?P<change_type>feat|fix|perf|refactor|docs|test|bench|build|ci|chore|style|revert)(?:\\((?P<scope>[^()\r\n]*)\\)|\\()?(?P<breaking>!)?|\\w+!):\\s(?P<message>.*)?"
+# Which commits are considered at all. Anything shaped like a Conventional
+# Commit gets past this; `commit_parser` above is what decides the section.
+changelog_pattern = "^((BREAKING[\\-\\ ]CHANGE|\\w+)(\\(.+\\))?!?):"
+# `cz check` validates a message against this — see docs/development/commits.md.
+schema_pattern = "(?s)(feat|fix|perf|refactor|docs|test|bench|build|ci|chore|style|revert|release)(\\(\\S+\\))?!?: [^\n\r]+((\n\n.*)|(\\s*))$"
+schema = "<type>(<scope>): <subject>"
+example = "feat(lift): add a 5/3 lane for i16 volumes"
+info = "Conventional Commits with crate scopes. See docs/development/commits.md.\n"
+
+# Reading order within a release: what changed for users first, then what
+# changed for contributors. These are the mapped titles, not the raw types.
+# Any type absent from this list still renders — it is appended after the
+# ordered ones.
+change_type_order = [
+    "💥 Breaking Changes",
+    "✨ Features",
+    "🐛 Bug Fixes",
+    "⚡ Performance",
+    "♻️ Refactoring",
+    "📚 Documentation",
+    "📊 Benchmarks",
+    "🧪 Tests",
+    "📦 Build",
+    "🤖 Continuous Integration",
+    "🎨 Style",
+    "🧹 Chores",
+    "⏪ Reverts",
+]
+
+message_template = "{{change_type}}{% if scope %}({{scope}}){% endif %}{% if is_breaking_change %}!{% endif %}: {{subject}}{% if body %}\n\n{{body}}{% endif %}{% if is_breaking_change %}\n\nBREAKING CHANGE: {{footer}}{% elif footer %}\n\n{{footer}}{% endif %}"
+
+# Section titles, emoji included. These are the rendered headings in
+# CHANGELOG.md and in every GitHub release body.
+[tool.commitizen.customize.change_type_map]
+"BREAKING CHANGE" = "💥 Breaking Changes"
+feat = "✨ Features"
+fix = "🐛 Bug Fixes"
+perf = "⚡ Performance"
+refactor = "♻️ Refactoring"
+docs = "📚 Documentation"
+test = "🧪 Tests"
+bench = "📊 Benchmarks"
+build = "📦 Build"
+ci = "🤖 Continuous Integration"
+style = "🎨 Style"
+chore = "🧹 Chores"
+revert = "⏪ Reverts"
+
+[[tool.commitizen.customize.questions]]
+type = "list"
+name = "change_type"
+message = "Type of change"
+choices = [
+    { value = "feat", name = "feat:     a new capability (MINOR)" },
+    { value = "fix", name = "fix:      a bug fix (PATCH)" },
+    { value = "perf", name = "perf:     a performance-only change (PATCH)" },
+    { value = "refactor", name = "refactor: a behaviour-preserving restructure (PATCH)" },
+    { value = "docs", name = "docs:     documentation only" },
+    { value = "test", name = "test:     tests only" },
+    { value = "bench", name = "bench:    benchmarks or baselines only" },
+    { value = "build", name = "build:    build system or dependencies" },
+    { value = "ci", name = "ci:       CI configuration or scripts" },
+    { value = "style", name = "style:    formatting, no code change" },
+    { value = "chore", name = "chore:    anything else" },
+    { value = "revert", name = "revert:   revert a previous commit" },
+    { value = "release", name = "release:  a version bump (kept out of the changelog)" },
+]
+
+[[tool.commitizen.customize.questions]]
+type = "list"
+name = "scope"
+message = "Scope — the crate or surface this touches"
+choices = [
+    { value = "", name = "(none):     cross-cutting" },
+    { value = "core", name = "core:       ndic-core" },
+    { value = "htj2k", name = "htj2k:      ndic-htj2k" },
+    { value = "codestream", name = "codestream: ndic-codestream" },
+    { value = "lift", name = "lift:       ndic-lift" },
+    { value = "zfp", name = "zfp:        ndic-zfp" },
+    { value = "zarr", name = "zarr:       ndic-zarr" },
+    { value = "cli", name = "cli:        ndic-cli" },
+    { value = "py", name = "py:         the Python binding" },
+    { value = "ts", name = "ts:         the TypeScript binding" },
+    { value = "bench", name = "bench:      the benchmark layer" },
+    { value = "ci", name = "ci:         CI and release automation" },
+]
+
+[[tool.commitizen.customize.questions]]
+type = "input"
+name = "subject"
+message = "Subject — imperative mood, no trailing period"
+
+[[tool.commitizen.customize.questions]]
+type = "input"
+name = "body"
+message = "Body — why, not what (optional)"
+
+[[tool.commitizen.customize.questions]]
+type = "confirm"
+name = "is_breaking_change"
+message = "Is this a breaking change?"
+default = false
+
+[[tool.commitizen.customize.questions]]
+type = "input"
+name = "footer"
+message = "Footer — breaking-change description, issue refs (optional)"
