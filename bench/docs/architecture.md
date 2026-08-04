@@ -104,8 +104,8 @@ comments; csv feeds ad-hoc analysis; the viewer (static site generated into
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
 | `bench-pr-gate.yml` | PR | Curated subset vs `baselines/main`, `--fail-on-regression`, sticky comment |
-| `bench-nightly.yml` (Phase 6) | cron | Full grid incl. ref lanes; publishes viewer site; auto-files regressions |
-| `bench-baseline-refresh.yml` (Phase 6) | manual | Re-records baselines on the pinned runner class; opens a PR |
+| `bench-nightly.yml` | cron | Full grid incl. the macro tier on the Tier 3 volumes; uploads records; opens an issue on a ratio regression |
+| `bench-baseline-refresh.yml` | manual | Re-records the baselines, rewrites the manifest with the machine class it ran on, and opens a PR |
 
 ## Invariants
 

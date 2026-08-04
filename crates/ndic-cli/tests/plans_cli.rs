@@ -334,3 +334,60 @@ fn thumbnail_over_http_range_requests() {
         .unwrap_or(u64::MAX);
     assert!(reported < total, "{stdout}");
 }
+
+/// Phase 6 range-access audit: a thumbnail plan must fetch a bounded number
+/// of bytes per decoded pixel. The budgets are regression tripwires with
+/// headroom over measured values (~1.0 B/px for the 8-bit gradient,
+/// ~2.2 B/voxel for the lifted chunk preview at --max 16, where the
+/// micro-fixture's fixed per-plane headers still dominate), not targets; a
+/// planner change that starts over-fetching fails here before it ships.
+#[test]
+fn thumbnail_plans_stay_within_the_bytes_per_pixel_budget() {
+    let jph = make_jph("budget");
+    let plan: serde_json::Value = serde_json::from_str(&run(&[
+        "index",
+        jph.to_str().unwrap(),
+        "--target",
+        "thumbnail",
+        "--max",
+        "32",
+    ]))
+    .expect("plan JSON");
+    let pixels: u64 = plan["decoded_size"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d.as_u64().unwrap())
+        .product();
+    let bytes = plan["total_bytes"].as_u64().unwrap();
+    let per_pixel = bytes as f64 / pixels as f64;
+    assert!(
+        per_pixel <= 2.0,
+        "thumbnail plan fetches {per_pixel:.2} B/px ({bytes} B for {pixels} px)"
+    );
+
+    let (chunk, series) = make_chunk();
+    let plan: serde_json::Value = serde_json::from_str(&run(&[
+        "index",
+        chunk.to_str().unwrap(),
+        "--target",
+        "thumbnail-3d",
+        "--max",
+        "16",
+        "--series",
+        &series,
+    ]))
+    .expect("plan JSON");
+    let voxels: u64 = plan["decoded_size"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d.as_u64().unwrap())
+        .product();
+    let bytes = plan["total_bytes"].as_u64().unwrap();
+    let per_voxel = bytes as f64 / voxels as f64;
+    assert!(
+        per_voxel <= 4.0,
+        "3D preview plan fetches {per_voxel:.2} B/voxel ({bytes} B for {voxels} voxels)"
+    );
+}

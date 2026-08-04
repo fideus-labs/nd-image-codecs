@@ -1,0 +1,55 @@
+# Tier 3 benchmark volumes: real domain data for the macro-tier bench lanes.
+#
+# Each entry pins one OME-Zarr multiscale level by URL and by the SHA-256 of
+# its decoded, C-order little-endian bytes — not of any compressed
+# representation, so a re-chunk or recompression upstream is detected as the
+# content change it is. `scripts/fetch-bench-data.sh` materializes each entry
+# as `~/.cache/nd-image-codecs/bench-data/<slug>.npy` and verifies the digest;
+# `bench/py/tier3.py` loads whatever is cached and the macro lanes skip
+# cleanly when nothing is.
+#
+# Adding an entry: fetch it, record the digest the script reports, and state
+# the license. Changing an existing URL or level is a benchmark rename —
+# baselines captured against the old content are no longer comparable, so
+# refresh them in the same pull request.
+#
+# See docs/development/test-data.md (Tier 3) and bench/docs/architecture.md.
+
+version = 1
+
+[[volume]]
+slug = "idr0062A-anisotropic-z"
+description = """
+Anisotropic-z serial-section EM volume (Blazquez-Llorca et al., IDR
+idr0062A), multiscale level 1. Voxels are ~0.50 µm in z against ~0.36 µm in
+x/y, so the z axis is exactly the correlated-but-anisotropic case nd_lift's
+decorrelation gain is measured on."""
+url = "https://uk1s3.embassy.ebi.ac.uk/idr/zarr/v0.4/idr0062A/6001240.zarr/1"
+axes = ["c", "z", "y", "x"]
+shape = [2, 236, 137, 135]
+dtype = "uint16"
+raw_bytes = 17459280
+sha256 = "9fb66ed982b88c34031b29632a68c8b7ce34551269293cb0dc46f77648626e22"
+license = "CC BY 4.0 (Image Data Resource, https://idr.openmicroscopy.org/)"
+
+[[volume]]
+slug = "idr0052A-timeseries"
+description = """
+Multi-timepoint, multi-channel fluorescence series (IDR idr0052A),
+multiscale level 2: 40 timepoints × 3 channels × 31 z. Exercises the
+t-grouping path — the codec-series builder moves a chunked t axis next to z
+and decorrelates along it — which no single-timepoint fixture reaches."""
+url = "https://uk1s3.embassy.ebi.ac.uk/idr/zarr/v0.4/idr0052A/5514375.zarr/2"
+axes = ["t", "c", "z", "y", "x"]
+shape = [40, 3, 31, 64, 64]
+dtype = "uint16"
+raw_bytes = 30474240
+sha256 = "a399c513be292b74bf868b27480e01b4c0174021a3769c60d1cd955965cb9835"
+license = "CC BY 4.0 (Image Data Resource, https://idr.openmicroscopy.org/)"
+
+# No float-valued domain volume is pinned yet: the public OME-NGFF corpora
+# are integer microscopy, and the nd-zfp lanes' float coverage comes from the
+# deterministic generator in bench/py/synthetic.py, which is honest about
+# being synthetic. A real simulation/scientific field belongs here when one
+# with a stable URL and a clear license is identified — that is a data-
+# sourcing task, not a code change.

@@ -10,9 +10,9 @@ Helper scripts, created as their roadmap phases land:
 | `cross-validation/zarr_python_io.py` | 6 | zarr-python writer/reader corner of the matrix (the zarrita.js corner is `bindings/typescript/scripts/zarrita-io.mts`; the zarrs corner is `ndic zarr`) |
 | `ci/check-docs-links.py` | 1 | Check the outbound `http(s)` links cited by `docs/` — manual/pre-release, deliberately not a CI gate (external specification hosts are too flaky) |
 | `fetch-conformance.sh` | 3 | Fetch + cache the OpenJPH conformance corpus (Tier 2 test data) |
-| `fetch-bench-data.sh` | 5 | Fetch + pin Tier 3 benchmark volumes (`bench-data.lock.toml`) |
+| `fetch-bench-data.sh` | 6 | Fetch, verify, and cache the Tier 3 benchmark volumes pinned in `bench-data.lock.toml` (implementation: `bench/py/tier3.py`) |
 | `range-demo.sh` | 2 | Execute an `ndic index` plan with curl against a static server |
-| `profile.sh` | 5 | Flamegraph/perf wrapper for a bench workload |
+| `profile.sh` | 6 | `perf record`/flamegraph wrapper for one bench workload (workspace `profiling` profile) |
 | `asm.sh` | 5 | Inspect release codegen of hot functions per SIMD lane |
 | `ci/check-usage-docs.sh` | 6 | Extract + run every code block in docs/usage/* |
 

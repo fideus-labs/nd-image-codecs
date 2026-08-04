@@ -92,7 +92,40 @@ cargo run -p ndic-bench-cli --release -- run
 cp -r target/benchmarks/<hash>/* bench/baselines/main/   # + update manifest.json
 ```
 
-(CI's `bench-baseline-refresh` workflow automates this on demand.)
+(CI's `bench-baseline-refresh` workflow automates this on demand. It records
+on a GitHub runner, so adopting its output moves the baseline's machine class
+off the dev box the current manifest names — which is why it makes you spell
+the machine out. Ratios carry over; timings do not.)
+
+## Tiers and the nightly grid
+
+Micro and meso lanes run on the committed synthetic fixtures and gate every
+pull request. The **macro** tier runs on the fetched Tier 3 domain volumes —
+real OME-Zarr data where the decorrelation gain a generator can only
+approximate is the actual measurement:
+
+```bash
+scripts/fetch-bench-data.sh          # once; verifies the pinned SHA-256s
+python3 bench/py/run_macro.py
+```
+
+The macro lanes skip cleanly when nothing is cached, so they never block a
+run. `bench-nightly.yml` fetches first and runs the full grid, uploading the
+records and opening an issue on a ratio regression (deterministic, so worth
+waking someone for) while merely reporting timings (runner-dependent). See
+[Test data](./test-data.md) for what is pinned and why.
+
+## Profiling
+
+```bash
+scripts/profile.sh --filter zfp/encode                 # perf report
+scripts/profile.sh --filter htj2k --flamegraph         # SVG flamegraph
+```
+
+Both build the workspace's `profiling` profile — release codegen plus line
+tables — so hot loops resolve to source lines rather than addresses, and both
+want `kernel.perf_event_paranoid=1`. Allocation audits use the same binary
+under `valgrind --tool=dhat` or `heaptrack`; no special build is needed.
 
 ## The regression gate
 

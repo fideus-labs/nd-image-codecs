@@ -21,3 +21,7 @@ Rules:
   invalidates the σ noise envelope the gate depends on.
 - The first baseline is captured at the end of roadmap Phase 1, once the first real
   workloads exist.
+- The refresh workflow records on a GitHub runner, so adopting its output *moves* the
+  baseline's machine class off the dev box named in the current manifest. Ratios carry
+  over (they are deterministic); timings do not compare to the old numbers at all. The
+  workflow makes you name the machine for exactly that reason.

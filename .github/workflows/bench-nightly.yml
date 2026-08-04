@@ -1,0 +1,119 @@
+name: Bench Nightly
+
+# The full grid, including the macro tier on the Tier 3 domain volumes that
+# the PR gate is far too slow to touch. Reports rather than gates: the
+# runner class differs from the machine the committed baselines were
+# captured on, so a timing "regression" here is as likely to be a noisy
+# neighbour as a real one. The ratio half *is* deterministic, so a ratio
+# regression opens an issue.
+#
+# Baselines are never refreshed from this workflow — that is
+# bench-baseline-refresh.yml, run deliberately, on the pinned runner class.
+
+on:
+  schedule:
+    # 04:17 UTC daily — off the hour, so it does not pile onto the runner
+    # queue every other cron job in the world targets.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    # The macro lanes fetch and compress ~50 MB of real volumes across four
+    # codec families; the default 6h cap would let a hang burn the day.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python bench dependencies
+        run: pip install "zarr>=3.1" numpy numcodecs
+
+      # The wheel carries the native extension the htj2k and nd_zfp lanes
+      # need; the pure-Python source tree has neither codec's core.
+      - name: Build and install the nd-image-codecs wheel
+        run: pip install bindings/python/nd-image-codecs
+
+      # Tier 3 volumes are fetched, not committed. Restoring the cache keeps
+      # the nightly off IDR's bucket on most days; a miss re-fetches and the
+      # digests in scripts/bench-data.lock.toml verify either way.
+      - name: Restore the Tier 3 volume cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nd-image-codecs/bench-data
+          key: bench-data-${{ hashFiles('scripts/bench-data.lock.toml') }}
+
+      - name: Fetch the Tier 3 volumes
+        run: scripts/fetch-bench-data.sh
+
+      - name: Run the micro and meso lanes
+        run: |
+          python3 bench/py/run_nd_delta.py
+          python3 bench/py/run_nd_lift.py
+          python3 bench/py/run_nd_zfp.py
+
+      - name: Run the macro lanes on the Tier 3 volumes
+        run: python3 bench/py/run_macro.py
+
+      - name: Run the Rust benchmarks
+        run: cargo run -p ndic-bench-cli --release -- run --quiet
+
+      - name: Report against the main baseline
+        id: compare
+        shell: bash
+        run: |
+          set +e
+          cargo run -p ndic-bench-cli --release -- compare bench/baselines/main \
+            --gate ratio \
+            --fail-on-regression \
+            --format markdown | tee bench-nightly.md
+          echo "ratio_regressed=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the records and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-nightly
+          path: |
+            bench-nightly.md
+            target/benchmarks/
+          retention-days: 30
+          if-no-files-found: error
+
+      # A ratio regression is deterministic — it does not depend on the
+      # runner — so it is worth a human's attention even overnight.
+      - name: Open an issue on a ratio regression
+        if: steps.compare.outputs.ratio_regressed != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const report = fs.readFileSync("bench-nightly.md", "utf8");
+            const title = `Nightly bench: compression ratio regressed (${context.sha.slice(0, 7)})`;
+            const body = [
+              `The nightly benchmark run on ${context.sha} regressed the compression`,
+              "ratio against `bench/baselines/main`. Ratios are deterministic, so this",
+              "is not runner noise.",
+              "",
+              `[Run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              "",
+              report,
+            ].join("\n");
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ["benchmark", "regression"],
+            });

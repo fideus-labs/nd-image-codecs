@@ -109,3 +109,13 @@ panic = "abort"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+# Release codegen plus debug info, so `perf` and flamegraphs resolve the
+# inlined hot loops to source lines instead of addresses. Line tables only
+# (`debug = "line-tables-only"`) rather than full DWARF: that is what symbol
+# and inline-frame resolution needs, at a fraction of the binary size and
+# link time. Used by scripts/profile.sh (`--profile profiling`).
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+strip = "none"
