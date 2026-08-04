@@ -150,7 +150,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: pipx install maturin
       - run: maturin build --release -m bindings/python/nd-image-codecs/Cargo.toml
-      - run: pip install pytest "zarr>=3.1" numpy numcodecs
+      # imagecodecs powers the third-party interop lanes (JPEG 2000, delta,
+      # ZFP) — without it those tests silently skip.
+      - run: pip install pytest "zarr>=3.1" numpy numcodecs imagecodecs
       # Install the built wheel so the suite exercises the native extension
       # (the htj2k codec has no pure-Python fallback and skips without it).
       - run: pip install --no-index --find-links target/wheels nd-image-codecs
