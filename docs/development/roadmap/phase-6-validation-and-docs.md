@@ -54,12 +54,57 @@ extension registration.
 
 ## Acceptance criteria
 
-- [ ] Full encode/decode matrix green: {zarrs, zarr-python, zarrita.js} ×
+- [x] Full encode/decode matrix green: {zarrs, zarr-python, zarrita.js} ×
       {nd-delta, nd-lift-ht, nd-zfp} × fixture corpus, both directions.
-- [ ] `imagecodecs` accepts our ZFP/JPEG 2000/delta output where semantics
+- [x] `imagecodecs` accepts our ZFP/JPEG 2000/delta output where semantics
       overlap, and we accept its.
-- [ ] OME-Zarr 0.5 datasets written with each family validate and open in
+- [x] OME-Zarr 0.5 datasets written with each family validate and open in
       ngff-zarr and ome-zarr-py.
 - [ ] CI regression gates on ratio and throughput vs committed baselines.
-- [ ] All usage-doc snippets execute in docs CI.
+- [x] All usage-doc snippets execute in docs CI.
 - [ ] Codec specs submitted to zarr-extensions.
+
+### What the two open criteria still need
+
+**Throughput gating.** The ratio gate runs on every pull request
+(`bench-pr-gate`) and the nightly grid additionally opens an issue on a ratio
+regression. Throughput is measured and reported but never fails a build,
+because the committed baselines were captured on a developer machine and the
+time gate's σ envelope is only meaningful against a baseline from the same
+machine class. `bench-baseline-refresh` now records on a GitHub runner and
+opens a pull request, so closing this is: run it, adopt the result, then flip
+the PR gate to `--gate both`. Adopting it moves the baseline's machine class,
+which is why the workflow makes you name the machine — a decision, not a
+default.
+
+**Extension registration.** Specifications for all three codecs are staged in
+[`spec/codecs/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/codecs)
+in the layout zarr-extensions expects, with schemas checked against every
+configuration the builder emits. Two things block the pull request itself, and
+both need a person:
+
+- zarr-extensions already registers a `zfp` codec whose stored bytes are
+  identical to `nd_zfp`'s for the same data and mode — only the name and the
+  handling of chunks above four dimensions differ. Registering a second name
+  for a byte-identical format is probably the wrong outcome; adopting `zfp` is
+  a breaking format change. See
+  [`spec/README.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/spec/README.md).
+- Extension documents must be licensed CC BY 3.0, which the copyright holder
+  has to accept.
+
+### What Phase 6 also changed
+
+Three gaps had to close before the matrix could exist at all, and they are
+worth knowing about because they were not on the original list:
+
+- `nd_lift` had no WASM path, so zarrita.js could not decode nd-lift-ht at
+  all (a Phase 4 gap). It now shares the Rust core with every other ecosystem.
+- `zarrs` ships no delta codec, so the nd-delta family could not run in Rust.
+  `numcodecs.delta` is now implemented and registered.
+- zarrita.js could not *write* any pipeline containing `transpose`: its
+  built-in codec constructs the output buffer from the chunk object rather
+  than the chunk's array, so every such write produced garbage. Its delta
+  codec also refuses the strides a permutation produces, and its blosc loader
+  hands Zarr v3's string `shuffle` to a numcodecs.js codec expecting the v2
+  numeric one. The TypeScript package ships corrected replacements and
+  registers them alongside our own codecs.
