@@ -23,6 +23,16 @@
 
 export type ZarrCodec = { name: string; configuration?: Record<string, unknown> };
 
+export {
+  DenseDeltaZarrita,
+  Htj2kZarrita,
+  NdLiftZarrita,
+  NdZfpZarrita,
+  registerZarritaCodecs,
+  type ZarritaChunk,
+  type ZarritaChunkMeta,
+} from "./zarrita.js";
+
 // ---------------------------------------------------------------------------
 // Registered codec classes
 // ---------------------------------------------------------------------------

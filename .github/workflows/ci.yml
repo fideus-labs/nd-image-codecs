@@ -198,5 +198,33 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: python3 scripts/ci/check-series-equality.py
 
-  # Interop matrix (decode our output with third-party implementations) is
-  # added once the encoder lands — see docs/development/roadmap/phase-3-htj2k-core.md.
+  # The Phase 6 cross-ecosystem validation matrix: every case in
+  # fixtures/cross-validation/cases.json is written by zarrs (ndic zarr),
+  # zarr-python (our entry points), and zarrita.js (our WASM classes), and
+  # read back by all three — 3×3 direction pairs per case, with chunk-level
+  # byte identity for the families backed by the shared Rust core.
+  cross-validation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: Swatinem/rust-cache@v2
+      - run: pip install "zarr>=3.1" numpy numcodecs
+      # The wheel brings the native extension (htj2k / nd_zfp encoders).
+      - run: pip install bindings/python/nd-image-codecs
+      - run: npm ci
+        working-directory: bindings/typescript
+      - run: npm run build:wasm
+        working-directory: bindings/typescript
+      - run: python3 scripts/ci/check-cross-validation.py
