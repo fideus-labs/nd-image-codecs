@@ -9,7 +9,7 @@ How to publish nd-image-codecs to crates.io, PyPI, and npm **by hand**. There is
 no release automation yet; every step here is run from a workstation.
 
 The current target is **0.1.0** — the first release with working codecs rather
-than name reservations. `nd_lift`, `nd_lift_ht`, and `nd_zfp` encode and decode
+than name reservations. `nd_lift`, `htj2k`, and `zfp` encode and decode
 for real, the `codec_series` builder works in all three languages, and the
 TypeScript package ships a WASM core. The minor bump signals that: 0.0.x was a
 placeholder series.
@@ -346,7 +346,7 @@ npm view nd-image-codecs@0.1.0
 Then tag the commit that was published:
 
 ```bash
-git tag -a v0.1.0 -m "Release 0.1.0 — working nd_lift, nd_lift_ht, and nd_zfp codecs"
+git tag -a v0.1.0 -m "Release 0.1.0 — working nd_lift, htj2k, and zfp codecs"
 git push origin v0.1.0
 ```
 

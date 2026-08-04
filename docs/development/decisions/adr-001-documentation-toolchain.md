@@ -16,7 +16,7 @@ tags:
 ## Context
 
 The `docs/` tree existed long before it was a website. It was written as
-CommonMark for GitHub: 34 pages of architecture, usage, contributor, and
+CommonMark for GitHub: dozens of pages of architecture, usage, contributor, and
 roadmap documentation (the roadmap pages were retired once their phases
 landed), heavy on multi-column tables, cross-linked with relative
 `./page.md` paths, and read directly in the repository by both humans and coding
@@ -25,9 +25,9 @@ agents (`AGENTS.md` routes to it by task).
 Publishing it needed a static site generator, a host, and a way to keep the two
 honest. The constraints that decided the shape of the answer:
 
-- The existing markdown had to render essentially **as-is**. Rewriting 34 pages
-  into another markup dialect would have been the largest part of the work and
-  would have made the in-repository reading experience worse.
+- The existing markdown had to render essentially **as-is**. Rewriting the whole
+  tree into another markup dialect would have been the largest part of the work
+  and would have made the in-repository reading experience worse.
 - The repository is a **Rust monorepo**. Nothing in `docs/` depends on Python,
   and neither does the build, the test suite, or CI's critical path.
 - Whatever gates documentation had to be **the same command** a contributor runs
