@@ -65,6 +65,24 @@ def publishable_members() -> list[tuple[str, str]]:
     return members
 
 
+def declared_versions() -> dict[str, str]:
+    """The version each publishable member would upload, per its own manifest.
+
+    `version.workspace = true` — which every crate here uses — parses as
+    `{"workspace": True}` and resolves against `[workspace.package]`; a literal
+    `version = "…"` is taken as written, the way cargo reads it.
+    """
+    manifest = tomllib.loads((REPO / "Cargo.toml").read_text(encoding="utf-8"))
+    inherited = manifest["workspace"]["package"]["version"]
+
+    versions = {}
+    for name, member in publishable_members():
+        declared = tomllib.loads((REPO / member / "Cargo.toml").read_text(encoding="utf-8"))
+        version = declared["package"]["version"]
+        versions[name] = inherited if isinstance(version, dict) else version
+    return versions
+
+
 def published_versions(crate: str) -> set[str]:
     """Every version of `crate` on crates.io; empty if the name is unclaimed.
 
@@ -108,6 +126,34 @@ def main() -> int:
 
     members = publishable_members()
     print(f"{len(members)} publishable workspace members\n")
+
+    # `args.version` decides which crates get excluded and which registry
+    # queries run, but cargo uploads whatever the manifests say — the two are
+    # only ever equal because "Stamp the version from the tag" ran first. If
+    # that step is skipped, reordered, or half-applied, this would compute the
+    # exclude list for one version and cargo would upload another, and a
+    # crates.io upload cannot be replaced or withdrawn. So make the assumption
+    # a check.
+    mismatched = {
+        name: declared for name, declared in declared_versions().items() if declared != args.version
+    }
+    if mismatched:
+        # The member count above went to stdout, which is block-buffered when
+        # it is a pipe — without this the report below lands ahead of it.
+        sys.stdout.flush()
+        print(
+            f"publish-crates.py: asked to publish {args.version}, but the manifests read:",
+            file=sys.stderr,
+        )
+        for name, declared in sorted(mismatched.items()):
+            print(f"  {name:<18} {declared}", file=sys.stderr)
+        print(
+            f"\nCargo uploads the manifest version, not the argument. Run\n"
+            f"  python3 scripts/release/set-version.py {args.version}\n"
+            "first — in CI that is the 'Stamp the version from the tag' step.",
+            file=sys.stderr,
+        )
+        return 1
 
     try:
         already = [name for name, _ in members if args.version in published_versions(name)]

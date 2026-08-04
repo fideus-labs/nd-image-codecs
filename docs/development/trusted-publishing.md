@@ -46,17 +46,57 @@ compromised dependency could reach — carries no `release` claim and is refused
 by every registry. Without the environment, any job in the workflow could
 publish.
 
-Two protection rules are worth adding while you are there:
+Three protection rules are worth adding while you are there:
 
 | Rule | Setting | Effect |
 | --- | --- | --- |
 | **Deployment branches and tags** | Selected refs → add a **tag** rule `v*` | The environment cannot be entered from a branch push or a stray tag |
 | **Required reviewers** | One or two maintainers | Every publish pauses for a human approval before any upload |
+| **Prevent self-reviews** | Enabled | The person who started the release cannot be the one who approves it |
 
-Required reviewers turn a release into a two-person action. That is a real cost
-on a small team, and it is the single most effective control here, because it
-puts a person between "a tag was pushed" and "three registries changed
-forever."
+Required reviewers put a person between "a tag was pushed" and "three
+registries changed forever," which is the single most effective control here.
+Note what it does and does not do on its own: GitHub needs **one** listed
+reviewer to approve, and by default that reviewer may be whoever triggered the
+run. A maintainer releasing their own tag simply clicks approve, and the
+control is a confirmation dialog rather than a second pair of eyes.
+
+**Prevent self-reviews** is what makes it a genuine two-person action — with it
+enabled, the run's initiator is excluded from approving even when they are a
+listed reviewer, so a release always involves a second maintainer. That is a
+real cost on a small team, and worth paying deliberately rather than by
+accident: enable it and releases block until someone else is available, or
+leave it off and record that the approval is a self-check.
+
+The **deployment tags rule** has a consequence for manual re-runs: the ref a
+run was started against is what the rule tests, so a `workflow_dispatch` run
+launched from `main` cannot enter the environment no matter what its `tag`
+input says. Always select the tag as the ref — see
+[publishing](./publishing.md), "When a release fails partway".
+
+## Step 1b: make release tags immutable
+
+Not part of trusted publishing, but the same one-time setup pass and it closes
+a gap nothing in the workflow can close by itself.
+
+GitHub → **Settings** → **Rules** → **Rulesets** → **New tag ruleset**:
+
+| Field | Value |
+| --- | --- |
+| Target tags | Pattern `v*` |
+| Enforcement | Active |
+| Rules | **Restrict updates** and **Restrict deletions** |
+
+A git tag is a mutable pointer. The release workflow resolves it once, gates
+that commit, and hands the resolved SHA to every downstream job — so within a
+run the tag cannot move under it. Across runs it can: re-running a release is
+the supported way to finish one that died partway, and if the tag has been
+moved in between, the packages that already published came from one commit and
+the rest come from another.
+
+`meta` detects that case by comparing against what earlier tag-push runs
+recorded (`scripts/release/check-tag-sha.py`) and refuses. This ruleset means
+it can never happen in the first place.
 
 Four jobs enter the environment, so a release with required reviewers pauses
 twice: once when `crates-io`, `npm`, and `npm-placeholder` start together, and

@@ -39,8 +39,9 @@ git switch main && git pull
 git tag -a v0.2.0 -m "Release 0.2.0"
 git push origin v0.2.0
 
-# 5. Watch it publish.
-gh run watch --workflow=release.yml
+# 5. Watch it publish. `gh run watch` takes a run ID, not a workflow name.
+gh run list --workflow=release.yml --limit 1
+gh run watch <run-id>
 ```
 
 Step 2 is optional in the sense that the release still publishes the right
@@ -55,7 +56,7 @@ if nothing depends on the package.
 
 | Job | What it does |
 | --- | --- |
-| `meta` | Parses the tag, and stops the release here if it is not `v<SemVer>`, if the commit is not an ancestor of `main`, or if CI never went green for it |
+| `meta` | Parses the tag, resolves it to one commit, and stops the release here if it is not `v<SemVer>`, if the commit is not an ancestor of `main`, if CI never went green for it, or if the tag has moved since an earlier run |
 | `verify` | Stamps the version, then packages all seven crates and builds each from its own tarball — `cargo publish --workspace --dry-run` |
 | `changelog` | `cz changelog <tag>` → the release notes, uploaded as an artifact |
 | `crates-io` | Publishes the workspace, skipping crates already at this version |
@@ -66,7 +67,7 @@ if nothing depends on the package.
 | `npm-placeholder` | Publishes the unscoped `nd-image-codecs` name holder |
 | `github-release` | Attests the Python distributions, then creates the release with the changelog and attaches them |
 
-`meta` is three gates rather than a step, and it is worth knowing what each
+`meta` is four gates rather than a step, and it is worth knowing what each
 refuses:
 
 - **A tag that is not a release.** The `v*` trigger also matches
@@ -82,6 +83,16 @@ refuses:
 - **A commit whose CI never passed.** CI does not run on tag pushes, so the
   workflow looks up the `CI` run for the tagged SHA and requires a success. If
   you tag before CI on `main` finishes, this fails; wait and re-run.
+- **A tag that has moved.** Earlier tag-push runs of this workflow recorded the
+  commit the tag pointed at;
+  [`scripts/release/check-tag-sha.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/release/check-tag-sha.py)
+  compares against them, so a re-run cannot finish a release from a different
+  source than it started from.
+
+`meta` resolves the tag to a commit exactly once, and every downstream job
+checks out that SHA rather than the tag name. Otherwise the seven jobs would
+each re-read a mutable pointer, and a tag moved between the gate passing and
+`crates-io` starting would publish a commit that was never gated.
 
 ## Where the version lives
 
@@ -191,14 +202,39 @@ This is the normal failure mode, not the exceptional one — ten packages across
 three registries, none of it reversible. Every publishing step is therefore
 idempotent, and **re-running the workflow is the fix**:
 
-**Actions → Release → Run workflow**, and give it the same tag.
+**Actions → Release → Run workflow**. Two fields, and they must agree:
+
+- **Use workflow from** — select the *tag*, `v0.2.0`, not `main`.
+- **Existing release tag to publish** — the same `v0.2.0`.
+
+Or from the command line:
+
+```bash
+gh workflow run release.yml --ref v0.2.0 -f tag=v0.2.0
+```
+
+Selecting `main` here is the mistake to avoid, and it fails in a confusing way.
+`GITHUB_REF` comes from the ref the run was started against, never from the
+input — so with the `release` environment restricted to `v*` tags (which
+[trusted publishing](./trusted-publishing.md) sets up), a run launched from
+`main` builds everything successfully and then blocks on all four publishing
+jobs, which are the only ones that matter.
 
 | Registry | How the re-run skips what already landed |
 | --- | --- |
 | crates.io | `publish-crates.py` queries each crate and passes `cargo publish --workspace --exclude` for the ones already at this version. Cargo itself has no skip: `verify_unpublished` bails on the first one, which would otherwise abort the whole workspace |
 | PyPI | `skip-existing: true` on the upload |
-| npm | Each job checks the registry for the version first |
+| npm | Each job queries the registry for the version first, and stops the job — rather than guessing — if the registry answers anything but 200 or 404 |
 | GitHub release | Updated in place if it already exists |
+
+**Do not move the tag between runs.** The skip logic keys on the version, not
+on the source, so a moved tag would publish the packages that have not landed
+yet from a different commit than the ones that have. `meta` refuses to re-run a
+tag that has moved since an earlier run saw it
+(`scripts/release/check-tag-sha.py`), and a `v*` tag ruleset with **Restrict
+updates** prevents it outright — see
+[trusted publishing](./trusted-publishing.md), "Step 1b: make release tags
+immutable".
 
 If the failure was in the code rather than the pipeline, you cannot fix it under
 the same version — publish the fix as the next patch release. A bad version can

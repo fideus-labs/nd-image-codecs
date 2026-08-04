@@ -154,11 +154,12 @@ workflow that also run standalone.
 | `scripts/release/prepare-release.sh 0.2.0` | The pre-tag commit: version everywhere, changelog entry, and the tagging steps to run next |
 | `python3 scripts/release/set-version.py 0.2.0` | Write one version into all 23 locations, then verify it |
 | `python3 scripts/release/parse-tag.py v0.2.0` | What the release workflow derives from a tag (version, prerelease flag, npm dist-tag) |
-| `python3 scripts/release/publish-crates.py 0.2.0 --dry-run` | Package and verify all seven crates without uploading — the workflow's `verify` job |
+| `python3 scripts/release/publish-crates.py 0.1.0 --dry-run` | Package and verify all seven crates without uploading — the workflow's `verify` job. The version must be the one the manifests already carry (`[workspace.package] version` in `Cargo.toml`); it refuses a mismatch rather than let cargo upload a version other than the one it was asked about |
 | `uvx --from commitizen cz changelog --unreleased-version=v0.2.0 --dry-run` | Preview the changelog section for the next release |
 | `uvx --from commitizen cz commit` | Write a Conventional Commit message interactively |
 | `uvx --with pytest --from pytest pytest scripts/tests -q` | Test the release scripts (what the `package-versions` CI job runs) |
-| `gh run watch --workflow=release.yml` | Follow a release in progress |
+| `gh run list --workflow=release.yml --limit 1` | Find the run ID of a release in progress |
+| `gh run watch <run-id>` | Follow it — `gh run watch` takes a run ID, and has no `--workflow` flag |
 
 Publishing by hand is the fallback for when CI cannot run, and it needs
 credentials this project deliberately does not keep. The commands are in

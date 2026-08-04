@@ -148,9 +148,11 @@ def _package_lock() -> dict:
         "packages": {
             "": {"name": "@fideus-labs/nd-image-codecs", "version": FIXTURE_VERSION},
             # The property that matters most in this file: a third-party pin
-            # that shares the key name and must not move.
+            # that shares the key name and must not move. Neither of these may
+            # collide with a version any test stamps, or the assertion that
+            # they stayed put would pass even when the rewriter moved them.
             "node_modules/typescript": {"version": "5.6.0"},
-            "node_modules/vitest": {"version": "2.0.0"},
+            "node_modules/vitest": {"version": "3.1.4"},
         },
     }
 
@@ -351,7 +353,7 @@ def test_set_version_leaves_third_party_lock_pins_alone(fake_repo):
     assert npm_lock["version"] == "2.0.0"
     assert npm_lock["packages"][""]["version"] == "2.0.0"
     assert npm_lock["packages"]["node_modules/typescript"]["version"] == "5.6.0"
-    assert npm_lock["packages"]["node_modules/vitest"]["version"] == "2.0.0"
+    assert npm_lock["packages"]["node_modules/vitest"]["version"] == "3.1.4"
 
 
 def test_set_version_preserves_comments_and_layout(fake_repo):
@@ -573,10 +575,18 @@ def _capture_cargo(module, monkeypatch) -> list[list[str]]:
     return calls
 
 
+def test_declared_versions_resolves_workspace_inheritance(publish_crates):
+    """`alpha` inherits, `beta` pins a literal — both have to resolve."""
+    assert publish_crates.declared_versions() == {
+        "alpha": FIXTURE_VERSION,
+        "beta": FIXTURE_VERSION,
+    }
+
+
 def test_publish_skips_entirely_when_everything_is_published(publish_crates, monkeypatch, capsys):
-    monkeypatch.setattr(publish_crates, "published_versions", lambda crate: {"1.0.0"})
+    monkeypatch.setattr(publish_crates, "published_versions", lambda crate: {FIXTURE_VERSION})
     calls = _capture_cargo(publish_crates, monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["publish-crates.py", "1.0.0"])
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", FIXTURE_VERSION])
 
     assert publish_crates.main() == 0
     assert calls == [], "cargo must not run when there is nothing to upload"
@@ -586,10 +596,12 @@ def test_publish_skips_entirely_when_everything_is_published(publish_crates, mon
 def test_publish_excludes_only_the_crates_already_uploaded(publish_crates, monkeypatch):
     """The re-run path: cargo aborts the whole workspace on the first one."""
     monkeypatch.setattr(
-        publish_crates, "published_versions", lambda crate: {"1.0.0"} if crate == "alpha" else set()
+        publish_crates,
+        "published_versions",
+        lambda crate: {FIXTURE_VERSION} if crate == "alpha" else set(),
     )
     calls = _capture_cargo(publish_crates, monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["publish-crates.py", "1.0.0"])
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", FIXTURE_VERSION])
 
     assert publish_crates.main() == 0
     assert calls == [["cargo", "publish", "--workspace", "--locked", "--exclude", "alpha"]]
@@ -598,7 +610,7 @@ def test_publish_excludes_only_the_crates_already_uploaded(publish_crates, monke
 def test_publish_uses_the_plain_workspace_command_on_a_fresh_version(publish_crates, monkeypatch):
     monkeypatch.setattr(publish_crates, "published_versions", lambda crate: set())
     calls = _capture_cargo(publish_crates, monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["publish-crates.py", "1.0.0"])
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", FIXTURE_VERSION])
 
     assert publish_crates.main() == 0
     assert calls == [["cargo", "publish", "--workspace", "--locked"]]
@@ -610,9 +622,9 @@ def test_publish_dry_run_verifies_the_whole_workspace(publish_crates, monkeypatc
     Excluding the published crates would mean the release's verification job
     silently stopped checking them.
     """
-    monkeypatch.setattr(publish_crates, "published_versions", lambda crate: {"1.0.0"})
+    monkeypatch.setattr(publish_crates, "published_versions", lambda crate: {FIXTURE_VERSION})
     calls = _capture_cargo(publish_crates, monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["publish-crates.py", "1.0.0", "--dry-run"])
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", FIXTURE_VERSION, "--dry-run"])
 
     assert publish_crates.main() == 0
     assert calls == [["cargo", "publish", "--workspace", "--locked", "--dry-run"]]
@@ -624,7 +636,7 @@ def test_publish_reports_a_registry_failure_without_running_cargo(publish_crates
 
     monkeypatch.setattr(publish_crates, "published_versions", explode)
     calls = _capture_cargo(publish_crates, monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["publish-crates.py", "1.0.0"])
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", FIXTURE_VERSION])
 
     assert publish_crates.main() == 1
     assert calls == []
@@ -638,8 +650,166 @@ def test_publish_propagates_a_cargo_failure(publish_crates, monkeypatch):
         return subprocess.CompletedProcess(command, 101)
 
     monkeypatch.setattr(publish_crates.subprocess, "run", fake_run)
-    monkeypatch.setattr(sys, "argv", ["publish-crates.py", "1.0.0"])
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", FIXTURE_VERSION])
     assert publish_crates.main() == 101
+
+
+def test_publish_refuses_a_version_the_manifests_do_not_carry(publish_crates, monkeypatch, capsys):
+    """The argument picks the exclusions; the manifests decide the upload.
+
+    They agree only because the workflow stamps the version first. If that step
+    is skipped, this would query the registry for one version and hand cargo a
+    workspace holding another — and a crates.io upload cannot be withdrawn.
+    """
+    queried: list[str] = []
+    monkeypatch.setattr(
+        publish_crates, "published_versions", lambda crate: queried.append(crate) or set()
+    )
+    calls = _capture_cargo(publish_crates, monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", "9.9.9"])
+
+    assert publish_crates.main() == 1
+    assert calls == [], "cargo must not run against a workspace at another version"
+    assert queried == [], "the registry must not be queried for a version that cannot be uploaded"
+
+    stderr = capsys.readouterr().err
+    assert "9.9.9" in stderr and FIXTURE_VERSION in stderr
+    assert "set-version.py" in stderr
+
+
+def test_publish_accepts_the_version_after_stamping(publish_crates, monkeypatch, fake_repo):
+    """The guard above must not stand in the way of the normal path."""
+    assert run_set_version(fake_repo, "9.9.9").returncode == 0
+
+    monkeypatch.setattr(publish_crates, "published_versions", lambda crate: set())
+    calls = _capture_cargo(publish_crates, monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", "9.9.9"])
+
+    assert publish_crates.main() == 0
+    assert calls == [["cargo", "publish", "--workspace", "--locked"]]
+
+
+def test_publish_reports_every_mismatched_crate(publish_crates, monkeypatch, capsys, fake_repo):
+    """A partially applied stamp is the case worth naming precisely."""
+    beta = fake_repo / "crates" / "beta" / "Cargo.toml"
+    beta.write_text(beta.read_text().replace(FIXTURE_VERSION, "0.4.1"), encoding="utf-8")
+
+    monkeypatch.setattr(publish_crates, "published_versions", lambda crate: set())
+    calls = _capture_cargo(publish_crates, monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["publish-crates.py", FIXTURE_VERSION])
+
+    assert publish_crates.main() == 1
+    assert calls == []
+    stderr = capsys.readouterr().err
+    assert "beta" in stderr and "0.4.1" in stderr
+    assert "alpha" not in stderr, "only the crates that disagree should be listed"
+
+
+# --------------------------------------------------------- check-tag-sha.py
+
+ORIGINAL = "a" * 40
+MOVED = "b" * 40
+
+
+def _run(*runs: dict) -> dict:
+    """A `GET /actions/workflows/{id}/runs` response holding `runs`."""
+    return {"total_count": len(runs), "workflow_runs": list(runs)}
+
+
+def _push_run(sha: str, *, branch: str = "v0.2.0", created_at: str = "2026-01-01T00:00:00Z") -> dict:
+    return {"event": "push", "head_branch": branch, "head_sha": sha, "created_at": created_at}
+
+
+def run_check_tag_sha(payload, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(RELEASE / "check-tag-sha.py"), *args],
+        input=payload if isinstance(payload, str) else json.dumps(payload),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_check_tag_sha_accepts_a_rerun_of_an_unmoved_tag():
+    result = run_check_tag_sha(
+        _run(_push_run(ORIGINAL), _push_run(ORIGINAL)), "--tag", "v0.2.0", "--sha", ORIGINAL
+    )
+    assert result.returncode == 0, result.stderr
+    assert "2 earlier run(s)" in result.stdout
+
+
+def test_check_tag_sha_accepts_the_first_release_of_a_tag():
+    """Nothing to compare against is not a failure — every release starts here."""
+    result = run_check_tag_sha(_run(), "--tag", "v0.2.0", "--sha", ORIGINAL)
+    assert result.returncode == 0, result.stderr
+    assert "nothing to compare" in result.stdout
+
+
+def test_check_tag_sha_refuses_a_tag_that_moved():
+    """The finding this exists for: a re-run would publish the packages that
+    have not landed yet from a different commit than the ones that have."""
+    result = run_check_tag_sha(
+        _run(_push_run(ORIGINAL)), "--tag", "v0.2.0", "--sha", MOVED
+    )
+    assert result.returncode == 1
+    assert ORIGINAL in result.stderr and MOVED in result.stderr
+    assert "has been moved" in result.stderr
+
+
+def test_check_tag_sha_ignores_other_tags():
+    """Runs of a different release must not be read as this tag moving."""
+    result = run_check_tag_sha(
+        _run(_push_run(MOVED, branch="v0.1.0"), _push_run(ORIGINAL)),
+        "--tag",
+        "v0.2.0",
+        "--sha",
+        ORIGINAL,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_check_tag_sha_ignores_dispatch_runs():
+    """A `workflow_dispatch` run's head SHA is whichever ref the operator
+    selected, so it is the tag only by convention. Counting those would turn a
+    re-run launched from `main` into a spurious moved-tag failure."""
+    dispatch = {"event": "workflow_dispatch", "head_branch": "main", "head_sha": MOVED}
+    result = run_check_tag_sha(
+        _run(dispatch, _push_run(ORIGINAL)), "--tag", "v0.2.0", "--sha", ORIGINAL
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_check_tag_sha_accepts_the_long_ref_form():
+    result = run_check_tag_sha(
+        _run(_push_run(ORIGINAL, branch="refs/tags/v0.2.0")), "--tag", "v0.2.0", "--sha", ORIGINAL
+    )
+    assert result.returncode == 0, result.stderr
+    assert "1 earlier run(s)" in result.stdout
+
+
+@pytest.mark.parametrize("payload", ["", "<html>502 Bad Gateway</html>", "{not json"])
+def test_check_tag_sha_fails_closed_on_an_unreadable_response(payload):
+    """`gh api` failing leaves the pipe empty. Read as "no earlier runs" that
+    would wave through exactly the case this gate exists to catch."""
+    result = run_check_tag_sha(payload, "--tag", "v0.2.0", "--sha", ORIGINAL)
+    assert result.returncode == 1
+    assert "could not parse" in result.stderr
+
+
+def test_check_tag_sha_reports_every_distinct_sha():
+    result = run_check_tag_sha(
+        _run(
+            _push_run(ORIGINAL, created_at="2026-01-01T00:00:00Z"),
+            _push_run(MOVED, created_at="2026-01-02T00:00:00Z"),
+        ),
+        "--tag",
+        "v0.2.0",
+        "--sha",
+        "c" * 40,
+    )
+    assert result.returncode == 1
+    assert ORIGINAL in result.stderr and MOVED in result.stderr
+    assert "2026-01-01T00:00:00Z" in result.stderr
 
 
 # ------------------------------------------------------------ cross-script

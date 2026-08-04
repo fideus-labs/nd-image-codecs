@@ -73,6 +73,12 @@ jobs:
       version: ${{ steps.parse.outputs.version }}
       prerelease: ${{ steps.parse.outputs.prerelease }}
       npm-tag: ${{ steps.parse.outputs.npm-tag }}
+      # The commit the tag pointed at *when it was gated below*. This is what
+      # every downstream job checks out — never the tag name. A tag is a
+      # mutable pointer, so re-resolving it in each job would leave a
+      # time-of-check/time-of-use gap: anyone able to move the tag between
+      # this job finishing and `crates-io` starting would publish a commit
+      # that was never gated. Resolving once and passing the SHA closes it.
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -128,6 +134,25 @@ jobs:
           fi
           echo "CI is green for $SHA."
 
+      # Re-running against an existing tag is how a half-published release is
+      # finished, and the skip logic keys on the version rather than the
+      # source — so a tag moved between the first run and the re-run would
+      # publish the remaining packages from a different commit than the ones
+      # already on the registries. Earlier tag-push runs recorded where the
+      # tag pointed; this compares against them. `per_page=100` bounds it to
+      # the last 100 release runs, which is far more than the handful a
+      # re-run follows. Prevention is a tag ruleset — see
+      # docs/development/trusted-publishing.md — and this is the backstop.
+      - name: Require the tag to point where earlier runs saw it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+          TAG: ${{ steps.parse.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPO/actions/workflows/release.yml/runs?per_page=100" |
+            python3 scripts/release/check-tag-sha.py --tag "$TAG" --sha "$SHA"
+
   # The gate that costs the most and catches the most: it packages all seven
   # crates and builds each from its own tarball, which is the only way to learn
   # that a crate is missing a file or naming an unpublishable dependency. The
@@ -142,7 +167,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.meta.outputs.tag }}
+          ref: ${{ needs.meta.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -209,10 +234,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.meta.outputs.tag }}
+          ref: ${{ needs.meta.outputs.sha }}
           # commitizen walks history back to the previous tag to decide the
           # range, so both the commits and the tags have to be present.
+          # `fetch-tags` is required *because* the ref above is a SHA: checkout
+          # passes `--no-tags` for a bare-commit refspec regardless of
+          # `fetch-depth`, and without the tags `cz changelog <tag>` has
+          # nothing to bound the range with and emits an empty section.
           fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -257,7 +287,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.meta.outputs.tag }}
+          ref: ${{ needs.meta.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -309,7 +339,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.meta.outputs.tag }}
+          ref: ${{ needs.meta.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -362,7 +392,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.meta.outputs.tag }}
+          ref: ${{ needs.meta.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -435,7 +465,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.meta.outputs.tag }}
+          ref: ${{ needs.meta.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -510,10 +540,32 @@ jobs:
           # writes an .npmrc with an empty auth token (trusted publishing
           # supplies its own), and a read through that can fail for reasons
           # that have nothing to do with whether the version exists.
-          if curl -fsS -o /dev/null "https://registry.npmjs.org/@fideus-labs%2Fnd-image-codecs/$VERSION"; then
-            echo "@fideus-labs/nd-image-codecs@$VERSION is already on npm — skipping."
-            exit 0
-          fi
+          #
+          # Branching on the status code rather than on curl's exit status,
+          # because `curl -f` fails identically for 404 and for a 503, a DNS
+          # failure, or a TLS error — and reading any of those as "not
+          # published yet" turns a transient registry blip into a publish
+          # attempt that dies on a version conflict. Anything but 200 or 404
+          # stops the job with the release intact, to be re-run later.
+          # No `-f`: curl still classifies 5xx for `--retry` without it, and
+          # leaving it off is what makes `%{http_code}` the single thing this
+          # branches on. `|| status=000` covers the failures that never got a
+          # status at all — DNS, TLS, connection refused past the retries.
+          status=$(curl -sS --retry 3 --retry-connrefused --connect-timeout 10 \
+            -o /dev/null -w '%{http_code}' \
+            "https://registry.npmjs.org/@fideus-labs%2Fnd-image-codecs/$VERSION") || status=000
+          case "$status" in
+            200)
+              echo "@fideus-labs/nd-image-codecs@$VERSION is already on npm — skipping."
+              exit 0
+              ;;
+            404) echo "@fideus-labs/nd-image-codecs@$VERSION is not on npm yet — publishing." ;;
+            *)
+              echo "::error::npm registry answered $status for @fideus-labs/nd-image-codecs@$VERSION."
+              echo "Cannot tell whether this version is already published; re-run once npm is healthy."
+              exit 1
+              ;;
+          esac
           npm publish --access public --tag "$NPM_TAG"
 
   # The unscoped name, held so nobody else takes it. README and package.json
@@ -529,7 +581,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.meta.outputs.tag }}
+          ref: ${{ needs.meta.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -553,10 +605,24 @@ jobs:
           VERSION: ${{ needs.meta.outputs.version }}
           NPM_TAG: ${{ needs.meta.outputs.npm-tag }}
         run: |
-          if curl -fsS -o /dev/null "https://registry.npmjs.org/nd-image-codecs/$VERSION"; then
-            echo "nd-image-codecs@$VERSION is already on npm — skipping."
-            exit 0
-          fi
+          # Same status-code handling as the scoped package above: only a 404
+          # means "not published", and anything else stops the job rather than
+          # letting a registry outage look like a free version number.
+          status=$(curl -sS --retry 3 --retry-connrefused --connect-timeout 10 \
+            -o /dev/null -w '%{http_code}' \
+            "https://registry.npmjs.org/nd-image-codecs/$VERSION") || status=000
+          case "$status" in
+            200)
+              echo "nd-image-codecs@$VERSION is already on npm — skipping."
+              exit 0
+              ;;
+            404) echo "nd-image-codecs@$VERSION is not on npm yet — publishing." ;;
+            *)
+              echo "::error::npm registry answered $status for nd-image-codecs@$VERSION."
+              echo "Cannot tell whether this version is already published; re-run once npm is healthy."
+              exit 1
+              ;;
+          esac
           npm publish --tag "$NPM_TAG"
 
   # ---------------------------------------------------------------- assemble
