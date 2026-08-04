@@ -360,6 +360,9 @@ fn thumbnail_plans_stay_within_the_bytes_per_pixel_budget() {
         .map(|d| d.as_u64().unwrap())
         .product();
     let bytes = plan["total_bytes"].as_u64().unwrap();
+    // Micro-fixture magnitudes; the lossy cast is exact here and the budget
+    // is a coarse tripwire either way.
+    #[allow(clippy::cast_precision_loss)]
     let per_pixel = bytes as f64 / pixels as f64;
     assert!(
         per_pixel <= 2.0,
@@ -385,6 +388,7 @@ fn thumbnail_plans_stay_within_the_bytes_per_pixel_budget() {
         .map(|d| d.as_u64().unwrap())
         .product();
     let bytes = plan["total_bytes"].as_u64().unwrap();
+    #[allow(clippy::cast_precision_loss)]
     let per_voxel = bytes as f64 / voxels as f64;
     assert!(
         per_voxel <= 4.0,

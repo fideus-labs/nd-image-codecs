@@ -24,6 +24,7 @@ ndic-core.workspace = true
 ndic-codestream.workspace = true
 ndic-lift = { workspace = true, features = ["serde"] }
 ndic-zarr.workspace = true
+ndic-zfp = { workspace = true, features = ["serde"] }
 serde = { workspace = true, optional = true }
 serde_json.workspace = true
 clap.workspace = true

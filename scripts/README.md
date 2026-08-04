@@ -14,7 +14,7 @@ Helper scripts, created as their roadmap phases land:
 | `range-demo.sh` | 2 | Execute an `ndic index` plan with curl against a static server |
 | `profile.sh` | 6 | `perf record`/flamegraph wrapper for one bench workload (workspace `profiling` profile) |
 | `asm.sh` | 5 | Inspect release codegen of hot functions per SIMD lane |
-| `ci/check-usage-docs.sh` | 6 | Extract + run every code block in docs/usage/* |
+| `ci/check-usage-docs.py` | 6 | Extract and execute every code block in `docs/usage/*` against the current API (the `usage-docs` CI job) |
 
 See [docs/development/test-data.md](../docs/development/test-data.md) and the
 [roadmap](../docs/development/roadmap/index.md).

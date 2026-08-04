@@ -1050,6 +1050,7 @@ dependencies = [
  "ndic-core",
  "ndic-lift",
  "ndic-zarr",
+ "ndic-zfp",
  "png",
  "serde",
  "serde_json",
