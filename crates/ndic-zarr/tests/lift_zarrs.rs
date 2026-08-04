@@ -38,7 +38,7 @@ fn named_data_type(dtype_name: &str) -> (DataType, usize) {
     }
 }
 
-/// The Phase 2 validation pipeline over a `(z, c, y, x)` chunk: transpose to
+/// The `nd_lift` validation pipeline over a `(z, c, y, x)` chunk: transpose to
 /// `(c, z, y, x)`, lift along z, then stock `bytes → blosc`.
 fn build_array(store: Arc<MemoryStore>, dtype_name: &str, kind: &str) -> Array<MemoryStore> {
     let (_, size) = named_data_type(dtype_name);

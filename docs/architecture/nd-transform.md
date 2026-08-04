@@ -4,8 +4,7 @@ short_title: nd_lift Transform
 description: nd_lift is a registered Zarr v3 array-to-array codec that captures correlation along the z, time, and channel axes of a scientific volume without JPEG 2000 Part 2.
 ---
 
-**Crate:** [`ndic-lift`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-lift) · **Roadmap:**
-[Phase 2](../development/roadmap/phase-2-nd-lift.md) · **Codec version:** `0.1`
+**Crate:** [`ndic-lift`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-lift) · **Codec version:** `0.1`
 
 `nd_lift` is the codec that lets nd-image-codecs capture correlation along the
 non-spatial axes (z, time, channel) of a scientific volume **without JPEG 2000
@@ -46,7 +45,7 @@ Each entry in `transforms` is one 1D transform applied along one axis:
 | --- | --- |
 | `axis` | Human-readable axis name (`"z"`, `"t"`, `"c"`, …); informational. |
 | `dimension` | The axis's index into the **post-transpose** chunk shape — this is what the decoder uses. |
-| `kind` | `delta`, `haar`, or `lift53` (9/7 float lifting is the Phase 4 lossy extension). |
+| `kind` | `delta`, `haar`, or `lift53` (9/7 float lifting is a planned lossy extension). |
 | `levels` | Dyadic decomposition levels for lifting kinds; ignored for `delta`. |
 | `group` | Group length along the axis; `0` = the whole chunk extent. Bounds decode amplification and working memory. |
 
@@ -59,7 +58,7 @@ Transforms are applied in listed order on encode and in reverse on decode.
 | `delta` | `r[i] = x[i] − x[i−1]`, `r[0] = x[0]` | Yes (integers) | Fastest; single lifting step; longest dependency chain, bounded by `group`. |
 | `haar` | Reversible integer Haar lifting: `d = x₁ − x₀`, `s = x₀ + ⌊d/2⌋` | Yes (integers) | Compact support (2 samples); good for short axes. |
 | `lift53` | Le Gall 5/3 integer lifting (predict + update), T.800 rounding | Yes (integers) | Better smooth-signal decorrelation; needs symmetric boundary handling. |
-| `lift97` *(Phase 4)* | CDF 9/7 float lifting + per-band quantization | No | Lossy; higher ratio; pairs with lossy `htj2k`. |
+| `lift97` *(planned)* | CDF 9/7 float lifting + per-band quantization | No | Lossy; higher ratio; pairs with lossy `htj2k`. |
 
 ## Lifting math (5/3)
 
@@ -133,4 +132,4 @@ refuse unknown major versions rather than silently mis-decoding.
   against it, so the implementations cannot drift apart.
 - Cross-validation: an `nd_lift`-then-`htj2k` volume decoded through the Python
   binding and checked against the NumPy reference implementation of the same
-  lifting math (Phase 6).
+  lifting math.

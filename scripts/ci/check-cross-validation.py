@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Phase 6 cross-ecosystem validation matrix.
+"""The cross-ecosystem validation matrix.
 
 For every case in ``fixtures/cross-validation/cases.json``, writes a Zarr v3
 store with each of the three ecosystems and reads every store back with all

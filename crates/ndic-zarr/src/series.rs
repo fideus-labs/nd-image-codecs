@@ -19,7 +19,7 @@
 //!   dimensions with index lists.
 //!
 //! The same algorithm is mirrored by `nd_image_codecs.codec_series` in the
-//! Python package and `codecSeries` in the TypeScript package; Phase 1 CI
+//! Python package and `codecSeries` in the TypeScript package; CI
 //! cross-checks all three. See `docs/architecture/codec-series.md`.
 
 use ndic_lift::LiftKind;

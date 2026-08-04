@@ -1,7 +1,7 @@
 """Third-party validation against ``imagecodecs`` (JPEG 2000 and delta).
 
 Where codec semantics overlap, ``imagecodecs`` must accept our output and we
-must accept its — the Phase 6 third-party lane of the validation matrix:
+must accept its — the third-party lane of the validation matrix:
 
 - **JPEG 2000**: every plane codestream inside an ``htj2k`` chunk container
   is a conforming Part 15 (HTJ2K) codestream, so ``imagecodecs.jpeg2k_decode``

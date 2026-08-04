@@ -18,10 +18,10 @@ TypeScript bindings, built for OME-Zarr / OME-NGFF.
 :::{admonition} Early-stage project
 :class: warning
 
-nd-image-codecs is at version **0.0.1**, a name-reservation release. The
-`codec_series` builder is fully implemented and validated across all three
-language implementations; the **codec encode/decode paths are still scaffolds**
-and land across the six [roadmap phases](development/roadmap/index.md). See
+nd-image-codecs is at version **0.1.0**, the first release with working codecs.
+`nd_lift`, `htj2k`, and `zfp` encode and decode for real, and the `codec_series`
+builder is validated byte-identical across all three language implementations.
+The API is not stable before 1.0. See
 [publishing](development/publishing.md) for the accurate current status of
 every published artifact.
 :::
@@ -59,7 +59,6 @@ scientific volumes compressible.
 | [Architecture](architecture/index.md) | The design: the codec-series builder, the `nd_lift` transform, the HTJ2K plane codec and block coder, the ZFP port, codestream syntax, and range access |
 | [Usage](usage/index.md) | Task-oriented guides for Zarr/OME-Zarr, the `ndic` CLI, Rust, Python, TypeScript, and thumbnails/streaming |
 | [Development](development/index.md) | Everyday commands, benchmarking, test data, publishing, commit format, and Rust style |
-| [Roadmap](development/roadmap/index.md) | The six implementation phases, in strict order, with acceptance criteria |
 
 New to the project? Read the [architecture overview](architecture/overview.md)
 for the mental model, then the [usage guide](usage/index.md) matching your

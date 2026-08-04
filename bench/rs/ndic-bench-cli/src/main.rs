@@ -27,9 +27,9 @@ use ndic_bench_core::{Baseline, BenchConfig, BenchEntry, BenchRecord, DiffRow, l
 
 mod report;
 // The workloads themselves: compiled into this binary, they register with
-// `inventory` at link time and are never named directly. Rust workloads land
-// with each codec's roadmap phase; the Phase 1 nd-delta lanes are Python-side
-// (see bench/py/).
+// `inventory` at link time and are never named directly. The nd-delta lanes
+// are Python-side instead (see bench/py/), since that family is built from
+// stock zarr-python codecs.
 mod workloads;
 
 /// Output format for reports.
@@ -259,7 +259,7 @@ fn run(
     }
     if entries.is_empty() && !quiet {
         eprintln!(
-            "ndic-bench: no Rust benchmarks registered (Phase 1 nd-delta lanes are \
+            "ndic-bench: no Rust benchmarks registered (the nd-delta lanes are \
              Python-side; see bench/py/). Records dir: {}",
             root.display()
         );
@@ -290,7 +290,7 @@ fn main() -> ExitCode {
             entries.sort_by_key(|e| (e.module, e.name));
             if entries.is_empty() {
                 println!(
-                    "no Rust benchmarks registered yet — the Phase 1 nd-delta lanes are \
+                    "no Rust benchmarks registered yet — the nd-delta lanes are \
                      Python-side (bench/py/run_nd_delta.py)"
                 );
             }

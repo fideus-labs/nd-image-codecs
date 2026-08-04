@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Execute every code block in ``docs/usage/*.md``.
 
-The Phase 6 usage-docs gate. A snippet on the documentation site is a promise
+The usage-docs gate. A snippet on the documentation site is a promise
 about the current API; this runs each one so the promise is checked rather
 than asserted.
 

@@ -1,7 +1,7 @@
 /**
  * zarrita.js writer/reader for the cross-ecosystem validation matrix.
  *
- * One corner of the Phase 6 matrix: `write` builds the codec pipeline with
+ * One corner of the matrix: `write` builds the codec pipeline with
  * the TypeScript `codecSeries` builder, creates a Zarr v3 array through
  * zarrita.js with our WASM codec classes registered, and stores the raw
  * input bytes; `read` decodes any store written by this script,

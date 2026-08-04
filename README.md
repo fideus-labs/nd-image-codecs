@@ -17,7 +17,7 @@
 
 <p align="center">
   📖 <a href="https://nd-image-codecs.readthedocs.io/en/latest/"><strong>Read the documentation</strong></a>
-  — architecture, usage guides, and the roadmap, rendered and searchable.
+  — architecture, usage guides, and contributor docs, rendered and searchable.
 </p>
 
 <p align="center">
@@ -108,9 +108,9 @@ codecs = codec_series(["t", "c", "z", "y", "x"], [8, 1, 32, 256, 256],
                       "uint16", "nd-lift-ht")
 ```
 
-> The codec encode/decode paths are scaffolded; the `codec_series` builder is
-> fully implemented today. Codecs land across the six
-> [roadmap phases](docs/development/roadmap/index.md).
+> All three families encode and decode for real as of 0.1.0. The API is not
+> stable before 1.0 — see [publishing](docs/development/publishing.md) for what
+> is on each registry.
 
 ## 🛠️ Development
 
@@ -136,7 +136,7 @@ nd-image-codecs/
 ├── crates/            # Rust core (core, lift, htj2k, codestream, zfp, zarr, cli)
 ├── bindings/          # python/ (PyO3+maturin), typescript/ (wasm-bindgen)
 ├── bench/             # benchmark driver, baselines, viewer, docs
-├── docs/              # architecture/, development/ (incl. roadmap/), usage/
+├── docs/              # architecture/, development/, usage/
 ├── scripts/           # CI and development helper scripts
 └── .github/workflows/ # ci.yml, bench-pr-gate.yml
 ```
@@ -162,14 +162,14 @@ Read the Docs setup: [docs/development/read-the-docs.md](docs/development/read-t
 
 - [Architecture](docs/architecture/index.md) — the codec series builder, the `nd_lift` transform, the HTJ2K plane codec, the ZFP port, codestream syntax, and range access
 - [Development](docs/development/) — commands, style, commits, benchmarking, test data, [publishing](docs/development/publishing.md)
-- [Roadmap](docs/development/roadmap/index.md) — six implementation phases with detailed guidance and references
 - [Usage](docs/usage/index.md) — CLI, Rust, Python, TypeScript, and Zarr/OME-Zarr guides
 
 ## 🤝 Contributing
 
 Start with [AGENTS.md](AGENTS.md) for the repository map and conventions, and the
-[roadmap](docs/development/roadmap/index.md) for what to build next. All participation is
-governed by our [Code of Conduct](CODE_OF_CONDUCT.md).
+[open issues](https://github.com/fideus-labs/nd-image-codecs/issues) for what to
+pick up next. All participation is governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## 📄 License
 

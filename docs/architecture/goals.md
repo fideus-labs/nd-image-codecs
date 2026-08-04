@@ -37,12 +37,13 @@ description: What nd-image-codecs optimizes for — composability, explicit cros
   pipelines so metadata authored anywhere is portable.
 - **Cross-ecosystem validation as a contract.** Pipelines are validated against
   `imagecodecs` (ZFP, JPEG 2000, delta) through `zarr-python` — our encoder's
-  output decodes with third-party codecs and vice-versa (see roadmap Phase 6).
+  output decodes with third-party codecs and vice-versa (see
+  [validating with independent implementations](../usage/zarr.md)).
 - **Benchmarks as a contract.** Every performance-sensitive change runs against
   committed baselines with a ≥10 % + noise-envelope regression gate in CI,
   including comparison lanes against `imagecodecs` and reference ZFP.
-- **Agent-discoverable docs.** Hierarchical documentation (index → topic →
-  phase) written so both humans and coding agents can locate exactly the
+- **Agent-discoverable docs.** Hierarchical documentation (index → section →
+  topic) written so both humans and coding agents can locate exactly the
   context they need.
 
 ## Non-Goals

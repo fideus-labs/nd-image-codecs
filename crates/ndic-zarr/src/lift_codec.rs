@@ -5,7 +5,7 @@
 //! into its coefficient plane (`int32` for input data types of at most 32
 //! bits, `int64` for 64-bit input), decorrelated along the configured axes,
 //! and handed on; decode narrows back after the inverse transform. The codec
-//! composes with stock `zarrs` codecs — the Phase 2 validation series is
+//! composes with stock `zarrs` codecs — the validation series is
 //! `transpose → nd_lift → bytes → blosc` — and refuses configurations whose
 //! version this build does not implement.
 

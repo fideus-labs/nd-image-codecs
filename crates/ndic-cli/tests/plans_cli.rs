@@ -335,7 +335,7 @@ fn thumbnail_over_http_range_requests() {
     assert!(reported < total, "{stdout}");
 }
 
-/// Phase 6 range-access audit: a thumbnail plan must fetch a bounded number
+/// Range-access audit: a thumbnail plan must fetch a bounded number
 /// of bytes per decoded pixel. The budgets are regression tripwires with
 /// headroom over measured values (~1.0 B/px for the 8-bit gradient,
 /// ~2.2 B/voxel for the lifted chunk preview at --max 16, where the

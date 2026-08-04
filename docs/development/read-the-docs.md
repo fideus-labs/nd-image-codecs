@@ -198,8 +198,8 @@ Until there is a real release, leave `latest` as the default version so
 <https://nd-image-codecs.readthedocs.io/> redirects to
 <https://nd-image-codecs.readthedocs.io/en/latest/>. After 0.0.1 ships, decide
 deliberately whether readers should land on `stable` (the released codecs) or
-`latest` (the current `main`) — while the roadmap phases are unfinished, `latest`
-is the more useful landing page.
+`latest` (the current `main`) — while the API is still moving before 1.0,
+`latest` is the more useful landing page.
 
 Feature branches get their own versions and default to inactive. Leave them that
 way; pull request previews already cover in-flight work.

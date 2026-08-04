@@ -91,15 +91,6 @@ project:
         - file: development/commits.md
         - file: development/style/rust.md
         - file: development/decisions/adr-001-documentation-toolchain.md
-    - title: Roadmap
-      children:
-        - file: development/roadmap/index.md
-        - file: development/roadmap/phase-1-baselines-and-series.md
-        - file: development/roadmap/phase-2-nd-lift.md
-        - file: development/roadmap/phase-3-htj2k-core.md
-        - file: development/roadmap/phase-4-nd-lift-ht.md
-        - file: development/roadmap/phase-5-nd-zfp.md
-        - file: development/roadmap/phase-6-validation-and-docs.md
 
 site:
   # Pinned to the commit upstream published as book-theme v1.3.1, not the bare
@@ -117,7 +108,7 @@ site:
   # https://github.com/myst-templates/book-theme; to upgrade, swap the sha for
   # the next release commit and rerun `npm run check`.
   template: https://github.com/myst-templates/book-theme/archive/45706bcb9ac02b6713270785e3fc22eda348ed3b.zip
-  # Header navigation: the four section landing pages. The sidebar already
+  # Header navigation: the three section landing pages. The sidebar already
   # lists every page, so this is a shortcut to the top of each section, not a
   # second table of contents.
   nav:
@@ -127,12 +118,10 @@ site:
       url: /usage
     - title: Development
       url: /development
-    - title: Roadmap
-      url: /development/roadmap
   options:
     # Mirror the `docs/` folder structure into URLs. Without this, mystmd
     # flattens every page to its basename and deduplicates with a counter, so
-    # the four section indexes become /index-1 … /index-4 and
+    # the three section indexes become /index-1 … /index-3 and
     # development/style/rust.md becomes /rust-1. Those are unusable as `nav`
     # targets and meaningless in a shared link or a search result.
     folders: true

@@ -11,16 +11,14 @@ Zarr v3 codecs assembled by :func:`codec_series` from an array's axis metadata:
 - **nd-zfp** — ``transpose → reshape → zfp``; ZFP blocks with a brick index for GPU
   volume rendering, random access, and predictable memory.
 
-:class:`NdLift` is implemented (roadmap Phase 2): its transform math lives in
-:mod:`nd_image_codecs._lift` (the NumPy port of the Rust ``ndic-lift`` crate,
-pinned bit-identical by the committed conformance vectors) and
-:mod:`nd_image_codecs.zarr_codec` registers it as a ``zarr-python`` v3
-array-to-array codec. ``htj2k`` is implemented (roadmap Phase 4) as
-``zarr_codec.Htj2kCodec``, backed by the native extension module — the same
-Rust core as the ``zarrs`` codec, so both ecosystems produce byte-identical
-chunks; the :class:`Htj2k` class here is its plain configuration mirror.
-:class:`NdZfp` is a scaffold until its roadmap phase lands; see
-``docs/development/roadmap/``.
+:class:`NdLift`'s transform math lives in :mod:`nd_image_codecs._lift` (the
+NumPy port of the Rust ``ndic-lift`` crate, pinned bit-identical by the
+committed conformance vectors) and :mod:`nd_image_codecs.zarr_codec` registers
+it as a ``zarr-python`` v3 array-to-array codec. ``htj2k`` and ``zfp`` are
+``zarr_codec.Htj2kCodec`` and ``zarr_codec.NdZfpCodec``, backed by the native
+extension module — the same Rust core as the ``zarrs`` codecs, so both
+ecosystems produce byte-identical chunks; the :class:`Htj2k` and
+:class:`NdZfp` classes here are their plain configuration mirrors.
 :func:`codec_series` is fully implemented in pure Python and is cross-checked
 against the Rust and TypeScript builders in CI.
 
@@ -50,7 +48,8 @@ except ImportError:  # pragma: no cover - native module not built yet
 
 
 # --------------------------------------------------------------------------
-# Registered codec classes (scaffolds; see roadmap)
+# Registered codec classes (configuration mirrors; see zarr_codec for the
+# zarr-python codecs that run them)
 # --------------------------------------------------------------------------
 class NdLift:
     """Zarr v3 array-to-array cross-axis lifting codec (``nd_lift``).

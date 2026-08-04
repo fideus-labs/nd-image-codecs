@@ -72,7 +72,7 @@ def correlated_zstack(
     shape: tuple[int, int, int, int, int] = (8, 2, 32, 128, 128),
     seed: int = 13,
 ) -> np.ndarray:
-    """The Phase 2 decorrelation-gain fixture: a strongly z/t-correlated stack.
+    """The decorrelation-gain fixture: a strongly z/t-correlated stack.
 
     The same drifting-blob field as :func:`microscopy_volume` but with photon
     shot noise suppressed to σ = 2 counts, so the smooth cross-slice structure

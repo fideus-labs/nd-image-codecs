@@ -4,8 +4,7 @@ short_title: zfp Codec
 description: The zfp codec wraps the pure-Rust zfp-rs implementation of LLNL ZFP for 1D–4D blocks, implementing the zarr-extensions-registered zfp array-to-bytes codec for GPU volume rendering and O(1) random brick access.
 ---
 
-**Crate:** [`ndic-zfp`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zfp) · **Roadmap:**
-[Phase 5](../development/roadmap/phase-5-nd-zfp.md)
+**Crate:** [`ndic-zfp`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zfp)
 
 The `zfp` codec is [LLNL ZFP](https://github.com/LLNL/zfp) for **1D–4D** chunks,
 registered as a Zarr v3 **array-to-bytes** codec. It targets GPU volume

@@ -3,8 +3,7 @@ title: Zarr Codecs
 description: 'How nd-image-codecs plugs into the Zarr v3 codec pipeline across three ecosystems: Rust zarrs, Python zarr-python, and TypeScript/WASM zarrita.js.'
 ---
 
-**Crate:** [`ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) + bindings · **Roadmap:**
-Phases [1](../development/roadmap/phase-1-baselines-and-series.md)–[5](../development/roadmap/phase-5-nd-zfp.md)
+**Crate:** [`ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) + bindings
 
 nd-image-codecs contributes to the Zarr v3 codec pipeline in three ecosystems:
 Rust ([`zarrs`](https://docs.rs/zarrs)), Python
@@ -118,6 +117,6 @@ consulted.
   Python, and TS asserts byte-identical pipelines.
 - Round-trip: encode in Rust → decode in Python and TS on shared fixtures.
 - Third-party validation: decode our output with `imagecodecs` (ZFP, JPEG 2000,
-  delta) via `zarr-python`, and decode `imagecodecs` output with ours (Phase 6).
+  delta) via `zarr-python`, and decode `imagecodecs` output with ours.
 - OME-Zarr integration: write a `0.5` multiscales volume; validate with
   `ome-zarr-py` and `ngff-zarr` readers.

@@ -11,8 +11,7 @@ description: 'The top-level map of the nd-image-codecs architecture documentatio
 
 This index is the top-level map of the nd-image-codecs architecture documentation. Start with
 the overview and goals, then open the topic section that matches the code you are
-working on. Every phase document in the
-[roadmap](../development/roadmap/index.md) links back into these topics.
+working on.
 
 ## Start here
 

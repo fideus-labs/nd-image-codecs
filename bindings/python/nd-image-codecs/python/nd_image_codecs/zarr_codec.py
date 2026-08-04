@@ -5,7 +5,7 @@ Importing this module requires ``zarr >= 3.1`` — the release that introduced
 resolve dtypes through. The codecs are registered with zarr both via the
 ``zarr.codecs`` entry point (when this package is installed) and explicitly
 through :func:`register`, so pipelines authored by
-:func:`nd_image_codecs.codec_series` — the flagship Phase 4 series
+:func:`nd_image_codecs.codec_series` — the flagship nd-lift-ht series
 ``transpose → nd_lift → htj2k`` above all — run end-to-end:
 
 >>> import nd_image_codecs.zarr_codec  # doctest: +SKIP

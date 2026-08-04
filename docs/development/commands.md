@@ -38,8 +38,8 @@ All commands run from the repository root.
 
 | Command | Purpose |
 | --- | --- |
-| `python3 bench/py/run_nd_delta.py` | The Phase 1 nd-delta lanes via `zarr-python` (needs `zarr>=3`) |
-| `python3 bench/py/run_nd_lift.py` | The Phase 2 nd-lift lanes (`transpose → nd_lift → bytes → blosc`) via `zarr-python` |
+| `python3 bench/py/run_nd_delta.py` | The nd-delta lanes via `zarr-python` (needs `zarr>=3`) |
+| `python3 bench/py/run_nd_lift.py` | The nd-lift lanes (`transpose → nd_lift → bytes → blosc`) via `zarr-python` |
 | `cargo run -p ndic-bench-cli --release -- list` | List registered Rust benchmarks |
 | `cargo run -p ndic-bench-cli --release -- run` | Full matrix run, JSON records under `target/benchmarks/` |
 | `cargo run -p ndic-bench-cli --release -- run --filter htj2k --config simd-53-ht` | Subset run |

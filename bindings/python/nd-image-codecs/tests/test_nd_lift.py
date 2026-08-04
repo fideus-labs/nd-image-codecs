@@ -4,7 +4,7 @@ Pins the NumPy transform to the committed conformance vectors
 (``fixtures/nd-lift/vectors.json``) — the same file the Rust test suite
 enforces, so the two implementations cannot drift apart — and validates the
 end-to-end ``transpose → nd_lift → bytes → blosc`` pipeline through
-``zarr-python`` (roadmap Phase 2).
+``zarr-python``.
 """
 
 from __future__ import annotations

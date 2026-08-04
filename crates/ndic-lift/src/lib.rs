@@ -19,8 +19,8 @@
 //! - [`LiftKind::Haar`] — reversible Haar lifting (fast, compact support).
 //! - [`LiftKind::Lift53`] — reversible 5/3-style lifting (better smooth-signal
 //!   decorrelation).
-//! - 9/7-style float lifting + per-band quantization is the lossy extension
-//!   (roadmap Phase 4).
+//! - 9/7-style float lifting + per-band quantization is the lossy extension,
+//!   not yet implemented.
 //!
 //! Transforms are applied within bounded **groups** along each axis (e.g.
 //! 8–32 samples), capping decode amplification and working memory. Use

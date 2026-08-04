@@ -15,10 +15,10 @@
 //! `docs/architecture/codec-series.md`.
 //!
 //! Codecs register into the `zarrs` plugin registry via `inventory` when the
-//! `zarrs` feature is enabled: `nd_lift` in `lift_codec` (Phase 2), `htj2k`
-//! in `htj2k_codec` (Phase 4), `nd_zfp` in `zfp_codec` (Phase 5), and — for
-//! the nd-delta family, which `zarrs` cannot otherwise run —
-//! `numcodecs.delta` in [`delta_codec`] (Phase 6).
+//! `zarrs` feature is enabled: `nd_lift` in `lift_codec`, `htj2k` in
+//! `htj2k_codec`, `nd_zfp` in `zfp_codec`, and — for the nd-delta family,
+//! which `zarrs` cannot otherwise run — `numcodecs.delta` in
+//! [`delta_codec`].
 
 #[cfg(feature = "zarrs")]
 pub mod delta_codec;

@@ -54,7 +54,7 @@ contexts (pr-gate / nightly / on-demand).
 
 ### Python-side lanes (`bench/py/`)
 
-The Phase 1 nd-delta family is composed entirely of existing Zarr codecs, so
+The nd-delta family is composed entirely of existing Zarr codecs, so
 its lanes (`run_nd_delta.py`) exercise the real consumer path — pipelines
 authored by `nd_image_codecs.codec_series`, executed by `zarr-python` — on the
 deterministic synthetic microscopy fixture (`synthetic.py`). They emit the
@@ -68,7 +68,7 @@ median/min/max ns, and raw per-sample ns; codec workloads add
 `bytes_in`/`bytes_out` so compression ratio is tracked alongside throughput.
 Raw samples are kept so the comparer can
 compute noise envelopes without re-running, and so the viewer can plot distributions.
-Phase 6 extends records with `psnr` for rate–distortion gating.
+A `psnr` field for rate–distortion gating is a planned extension.
 
 ### Baselines
 

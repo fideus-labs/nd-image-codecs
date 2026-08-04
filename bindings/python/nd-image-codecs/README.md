@@ -43,10 +43,9 @@ v3 through the `zarr.codecs` entry-point group, so pipelines produced by
 
 ## Status
 
-**Pre-alpha.** The `codec_series` builder is fully implemented and is
-cross-checked against the Rust and TypeScript implementations in CI. The codec
-encode/decode paths are scaffolds — they land across the six
-[roadmap phases](https://github.com/fideus-labs/nd-image-codecs/blob/main/docs/development/roadmap/index.md).
+**Alpha.** `nd_lift`, `htj2k`, and `zfp` encode and decode for real, and the
+`codec_series` builder is cross-checked byte-identical against the Rust and
+TypeScript implementations in CI. The API is not stable before 1.0.
 
 ## Links
 

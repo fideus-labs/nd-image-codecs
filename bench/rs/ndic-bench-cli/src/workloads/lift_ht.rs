@@ -4,7 +4,7 @@
 //! These are what tell the family lanes apart: `simd-53-ht` runs the plane
 //! codec over an undecorrelated chunk (`lift_levels == 0`), `simd-53-lift-z2`
 //! lifts z two levels first — the measured ratio gap between the two *is*
-//! the z-decorrelation gain the roadmap asks the baselines to record. The
+//! the z-decorrelation gain the baselines record. The
 //! fixture mirrors `bench/py/synthetic.correlated_zstack`: smooth in z with
 //! small shot-like noise, the case decorrelation exists for.
 //!

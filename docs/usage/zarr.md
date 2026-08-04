@@ -6,13 +6,10 @@ description: Choosing between the nd-delta, nd-lift-ht, and nd-zfp families and 
 # Zarr & OME-Zarr
 
 :::{note} Status
-The builder and nd-delta work since
-[Phase 1](../development/roadmap/phase-1-baselines-and-series.md); the
-nd-lift-ht family (`transpose → nd_lift → htj2k`) round-trips across zarrs
-and zarr-python since
-[Phase 4](../development/roadmap/phase-4-nd-lift-ht.md); nd-zfp
-(`transpose → reshape → zfp`) since
-[Phase 5](../development/roadmap/phase-5-nd-zfp.md).
+All three families work: the builder and nd-delta from stock codecs, the
+nd-lift-ht family (`transpose → nd_lift → htj2k`), and nd-zfp
+(`transpose → reshape → zfp`) — each round-tripping across zarrs,
+zarr-python, and zarrita.js.
 :::
 
 ## The three families
@@ -121,8 +118,10 @@ plain = imagecodecs.zfp_decode(chunk_bytes)
 np.testing.assert_array_equal(plain, field)
 ```
 
-The [Phase 6 validation matrix](../development/roadmap/phase-6-validation-and-docs.md)
-automates this in CI for ZFP, JPEG 2000, and delta.
+The third-party interop tests
+([`test_imagecodecs_interop.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/bindings/python/nd-image-codecs/tests/test_imagecodecs_interop.py)
+and `test_nd_zfp_roundtrip.py`) automate this in the `python` CI job for ZFP,
+JPEG 2000, and delta.
 
 ## OME-Zarr
 

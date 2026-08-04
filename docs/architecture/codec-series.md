@@ -1,18 +1,17 @@
 ---
 title: Codec Series (the builder)
 short_title: Codec Series
-description: A codec series is a complete Zarr v3 codec pipeline assembled from an array's axis metadata; the codec_series builder is the one component that is fully implemented today.
+description: A codec series is a complete Zarr v3 codec pipeline assembled from an array's axis metadata; the codec_series builder is the primary entry point for users.
 ---
 
 **Crate:** [`ndic-zarr`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zarr) (`series` module) · mirrored in
-the Python and TypeScript bindings · **Roadmap:**
-[Phase 1](../development/roadmap/phase-1-baselines-and-series.md)
+the Python and TypeScript bindings
 
 A **codec series** is a complete Zarr v3 codec pipeline — a `transpose`
 followed by decorrelation and a plane/block codec — that nd-image-codecs
-assembles from an array's axis metadata. The `codec_series` builder is the one
-component that is fully implemented today (pure metadata; it compiles and is
-unit-tested), and it is the primary entry point for users.
+assembles from an array's axis metadata. The `codec_series` builder is pure
+metadata, implemented three times over and cross-checked byte-identical in CI,
+and it is the primary entry point for users.
 
 ## Inputs
 
@@ -144,5 +143,6 @@ to one must be mirrored in the others.
   TypeScript (`bindings/typescript/test/codec-series.test.ts`), plus the
   three-way equality check `scripts/ci/check-series-equality.py` in CI.
 - nd-delta pipelines authored by the builder round-trip real data through
-  `zarr-python` (`tests/test_nd_delta_roundtrip.py`); the full
-  `imagecodecs` matrix lands in Phase 6.
+  `zarr-python` (`tests/test_nd_delta_roundtrip.py`), and the third-party
+  `imagecodecs` lanes (`tests/test_imagecodecs_interop.py`) run alongside them
+  in the `python` CI job.
