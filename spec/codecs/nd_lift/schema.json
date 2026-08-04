@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "const": "nd_lift"
+    },
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": "0.1"
+        },
+        "transforms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "axis": {
+                "type": "string"
+              },
+              "dimension": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "enum": ["delta", "haar", "lift53"]
+              },
+              "levels": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              },
+              "group": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              }
+            },
+            "required": ["dimension", "kind"],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": ["haar", "lift53"]
+                    }
+                  },
+                  "required": ["kind"]
+                },
+                "then": {
+                  "properties": {
+                    "levels": {
+                      "minimum": 1
+                    }
+                  },
+                  "required": ["levels"]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "required": ["version", "transforms"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["name", "configuration"],
+  "additionalProperties": false
+}

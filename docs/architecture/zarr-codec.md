@@ -83,6 +83,23 @@ naming convention pending a formal registration
 nd-delta family uses only already-registered names (`transpose`,
 `numcodecs.delta`, `bytes`, `blosc`).
 
+Specification documents for all three are staged in
+[`spec/codecs/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/codecs)
+in the layout zarr-extensions expects — a `README.md` and a `schema.json` per
+codec — and the schemas are checked against every configuration the builder
+emits, so they cannot drift from the implementations.
+
+One caveat governs `nd_zfp`: zarr-extensions **already registers a `zfp`
+codec** whose stored bytes are identical to ours for the same data and mode.
+Only the name and the handling of chunks above four dimensions differ (`zfp`
+composes with a separate squeeze codec; `nd_zfp` folds the squeeze in and
+declares the result as `dims`). Registering a second name for a byte-identical
+format is not obviously worth it, so adopting `zfp` is the recommendation
+recorded in
+[`spec/README.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/spec/README.md);
+it is a breaking format change and therefore a deliberate decision rather than
+an editorial one.
+
 ## Partial-read synergy
 
 Because each nd-lift-ht plane is an RPCL codestream with `TLM`/`PLT`, and each
