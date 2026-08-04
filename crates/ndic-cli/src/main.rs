@@ -10,6 +10,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 mod commands;
 mod image_io;
 mod plans;
+#[cfg(feature = "zarr")]
+mod zarr_io;
 
 /// nd-image-codecs command-line interface.
 #[derive(Parser)]
@@ -37,6 +39,10 @@ enum Command {
     /// Plan, fetch (local file or HTTP Range), and decode a thumbnail or
     /// low-pass 3D preview in one step.
     Thumbnail(plans::ThumbnailArgs),
+    /// Write / read Zarr v3 filesystem stores with the registered
+    /// nd-image-codecs pipelines (build with `--features zarr`).
+    #[cfg(feature = "zarr")]
+    Zarr(zarr_io::ZarrArgs),
 }
 
 /// Arguments for `ndic series`.
@@ -116,6 +122,8 @@ fn main() {
         Command::Inspect(args) => exit_on_error(commands::inspect(&args)),
         Command::Index(args) => exit_on_error(plans::index(&args)),
         Command::Thumbnail(args) => exit_on_error(plans::thumbnail(&args)),
+        #[cfg(feature = "zarr")]
+        Command::Zarr(args) => exit_on_error(zarr_io::run(&args)),
     }
 }
 

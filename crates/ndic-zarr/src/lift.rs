@@ -389,6 +389,9 @@ mod tests {
         let plane = 70_000i32.to_le_bytes();
         let err = inverse_chunk(&plane, &[1], LiftDtype::U16, &NdLiftConfig::new(Vec::new()))
             .expect_err("70000 does not narrow back to u16");
-        assert!(err.to_string().contains("does not narrow back to u16"), "{err}");
+        assert!(
+            err.to_string().contains("does not narrow back to u16"),
+            "{err}"
+        );
     }
 }

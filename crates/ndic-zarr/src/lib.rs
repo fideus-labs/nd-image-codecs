@@ -16,8 +16,12 @@
 //!
 //! Codecs register into the `zarrs` plugin registry via `inventory` when the
 //! `zarrs` feature is enabled: `nd_lift` in `lift_codec` (Phase 2), `htj2k`
-//! in `htj2k_codec` (Phase 4), and `nd_zfp` in `zfp_codec` (Phase 5).
+//! in `htj2k_codec` (Phase 4), `nd_zfp` in `zfp_codec` (Phase 5), and — for
+//! the nd-delta family, which `zarrs` cannot otherwise run —
+//! `numcodecs.delta` in [`delta_codec`] (Phase 6).
 
+#[cfg(feature = "zarrs")]
+pub mod delta_codec;
 pub mod htj2k;
 #[cfg(feature = "zarrs")]
 pub mod htj2k_codec;
