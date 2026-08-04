@@ -54,7 +54,7 @@ configuration type rejects unknown keys, so this catches a typo before it
 reaches a store:
 
 ```bash
-ndic series --validate-codec '{"name": "nd_zfp", "configuration": {"mode": "fixed_rate", "rate": 8.0, "dims": 3}}'
+ndic series --validate-codec '{"name": "zfp", "configuration": {"mode": "fixed_rate", "rate": 8.0}}'
 ```
 
 ## Compress

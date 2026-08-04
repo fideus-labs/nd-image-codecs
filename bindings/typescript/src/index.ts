@@ -8,7 +8,7 @@
  *
  * - **nd-delta**  — `transpose → numcodecs.delta → bitshuffle → zstd/lz4`
  * - **nd-lift-ht** — `transpose → nd_lift → htj2k`
- * - **nd-zfp**    — `transpose → nd_zfp`
+ * - **nd-zfp**    — `transpose → reshape → zfp`
  *
  * The individual codec classes follow the numcodecs.js convention (one JS
  * wrapper + one .wasm artifact, https://github.com/manzt/numcodecs.js) with a
@@ -28,6 +28,7 @@ export {
   Htj2kZarrita,
   NdLiftZarrita,
   NdZfpZarrita,
+  ReshapeZarrita,
   registerZarritaCodecs,
   type ZarritaChunk,
   type ZarritaChunkMeta,
@@ -390,7 +391,7 @@ export class Htj2k {
 }
 
 export interface NdZfpConfig {
-  name: "nd_zfp";
+  name: "zfp" | "nd_zfp";
   configuration?: {
     mode?: string;
     rate?: number;
@@ -417,56 +418,54 @@ const ND_ZFP_MODES = new Map<string, "rate" | "tolerance" | "precision" | null>(
 ]);
 
 /**
- * The `nd_zfp` Zarr v3 array-to-bytes codec: singleton chunk dimensions
- * squeezed away, the remainder compressed as a `dims`-dimensional ZFP
- * field with the full ZFP header. Backed by the WASM build of the same
- * Rust core as the `zarrs` codec and the Python extension, so every
- * ecosystem produces byte-identical chunks.
+ * The `zfp` Zarr v3 array-to-bytes codec (the zarr-extensions registered
+ * name): chunks compressed as 1-4D ZFP fields with the full ZFP header,
+ * byte-identical to the C library's streams. A configuration carrying the
+ * legacy `dims` member (data written under the deprecated `nd_zfp` name)
+ * selects the old squeeze-and-pad chunk mapping instead. Backed by the
+ * WASM build of the same Rust core as the `zarrs` codec and the Python
+ * extension, so every ecosystem produces byte-identical chunks.
  *
  * `encode`/`decode` operate on little-endian chunk bytes in C order; the
  * chunk `shape`/`dtype` come from the second `fromConfig` argument (an
  * array-to-bytes codec cannot infer them from bytes alone).
  */
 export class NdZfp {
-  static codecName = "nd_zfp" as const;
+  static codecName = "zfp" as const;
 
   constructor(
     public readonly config: NdZfpConfig,
     public readonly meta?: NdZfpChunkMeta,
   ) {
-    const {
-      mode = "reversible",
-      rate,
-      tolerance,
-      precision,
-      dims = 3,
-    } = config.configuration ?? {};
+    const { mode = "reversible", rate, tolerance, precision, dims } = config.configuration ?? {};
     if (!ND_ZFP_MODES.has(mode)) {
-      throw new Error(`nd_zfp: unknown mode ${JSON.stringify(mode)}`);
+      throw new Error(`zfp: unknown mode ${JSON.stringify(mode)}`);
     }
     const needed = ND_ZFP_MODES.get(mode);
     const params = { rate, tolerance, precision } as const;
     for (const [name, value] of Object.entries(params)) {
       if (name === needed && value === undefined) {
-        throw new Error(`nd_zfp: ${mode} mode needs a "${name}"`);
+        throw new Error(`zfp: ${mode} mode needs a "${name}"`);
       }
       if (name !== needed && value !== undefined) {
-        throw new Error(`nd_zfp: ${JSON.stringify(mode)} mode does not take "${name}"`);
+        throw new Error(`zfp: ${JSON.stringify(mode)} mode does not take "${name}"`);
       }
     }
     // Mirror the Rust core's numeric bounds (`ZfpMode::validate`), so a bad
     // configuration fails here rather than inside the WASM call.
     if (rate !== undefined && !(Number.isFinite(rate) && rate > 0)) {
-      throw new Error(`nd_zfp: rate must be a positive finite number, got ${rate}`);
+      throw new Error(`zfp: rate must be a positive finite number, got ${rate}`);
     }
     if (tolerance !== undefined && !(Number.isFinite(tolerance) && tolerance >= 0)) {
-      throw new Error(`nd_zfp: tolerance must be a non-negative finite number, got ${tolerance}`);
+      throw new Error(`zfp: tolerance must be a non-negative finite number, got ${tolerance}`);
     }
     if (precision !== undefined && !(Number.isInteger(precision) && precision >= 1 && precision <= 64)) {
-      throw new Error(`nd_zfp: precision must be an integer in 1..=64, got ${precision}`);
+      throw new Error(`zfp: precision must be an integer in 1..=64, got ${precision}`);
     }
-    if (!Number.isInteger(dims) || dims < 1 || dims > 4) {
-      throw new Error(`nd_zfp: dims must be an integer in 1..=4, got ${dims}`);
+    // Legacy nd_zfp configurations only; the registered `zfp` codec never
+    // writes `dims`.
+    if (dims !== undefined && (!Number.isInteger(dims) || dims < 1 || dims > 4)) {
+      throw new Error(`zfp: dims must be an integer in 1..=4, got ${dims}`);
     }
   }
 
@@ -475,26 +474,20 @@ export class NdZfp {
   }
 
   /** The Zarr v3 codec metadata object (the schema the Rust codec parses). */
-  toDict(): Required<NdZfpConfig> {
-    const {
-      mode = "reversible",
-      rate,
-      tolerance,
-      precision,
-      dims = 3,
-    } = this.config.configuration ?? {};
+  toDict(): { name: "zfp"; configuration: NonNullable<NdZfpConfig["configuration"]> } {
+    const { mode = "reversible", rate, tolerance, precision, dims } = this.config.configuration ?? {};
     const configuration: NonNullable<NdZfpConfig["configuration"]> = { mode };
     if (rate !== undefined) configuration.rate = rate;
     if (tolerance !== undefined) configuration.tolerance = tolerance;
     if (precision !== undefined) configuration.precision = precision;
-    configuration.dims = dims;
-    return { name: "nd_zfp", configuration };
+    if (dims !== undefined) configuration.dims = dims;
+    return { name: "zfp", configuration };
   }
 
   private chunkMeta(): NdZfpChunkMeta {
     if (this.meta === undefined) {
       throw new Error(
-        "nd_zfp encode/decode needs the chunk shape and dtype: " +
+        "zfp encode/decode needs the chunk shape and dtype: " +
           "construct with NdZfp.fromConfig(config, { shape, dtype })",
       );
     }
@@ -552,6 +545,33 @@ const DTYPES: Record<string, [string, number]> = {
   float32: ["<f4", 4],
   float64: ["<f8", 8],
 };
+
+/**
+ * Contiguous input-dimension groups collapsing singletons for `reshape`:
+ * one group per non-singleton dimension, each absorbing the singleton
+ * dimensions before it; trailing singletons merge into the final group, and
+ * an all-singleton shape becomes one group (a 1-element 1D field). Mirrored
+ * exactly by the Rust and Python builders.
+ */
+function reshapeGroups(shape: number[]): number[][] {
+  const groups: number[][] = [];
+  let current: number[] = [];
+  shape.forEach((extent, i) => {
+    current.push(i);
+    if (extent > 1) {
+      groups.push(current);
+      current = [];
+    }
+  });
+  if (current.length > 0) {
+    if (groups.length > 0) {
+      groups[groups.length - 1].push(...current);
+    } else {
+      groups.push(current);
+    }
+  }
+  return groups;
+}
 
 /**
  * Build a Zarr v3 codec pipeline for one nd-image-codecs family. A faithful
@@ -670,12 +690,21 @@ export function codecSeries(
     if (nonsingleton > 4) {
       throw new Error(`nd-zfp needs <=4 non-singleton chunk dimensions, got ${nonsingleton}`);
     }
-    const cfg: Record<string, unknown> = {
-      mode: zfpRate === undefined ? "reversible" : "fixed_rate",
-      dims: Math.max(nonsingleton, 2),
-    };
-    if (zfpRate !== undefined) cfg.rate = zfpRate;
-    codecs.push({ name: "nd_zfp", configuration: cfg });
+    // Collapse singleton dimensions with a `reshape` codec so the chunk
+    // reaching `zfp` is a direct 1-4D field, as the registered codec
+    // specifies. Groups are contiguous post-transpose dimension indices,
+    // one per output dimension; trailing singletons merge into the final
+    // group.
+    const transposed = order.map((d) => chunkShape[d]);
+    if (transposed.some((c) => c === 1)) {
+      codecs.push({
+        name: "reshape",
+        configuration: { shape: reshapeGroups(transposed) },
+      });
+    }
+    const cfg: Record<string, unknown> =
+      zfpRate === undefined ? { mode: "reversible" } : { mode: "fixed_rate", rate: zfpRate };
+    codecs.push({ name: "zfp", configuration: cfg });
   }
 
   return codecs;

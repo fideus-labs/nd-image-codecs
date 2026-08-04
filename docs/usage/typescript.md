@@ -7,7 +7,7 @@ description: 'Using nd-image-codecs from TypeScript and the browser: the codecSe
 # TypeScript / Browser
 
 :::{note} Status
-The `codecSeries` builder and the `nd_lift`, `htj2k`, and `nd_zfp` WASM cores
+The `codecSeries` builder and the `nd_lift`, `htj2k`, and `zfp` WASM cores
 all work (`npm run build:wasm` when working from the source tree). Every
 snippet on this page is executed by CI.
 :::

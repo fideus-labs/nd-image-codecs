@@ -90,7 +90,7 @@ fn htj2k_decode<'py>(
 
 fn zfp_dtype(dtype: &str) -> PyResult<ZfpDtype> {
     ZfpDtype::from_zarr_name(dtype)
-        .ok_or_else(|| PyValueError::new_err(format!("nd_zfp has no path for dtype {dtype:?}")))
+        .ok_or_else(|| PyValueError::new_err(format!("zfp has no path for dtype {dtype:?}")))
 }
 
 fn zfp_config(
@@ -98,7 +98,7 @@ fn zfp_config(
     rate: Option<f64>,
     tolerance: Option<f64>,
     precision: Option<u32>,
-    dims: u8,
+    dims: Option<u8>,
 ) -> NdZfpConfig {
     NdZfpConfig {
         mode: mode.to_owned(),
@@ -109,10 +109,12 @@ fn zfp_config(
     }
 }
 
-/// Encodes a chunk (native-endian elements, C order) into an `nd_zfp` ZFP
-/// stream (full ZFP header + payload).
+/// Encodes a chunk (native-endian elements, C order) into a `zfp` ZFP
+/// stream (full ZFP header + payload). Without `dims` the chunk shape maps
+/// directly onto the 1-4D field (the registered `zfp` semantics); `dims`
+/// selects the legacy `nd_zfp` squeeze-and-pad mapping.
 #[pyfunction]
-#[pyo3(signature = (chunk, shape, dtype, *, mode="reversible", rate=None, tolerance=None, precision=None, dims=3))]
+#[pyo3(signature = (chunk, shape, dtype, *, mode="reversible", rate=None, tolerance=None, precision=None, dims=None))]
 #[allow(clippy::too_many_arguments)]
 // `Vec<usize>`: pyo3 extracts owned collections from Python lists.
 #[allow(clippy::needless_pass_by_value)]
@@ -125,7 +127,7 @@ fn nd_zfp_encode<'py>(
     rate: Option<f64>,
     tolerance: Option<f64>,
     precision: Option<u32>,
-    dims: u8,
+    dims: Option<u8>,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let config = zfp_config(mode, rate, tolerance, precision, dims);
     let dtype = zfp_dtype(dtype)?;
@@ -136,10 +138,10 @@ fn nd_zfp_encode<'py>(
     Ok(PyBytes::new(py, &out))
 }
 
-/// Decodes an `nd_zfp` chunk back to native-endian elements in C order.
+/// Decodes a `zfp` chunk back to native-endian elements in C order.
 /// The stream's header must match the configuration.
 #[pyfunction]
-#[pyo3(signature = (chunk, shape, dtype, *, mode="reversible", rate=None, tolerance=None, precision=None, dims=3))]
+#[pyo3(signature = (chunk, shape, dtype, *, mode="reversible", rate=None, tolerance=None, precision=None, dims=None))]
 #[allow(clippy::too_many_arguments)]
 // `Vec<usize>`: pyo3 extracts owned collections from Python lists.
 #[allow(clippy::needless_pass_by_value)]
@@ -152,7 +154,7 @@ fn nd_zfp_decode<'py>(
     rate: Option<f64>,
     tolerance: Option<f64>,
     precision: Option<u32>,
-    dims: u8,
+    dims: Option<u8>,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let config = zfp_config(mode, rate, tolerance, precision, dims);
     let dtype = zfp_dtype(dtype)?;

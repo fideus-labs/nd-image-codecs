@@ -10,7 +10,7 @@ metadata. Three families are provided:
 
 - **nd-delta** — `transpose → numcodecs.delta → bitshuffle → zstd/lz4` (existing codecs only; fast lossless).
 - **nd-lift-ht** — `transpose → nd_lift → htj2k` (cross-axis lifting + HTJ2K coefficient planes).
-- **nd-zfp** — `transpose → nd_zfp` (ZFP blocks + brick index).
+- **nd-zfp** — `transpose → reshape → zfp` (ZFP blocks + brick index; `zfp` and `reshape` are the zarr-extensions registered names, `nd_zfp` a deprecated read alias).
 
 Cross-axis correlation (z, time, channel) is captured by an **explicit**
 array-to-array codec, `nd_lift`, and never by JPEG 2000 Part 2 (MCT) syntax —
@@ -26,7 +26,7 @@ consult the roadmap before implementing anything.
 | `nd_lift` cross-axis lifting transform | [./crates/ndic-lift/](./crates/ndic-lift/) |
 | HT (FBCOT) block coder | [./crates/ndic-htj2k/](./crates/ndic-htj2k/) |
 | Codestream syntax + indexing (Part 1/15) | [./crates/ndic-codestream/](./crates/ndic-codestream/) |
-| `nd_zfp` ZFP codec (1D–4D, over `zfp-rs`) | [./crates/ndic-zfp/](./crates/ndic-zfp/) |
+| `zfp` ZFP codec (1D–4D, over `zfp-rs`) | [./crates/ndic-zfp/](./crates/ndic-zfp/) |
 | Zarr v3 codecs + `codec_series` builder (Rust + WASM core) | [./crates/ndic-zarr/](./crates/ndic-zarr/) |
 | `ndic` CLI | [./crates/ndic-cli/](./crates/ndic-cli/) |
 | Python binding (PyO3/maturin) | [./bindings/python/nd-image-codecs/](./bindings/python/nd-image-codecs/) |
@@ -127,7 +127,7 @@ consult the roadmap before implementing anything.
 | `wide` | 0.7 | Portable SIMD fallback lanes (native paths use `core::arch`) |
 | `zarrs` | 0.23 | Zarr v3 codec traits + plugin registry (feature-gated) |
 | `inventory` | 0.3 | Link-time registration: zarrs codec + bench entries |
-| `zfp-rs` | 0.1 | Pure-Rust ZFP core, bit-identical to the C reference on little-endian targets (`nd_zfp`) |
+| `zfp-rs` | 0.1 | Pure-Rust ZFP core, bit-identical to the C reference on little-endian targets (the `zfp` codec) |
 | `pyo3` / `numpy` | 0.24 | Python binding, `abi3-py311` |
 | `wasm-bindgen` | 0.2 | TypeScript/WASM binding |
 | `clap` | 4 | `ndic` and `ndic-bench` CLIs |

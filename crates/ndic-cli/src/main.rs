@@ -160,14 +160,15 @@ fn validate_codec(json: &str) -> Result<String, Box<dyn std::error::Error>> {
         "htj2k" => serde_json::to_value(serde_json::from_value::<ndic_zarr::htj2k::Htj2kConfig>(
             configuration,
         )?)?,
-        "nd_zfp" => serde_json::to_value(serde_json::from_value::<ndic_zfp::NdZfpConfig>(
+        // `zfp` is the registered name; `nd_zfp` predates the adoption and
+        // stays readable (its configurations may carry the legacy `dims`).
+        "zfp" | "nd_zfp" => serde_json::to_value(serde_json::from_value::<ndic_zfp::NdZfpConfig>(
             configuration,
         )?)?,
         other => {
-            return Err(format!(
-                "{other:?} is not an nd-image-codecs codec (nd_lift, htj2k, nd_zfp)"
-            )
-            .into());
+            return Err(
+                format!("{other:?} is not an nd-image-codecs codec (nd_lift, htj2k, zfp)").into(),
+            );
         }
     };
     Ok(serde_json::to_string_pretty(&serde_json::json!({
@@ -247,7 +248,7 @@ mod tests {
         for (family, tail) in [
             ("nd-delta", "blosc"),
             ("nd-lift-ht", "htj2k"),
-            ("nd-zfp", "nd_zfp"),
+            ("nd-zfp", "zfp"),
         ] {
             let codecs = series(&["--chunks", "1,1,32,256,256", "--family", family]).unwrap();
             let names: Vec<_> = codecs

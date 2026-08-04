@@ -12,7 +12,7 @@ npm install @fideus-labs/nd-image-codecs
 
 nd-image-codecs is a family of composable Zarr v3 codecs for ND scientific
 images (OME-Zarr / OME-NGFF): cross-axis lifting (`nd_lift`), HTJ2K coefficient
-planes (`htj2k`), and ZFP blocks (`nd_zfp`), assembled into a codec series from
+planes (`htj2k`), and ZFP blocks (`zfp`), assembled into a codec series from
 an array's axis metadata.
 
 This package under the unscoped name exists only to reserve the name and point

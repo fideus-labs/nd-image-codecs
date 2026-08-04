@@ -39,17 +39,18 @@ fn config_for(cfg: &BenchConfig) -> Option<NdZfpConfig> {
     if cfg.family != "nd-zfp" {
         return None;
     }
+    // The fixture chunk is a plain 3D shape, so the registered direct
+    // mapping (`dims: None`) produces the same field — and the same bytes —
+    // as the legacy configuration did.
     Some(if cfg.irreversible {
         NdZfpConfig {
             mode: "fixed_rate".into(),
             rate: Some(RATE),
-            dims: 3,
             ..Default::default()
         }
     } else {
         NdZfpConfig {
             mode: "reversible".into(),
-            dims: 3,
             ..Default::default()
         }
     })

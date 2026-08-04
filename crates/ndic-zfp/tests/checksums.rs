@@ -64,7 +64,7 @@ fn chunk_fixture_is_byte_stable() {
     let config = ndic_zfp::NdZfpConfig {
         mode: "fixed_rate".into(),
         rate: Some(8.0),
-        dims: 3,
+        dims: Some(3),
         ..Default::default()
     };
     let encoded = ndic_zfp::encode_chunk(

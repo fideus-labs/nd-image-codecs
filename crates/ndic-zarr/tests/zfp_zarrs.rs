@@ -240,14 +240,27 @@ fn configuration_round_trips_through_metadata() {
         )
         .expect("configuration");
     let json = serde_json::to_value(&configuration).unwrap();
-    assert_eq!(
-        json,
-        json!({ "mode": "fixed_rate", "rate": 8.0, "dims": 3 })
-    );
+    // The registered `zfp` semantics: no `dims` in, none out.
+    assert_eq!(json, json!({ "mode": "fixed_rate", "rate": 8.0 }));
 
-    // The defaults: reversible over 3 dims, no mode parameters emitted.
+    // The defaults: reversible, no mode parameters emitted.
     let codec =
         NdZfpCodec::new_with_configuration(&serde_json::from_value(json!({})).unwrap()).unwrap();
+    let configuration = codec
+        .configuration(
+            zarrs::plugin::ZarrVersion::V3,
+            &zarrs::array::codec::api::CodecMetadataOptions::default(),
+        )
+        .expect("configuration");
+    let json = serde_json::to_value(&configuration).unwrap();
+    assert_eq!(json, json!({ "mode": "reversible" }));
+
+    // A legacy `nd_zfp` configuration keeps its `dims` through the round
+    // trip, so re-serialized metadata still decodes old chunks the old way.
+    let codec = NdZfpCodec::new_with_configuration(
+        &serde_json::from_value(json!({ "mode": "reversible", "dims": 3 })).unwrap(),
+    )
+    .unwrap();
     let configuration = codec
         .configuration(
             zarrs::plugin::ZarrVersion::V3,
@@ -303,8 +316,8 @@ fn malformed_chunks_error_cleanly() {
     }
 }
 
-/// Every `nd_zfp` configuration the cross-language `codec_series` builders
-/// emit must construct through the registry.
+/// Every `zfp` (and `reshape`) configuration the cross-language
+/// `codec_series` builders emit must construct through the registry.
 #[test]
 fn accepts_every_series_builder_configuration() {
     let path = concat!(
@@ -320,17 +333,17 @@ fn accepts_every_series_builder_configuration() {
             continue;
         };
         for codec in expected {
-            if codec["name"] == "nd_zfp" {
+            if codec["name"] == "zfp" || codec["name"] == "reshape" {
                 codec_from_json(codec.clone()).unwrap_or_else(|err| {
                     panic!(
-                        "builder-emitted nd_zfp configuration must be accepted \
+                        "builder-emitted {} configuration must be accepted \
                          (case {:?}): {err}",
-                        case["name"]
+                        codec["name"], case["name"]
                     )
                 });
                 seen += 1;
             }
         }
     }
-    assert!(seen > 0, "the fixture matrix must exercise nd_zfp configs");
+    assert!(seen > 0, "the fixture matrix must exercise zfp configs");
 }

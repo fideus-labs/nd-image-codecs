@@ -39,7 +39,7 @@ from . import _lift
 if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, NDBuffer
 
-__all__ = ["Htj2kCodec", "NdLiftCodec", "NdZfpCodec", "register"]
+__all__ = ["Htj2kCodec", "NdLiftCodec", "NdZfpCodec", "ReshapeCodec", "register"]
 
 
 @dataclass(frozen=True)
@@ -252,9 +252,10 @@ _ND_ZFP_MODES: dict[str, str | None] = {
 
 @dataclass(frozen=True)
 class NdZfpCodec(ArrayBytesCodec):
-    """The ``nd_zfp`` ZFP codec: singleton chunk dimensions squeezed away,
-    the remainder compressed as a ``dims``-dimensional ZFP field with the
-    full ZFP header (``docs/architecture/zfp.md``)."""
+    """The ``zfp`` codec: chunks compressed as 1-4D ZFP fields with the full
+    ZFP header (``docs/architecture/zfp.md``). Also answers to the deprecated
+    ``nd_zfp`` name, whose configurations carry a legacy ``dims`` selecting
+    the old squeeze-and-pad chunk mapping."""
 
     is_fixed_size = False
 
@@ -262,41 +263,44 @@ class NdZfpCodec(ArrayBytesCodec):
     rate: float | None = None
     tolerance: float | None = None
     precision: int | None = None
-    dims: int = 3
+    dims: int | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in _ND_ZFP_MODES:
-            raise ValueError(f"nd_zfp: unknown mode {self.mode!r}")
+            raise ValueError(f"zfp: unknown mode {self.mode!r}")
         needed = _ND_ZFP_MODES[self.mode]
         for name in ("rate", "tolerance", "precision"):
             value = getattr(self, name)
             if name == needed and value is None:
-                raise ValueError(f'nd_zfp: {self.mode} mode needs a "{name}"')
+                raise ValueError(f'zfp: {self.mode} mode needs a "{name}"')
             if name != needed and value is not None:
-                raise ValueError(f"nd_zfp: {self.mode!r} mode does not take {name!r}")
+                raise ValueError(f"zfp: {self.mode!r} mode does not take {name!r}")
         # Mirror the Rust core's numeric bounds (`ZfpMode::validate`), so a
         # bad configuration fails here rather than inside the native call.
         if self.rate is not None and not (math.isfinite(self.rate) and self.rate > 0):
-            raise ValueError(f"nd_zfp: rate must be a positive finite number, got {self.rate}")
+            raise ValueError(f"zfp: rate must be a positive finite number, got {self.rate}")
         if self.tolerance is not None and not (
             math.isfinite(self.tolerance) and self.tolerance >= 0
         ):
             raise ValueError(
-                f"nd_zfp: tolerance must be a non-negative finite number, got {self.tolerance}"
+                f"zfp: tolerance must be a non-negative finite number, got {self.tolerance}"
             )
         if self.precision is not None and not (
             isinstance(self.precision, int) and 1 <= self.precision <= 64
         ):
-            raise ValueError(f"nd_zfp: precision must be an integer in 1..=64, got {self.precision}")
-        if not 1 <= int(self.dims) <= 4:
-            raise ValueError("nd_zfp: dims must be in 1..=4")
+            raise ValueError(f"zfp: precision must be an integer in 1..=64, got {self.precision}")
+        if self.dims is not None and not 1 <= int(self.dims) <= 4:
+            raise ValueError("zfp: dims must be in 1..=4")
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration = parse_named_configuration(
-            data, "nd_zfp", require_configuration=False
-        )
-        return cls(**(configuration or {}))  # type: ignore[arg-type]
+        # `zfp` is the registered name; `nd_zfp` predates the adoption and
+        # stays readable.
+        name = data.get("name")
+        if name not in ("zfp", "nd_zfp"):
+            raise ValueError(f"expected the zfp codec (or its nd_zfp alias), got {name!r}")
+        configuration = data.get("configuration") or {}
+        return cls(**configuration)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         configuration: dict[str, JSON] = {"mode": self.mode}
@@ -304,8 +308,9 @@ class NdZfpCodec(ArrayBytesCodec):
             value = getattr(self, name)
             if value is not None:
                 configuration[name] = value
-        configuration["dims"] = self.dims
-        return {"name": "nd_zfp", "configuration": configuration}
+        if self.dims is not None:
+            configuration["dims"] = self.dims
+        return {"name": "zfp", "configuration": configuration}
 
     def _mode_kwargs(self) -> dict[str, Any]:
         return {
@@ -319,7 +324,7 @@ class NdZfpCodec(ArrayBytesCodec):
     def validate(self, *, shape: tuple[int, ...], dtype: Any, chunk_grid: Any) -> None:
         name = dtype.to_native_dtype().name
         if name not in _ND_ZFP_DTYPES:
-            raise ValueError(f"nd_zfp has no path for dtype {name!r}")
+            raise ValueError(f"zfp has no path for dtype {name!r}")
 
     async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
         data = np.ascontiguousarray(chunk_array.as_numpy_array())
@@ -347,13 +352,105 @@ class NdZfpCodec(ArrayBytesCodec):
         return chunk_spec.prototype.nd_buffer.from_numpy_array(data)
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError("nd_zfp chunks have no fixed encoded size")
+        raise NotImplementedError("zfp chunks have no fixed encoded size")
+
+
+@dataclass(frozen=True)
+class ReshapeCodec(ArrayArrayCodec):
+    """The ``reshape`` codec (zarr-extensions): C-order-preserving reshape.
+
+    Implements the subset of the specification the codec-series builder
+    emits and validates the rest: each ``shape`` entry is a positive size, a
+    strictly increasing list of input dimensions whose extents multiply into
+    the output extent, or a single ``-1`` inferred from the remaining
+    extents. The nd-zfp family uses it to collapse singleton chunk
+    dimensions so the ``zfp`` codec receives a direct 1-4D field.
+    """
+
+    is_fixed_size = True
+
+    shape: tuple[Any, ...] = ()
+
+    def __init__(self, *, shape: list[Any] | tuple[Any, ...]) -> None:
+        object.__setattr__(self, "shape", tuple(
+            tuple(entry) if isinstance(entry, (list, tuple)) else entry for entry in shape
+        ))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
+        _, configuration = parse_named_configuration(data, "reshape")
+        return cls(**(configuration or {}))  # type: ignore[arg-type]
+
+    def to_dict(self) -> dict[str, JSON]:
+        shape = [list(entry) if isinstance(entry, tuple) else entry for entry in self.shape]
+        return {"name": "reshape", "configuration": {"shape": shape}}
+
+    def _output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
+        out: list[int] = []
+        inferred_at: int | None = None
+        used_dims: list[int] = []
+        for i, entry in enumerate(self.shape):
+            if isinstance(entry, tuple):
+                if any(not 0 <= d < len(input_shape) for d in entry):
+                    raise ValueError(f"reshape: input dims {entry} out of range for {input_shape}")
+                used_dims.extend(entry)
+                out.append(int(np.prod([input_shape[d] for d in entry], dtype=np.int64)))
+            elif entry == -1:
+                if inferred_at is not None:
+                    raise ValueError("reshape: at most one -1 entry is allowed")
+                inferred_at = i
+                out.append(-1)
+            elif isinstance(entry, int) and entry > 0:
+                out.append(entry)
+            else:
+                raise ValueError(f"reshape: invalid shape entry {entry!r}")
+        if used_dims != sorted(set(used_dims)):
+            raise ValueError(f"reshape: input dims must be strictly increasing, got {used_dims}")
+        total = int(np.prod(input_shape, dtype=np.int64))
+        if inferred_at is not None:
+            known = int(np.prod([d for d in out if d != -1], dtype=np.int64))
+            if known == 0 or total % known:
+                raise ValueError(f"reshape: cannot infer -1 for {input_shape} -> {out}")
+            out[inferred_at] = total // known
+        if int(np.prod(out, dtype=np.int64)) != total:
+            raise ValueError(f"reshape: {input_shape} does not reshape to {out}")
+        return tuple(out)
+
+    def validate(self, *, shape: tuple[int, ...], dtype: Any, chunk_grid: Any) -> None:
+        del dtype, chunk_grid
+
+    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
+        return ArraySpec(
+            shape=self._output_shape(chunk_spec.shape),
+            dtype=chunk_spec.dtype,
+            fill_value=chunk_spec.fill_value,
+            config=chunk_spec.config,
+            prototype=chunk_spec.prototype,
+        )
+
+    async def _encode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        data = np.ascontiguousarray(chunk_array.as_numpy_array())
+        return chunk_spec.prototype.nd_buffer.from_numpy_array(
+            data.reshape(self._output_shape(data.shape))
+        )
+
+    async def _decode_single(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        data = np.ascontiguousarray(chunk_array.as_numpy_array())
+        return chunk_spec.prototype.nd_buffer.from_numpy_array(
+            data.reshape(chunk_spec.shape)
+        )
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        return input_byte_length
 
 
 def register() -> None:
     """Register the codecs with the zarr-python codec registry."""
     register_codec("nd_lift", NdLiftCodec)
     register_codec("htj2k", Htj2kCodec)
+    register_codec("zfp", NdZfpCodec)
+    register_codec("reshape", ReshapeCodec)
+    # The pre-adoption name, kept readable for existing stores.
     register_codec("nd_zfp", NdZfpCodec)
 
 

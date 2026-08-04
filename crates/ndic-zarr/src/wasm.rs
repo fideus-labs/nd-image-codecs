@@ -105,17 +105,17 @@ pub fn nd_lift_decode(
 
 fn zfp_dtype(dtype: &str) -> Result<ZfpDtype, JsError> {
     ZfpDtype::from_zarr_name(dtype)
-        .ok_or_else(|| JsError::new(&format!("nd_zfp has no path for dtype {dtype:?}")))
+        .ok_or_else(|| JsError::new(&format!("zfp has no path for dtype {dtype:?}")))
 }
 
 fn zfp_config(config_json: &str) -> Result<NdZfpConfig, JsError> {
-    serde_json::from_str(config_json)
-        .map_err(|e| JsError::new(&format!("nd_zfp configuration: {e}")))
+    serde_json::from_str(config_json).map_err(|e| JsError::new(&format!("zfp configuration: {e}")))
 }
 
-/// Encodes a chunk (little-endian elements, C order) into an `nd_zfp` ZFP
+/// Encodes a chunk (little-endian elements, C order) into a `zfp` ZFP
 /// stream. `config_json` is the Zarr v3 `configuration` object (`{}` for
-/// the defaults).
+/// the defaults; a legacy `dims` member selects the old `nd_zfp` chunk
+/// mapping).
 #[wasm_bindgen]
 pub fn nd_zfp_encode(
     chunk: &[u8],
@@ -132,7 +132,7 @@ pub fn nd_zfp_encode(
     .map_err(|e| JsError::new(&e.to_string()))
 }
 
-/// Decodes an `nd_zfp` chunk back to little-endian elements in C order.
+/// Decodes a `zfp` chunk back to little-endian elements in C order.
 /// The stream's header must match the configuration in `config_json`.
 #[wasm_bindgen]
 pub fn nd_zfp_decode(

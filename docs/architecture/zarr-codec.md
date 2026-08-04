@@ -26,7 +26,7 @@ nd-image-codecs uses each stage deliberately:
 | `nd_lift` (**new**) | array → array | Explicit cross-axis (z/t/c) lifting decorrelation — see [the cross-axis transform](./nd-transform.md) |
 | `numcodecs.delta` (stock) | array → array | Single-axis differencing (nd-delta family) |
 | `htj2k` (**new**) | array → bytes | Compress each trailing 2D plane as an independent Part 1/15 codestream + coefficient-plane index |
-| `nd_zfp` (**new**) | array → bytes | ZFP 2D/3D/4D blocks + brick index — see [the Rust ZFP port](./zfp.md) |
+| `zfp` (**registered**) | array → bytes | ZFP 1D–4D blocks + brick index — see [the Rust ZFP port](./zfp.md) |
 | `bytes`, `blosc`, `crc32c` (stock) | array→bytes / bytes→bytes | Endianness, entropy backend, checksums |
 
 A JPEG 2000 or ZFP codec **must be the array→bytes stage**: it needs the chunk's
@@ -66,8 +66,8 @@ HTJ2K decode in browsers via WASM, and (c) a random-access ZFP path.
 
 | Ecosystem | Mechanism |
 | --- | --- |
-| **Rust / zarrs** | Implement `ArrayToArrayCodecTraits` (`nd_lift`) and `ArrayToBytesCodecTraits` (`htj2k`, `nd_zfp`) + `CodecTraits`; register via `inventory` link-time plugin submission ([zarrs codec guide](https://book.zarrs.dev/extensions/codec.html)) |
-| **Python / zarr-python v3** | PyO3 `abi3` extension via [maturin](https://www.maturin.rs/); codec classes exported through three `zarr.codecs` entry points (`nd_lift`, `htj2k`, `nd_zfp`) ([zarr extending guide](https://zarr.readthedocs.io/en/stable/user-guide/extending.html)) |
+| **Rust / zarrs** | Implement `ArrayToArrayCodecTraits` (`nd_lift`) and `ArrayToBytesCodecTraits` (`htj2k`, `zfp`) + `CodecTraits`; register via `inventory` link-time plugin submission ([zarrs codec guide](https://book.zarrs.dev/extensions/codec.html)) |
+| **Python / zarr-python v3** | PyO3 `abi3` extension via [maturin](https://www.maturin.rs/); codec classes exported through the `zarr.codecs` entry points (`nd_lift`, `htj2k`, `zfp`, `reshape`, and the deprecated `nd_zfp` alias) ([zarr extending guide](https://zarr.readthedocs.io/en/stable/user-guide/extending.html)) |
 | **TypeScript / numcodecs.js** | `wasm-pack` build of the core (wasm32 + SIMD128); codec classes with `fromConfig` following the numcodecs.js per-codec convention, registerable in zarrita.js |
 
 The `codec_series` builder itself is pure metadata and is implemented natively
@@ -76,29 +76,32 @@ byte-identically.
 
 ## Registration and naming
 
-The new codec names (`nd_lift`, `htj2k`, `nd_zfp`) follow the Zarr v3 extension
-naming convention pending a formal registration
+The project-defined codec names (`nd_lift`, `htj2k`) follow the Zarr v3
+extension naming convention pending a formal registration
 ([ZEP 2 / extension naming](https://zarr.dev/zeps/accepted/ZEP0002.html),
-[zarr-extensions](https://github.com/zarr-developers/zarr-extensions)). The
-nd-delta family uses only already-registered names (`transpose`,
-`numcodecs.delta`, `bytes`, `blosc`).
-
-Specification documents for all three are staged in
+[zarr-extensions](https://github.com/zarr-developers/zarr-extensions)); their
+specification documents are staged in
 [`spec/codecs/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/codecs)
-in the layout zarr-extensions expects — a `README.md` and a `schema.json` per
-codec — and the schemas are checked against every configuration the builder
-emits, so they cannot drift from the implementations.
+in the layout zarr-extensions expects, and CI checks the schemas against
+every configuration the builder emits so they cannot drift from the
+implementations. The nd-delta family uses only already-registered names
+(`transpose`, `numcodecs.delta`, `bytes`, `blosc`).
 
-One caveat governs `nd_zfp`: zarr-extensions **already registers a `zfp`
-codec** whose stored bytes are identical to ours for the same data and mode.
-Only the name and the handling of chunks above four dimensions differ (`zfp`
-composes with a separate squeeze codec; `nd_zfp` folds the squeeze in and
-declares the result as `dims`). Registering a second name for a byte-identical
-format is not obviously worth it, so adopting `zfp` is the recommendation
-recorded in
-[`spec/README.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/spec/README.md);
-it is a breaking format change and therefore a deliberate decision rather than
-an editorial one.
+The nd-zfp family **adopts registered names outright**: its pipeline is
+`transpose → reshape → zfp`, where both
+[`zfp`](https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/zfp)
+and
+[`reshape`](https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/reshape)
+are zarr-extensions registrations this project implements rather than names
+it invents. The codec formerly registered here as `nd_zfp` produced
+byte-identical streams; only the name and the handling of chunks above four
+dimensions differed, so a second name was not worth the ecosystem
+fragmentation. `nd_zfp` remains a **read alias**: metadata under that name
+(recognizable by its legacy `dims` member, which selects the old in-codec
+squeeze-and-pad mapping) keeps decoding byte-for-byte in every ecosystem.
+Vendored copies of the registered `zfp`/`reshape` schemas sit in
+[`spec/vendor/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/vendor)
+and CI validates every builder-emitted configuration against them.
 
 ## Partial-read synergy
 

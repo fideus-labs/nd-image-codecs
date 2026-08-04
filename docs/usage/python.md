@@ -40,7 +40,7 @@ split at the array→bytes boundary into `filters` (array→array), `serializer`
 (array→bytes), and `compressors` (bytes→bytes).
 
 ```python
-SERIALIZERS = {"bytes", "htj2k", "nd_zfp"}
+SERIALIZERS = {"bytes", "htj2k", "zfp"}
 at = next(i for i, codec in enumerate(codecs) if codec["name"] in SERIALIZERS)
 
 volume = (np.arange(2 * 1 * 8 * 64 * 64, dtype=np.uint16) * 7 % 4096).reshape(
@@ -69,7 +69,8 @@ index list) or adjust the defaults with `add_decorrelate=` /
 ## Codec classes and entry points
 
 The three codecs register through `zarr.codecs` entry points (`nd_lift`,
-`htj2k`, `nd_zfp`), so pipelines authored by the builder resolve by name.
+`htj2k`, `zfp`, `reshape` — plus the deprecated `nd_zfp` read alias), so
+pipelines authored by the builder resolve by name.
 Config classes are importable for direct use:
 
 ```python
@@ -84,9 +85,9 @@ assert Htj2k(xy_levels=5, reversible=True).to_dict() == {
         "index": True,
     },
 }
-assert NdZfp(mode="fixed_rate", rate=8.0, dims=3).to_dict() == {
-    "name": "nd_zfp",
-    "configuration": {"mode": "fixed_rate", "rate": 8.0, "dims": 3},
+assert NdZfp(mode="fixed_rate", rate=8.0).to_dict() == {
+    "name": "zfp",
+    "configuration": {"mode": "fixed_rate", "rate": 8.0},
 }
 ```
 
@@ -146,7 +147,7 @@ on it work unmodified.
 
 For independent verification, decode nd-image-codecs output with
 [imagecodecs](https://pypi.org/project/imagecodecs/) instead of our own
-implementations. An `nd_zfp` chunk is a standard ZFP stream:
+implementations. A `zfp` chunk is a standard ZFP stream:
 
 ```python
 import imagecodecs

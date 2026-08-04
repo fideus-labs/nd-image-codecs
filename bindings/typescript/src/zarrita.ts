@@ -75,17 +75,68 @@ function typedArrayFor(dataType: string): (typeof TYPED_ARRAYS)[string] {
   return ctor;
 }
 
-/** The stored (post-transpose) chunk shape: metadata shape permuted by the
- * pipeline's `transpose` order, identity when there is none. */
-function storedShape(meta: ZarritaChunkMeta): number[] {
-  const transpose = (meta.codecs ?? []).find((c) => c.name === "transpose");
-  const order = transpose?.configuration?.order;
-  if (order === undefined || order === "C") return [...meta.shape];
-  if (order === "F") return [...meta.shape].reverse();
-  if (!Array.isArray(order)) {
-    throw new Error(`nd-image-codecs: unsupported transpose order ${JSON.stringify(order)}`);
+/** Apply one `reshape` configuration to a shape (the subset the builder
+ * emits plus explicit sizes and one `-1`). */
+function reshapeOutput(shape: number[], spec: unknown[]): number[] {
+  const total = shape.reduce((a, b) => a * b, 1);
+  const out: number[] = [];
+  let inferredAt = -1;
+  for (const entry of spec) {
+    if (Array.isArray(entry)) {
+      out.push((entry as number[]).reduce((a, d) => {
+        if (!Number.isInteger(d) || d < 0 || d >= shape.length) {
+          throw new Error(`reshape: input dim ${d} out of range for ${JSON.stringify(shape)}`);
+        }
+        return a * shape[d];
+      }, 1));
+    } else if (entry === -1) {
+      if (inferredAt >= 0) throw new Error("reshape: at most one -1 entry is allowed");
+      inferredAt = out.length;
+      out.push(-1);
+    } else if (typeof entry === "number" && Number.isInteger(entry) && entry > 0) {
+      out.push(entry);
+    } else {
+      throw new Error(`reshape: invalid shape entry ${JSON.stringify(entry)}`);
+    }
   }
-  return (order as number[]).map((d) => meta.shape[d]);
+  if (inferredAt >= 0) {
+    const known = out.reduce((a, b) => (b === -1 ? a : a * b), 1);
+    if (known === 0 || total % known !== 0) {
+      throw new Error(`reshape: cannot infer -1 for ${JSON.stringify(shape)}`);
+    }
+    out[inferredAt] = total / known;
+  }
+  if (out.reduce((a, b) => a * b, 1) !== total) {
+    throw new Error(`reshape: ${JSON.stringify(shape)} does not reshape to ${JSON.stringify(out)}`);
+  }
+  return out;
+}
+
+/** The stored chunk shape as the array-to-bytes codec sees it: the metadata
+ * shape taken through the pipeline's `transpose` permutation and any
+ * `reshape` stages, in codec order. */
+function storedShape(meta: ZarritaChunkMeta): number[] {
+  let shape = [...meta.shape];
+  for (const codec of meta.codecs ?? []) {
+    if (codec.name === "transpose") {
+      const order = codec.configuration?.order;
+      if (order === undefined || order === "C") continue;
+      if (order === "F") {
+        shape = shape.reverse();
+      } else if (Array.isArray(order)) {
+        shape = (order as number[]).map((d) => shape[d]);
+      } else {
+        throw new Error(`nd-image-codecs: unsupported transpose order ${JSON.stringify(order)}`);
+      }
+    } else if (codec.name === "reshape") {
+      const spec = codec.configuration?.shape;
+      if (!Array.isArray(spec)) {
+        throw new Error("reshape: configuration needs a shape array");
+      }
+      shape = reshapeOutput(shape, spec as unknown[]);
+    }
+  }
+  return shape;
 }
 
 /** Chunk memory as bytes — the same trust zarrita's `bytes` codec places in
@@ -361,6 +412,53 @@ export class TransposeZarrita {
   }
 }
 
+/**
+ * `reshape` for zarrita: a C-order-preserving relabel, so chunk memory is
+ * untouched in both directions. The adapter passes chunks through and the
+ * array-to-bytes adapters derive their field shape from the codec list
+ * (see `storedShape`) — sufficient for the pipelines this package builds,
+ * where `reshape` sits directly above `zfp`.
+ */
+export class ReshapeZarrita {
+  readonly kind = "array_to_array" as const;
+
+  constructor(config: { shape?: unknown[] } | undefined, meta: ZarritaChunkMeta) {
+    if (!Array.isArray(config?.shape)) {
+      throw new Error("reshape: configuration needs a shape array");
+    }
+    // Validate against the pre-reshape stored shape so a bad configuration
+    // fails at construction rather than mid-pipeline.
+    reshapeOutput(
+      storedShapeBefore(meta, "reshape"),
+      config.shape as unknown[],
+    );
+  }
+
+  static fromConfig(
+    config: { shape?: unknown[] } | undefined,
+    meta: ZarritaChunkMeta,
+  ): ReshapeZarrita {
+    return new ReshapeZarrita(config, meta);
+  }
+
+  async encode(chunk: ZarritaChunk): Promise<ZarritaChunk> {
+    return chunk;
+  }
+
+  async decode(chunk: ZarritaChunk): Promise<ZarritaChunk> {
+    return chunk;
+  }
+}
+
+/** The stored shape as it is *entering* the first codec named `name` —
+ * `storedShape` truncated at that codec. */
+function storedShapeBefore(meta: ZarritaChunkMeta, name: string): number[] {
+  const codecs = meta.codecs ?? [];
+  const at = codecs.findIndex((c) => c.name === name);
+  const upstream = at >= 0 ? codecs.slice(0, at) : codecs;
+  return storedShape({ ...meta, codecs: upstream });
+}
+
 /** Zarr v3 `shuffle` strings → the numeric codes numcodecs.js expects. */
 const BLOSC_SHUFFLE: Record<string, number> = {
   noshuffle: 0,
@@ -373,6 +471,9 @@ export function registerZarritaCodecs(registry: {
 }): void {
   registry.set("nd_lift", () => NdLiftZarrita);
   registry.set("htj2k", () => Htj2kZarrita);
+  registry.set("zfp", () => NdZfpZarrita);
+  registry.set("reshape", () => ReshapeZarrita);
+  // The pre-adoption name, kept readable for existing stores.
   registry.set("nd_zfp", () => NdZfpZarrita);
   registry.set("numcodecs.delta", () => DenseDeltaZarrita);
   registry.set("transpose", () => TransposeZarrita);

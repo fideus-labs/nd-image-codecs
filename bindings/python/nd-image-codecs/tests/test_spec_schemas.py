@@ -1,11 +1,17 @@
-"""The staged zarr-extensions schemas must match the codecs they describe.
+"""The codec schemas must match the codecs they describe.
 
-``spec/codecs/<name>/schema.json`` is what this project would submit to
-[zarr-extensions](https://github.com/zarr-developers/zarr-extensions). A
+Two kinds of schema are held to account here. ``spec/codecs/<name>/schema.json``
+is what this project would submit to
+[zarr-extensions](https://github.com/zarr-developers/zarr-extensions) for its
+own codecs (``nd_lift``, ``htj2k``); ``spec/vendor/*.schema.json`` are
+verbatim copies of the *registered* ``zfp`` and ``reshape`` schemas, which
+the nd-zfp family adopted instead of registering an ``nd_zfp`` name. A
 specification that drifts from the implementation is worse than none, so:
 
 - every codec object the committed fixture matrix produces validates against
-  the schema for its name, and
+  the schema for its name — the vendored upstream schema for ``zfp`` and
+  ``reshape``, so the builders cannot emit anything the registered codecs
+  would not accept, and
 - every configuration the codecs *reject* is rejected by the schema too, so
   the schema is not merely permissive.
 """
@@ -22,15 +28,21 @@ jsonschema = pytest.importorskip("jsonschema")
 from conftest import REPO  # noqa: E402
 
 SPEC = REPO / "spec" / "codecs"
+VENDOR = REPO / "spec" / "vendor"
 MATRIX = REPO / "fixtures" / "codec-series" / "matrix.json"
 
 #: The codecs this project specifies (stock Zarr codecs are out of scope).
-OURS = {"nd_lift", "htj2k", "nd_zfp"}
+OURS = {"nd_lift", "htj2k"}
+#: Registered codecs the builders emit, validated against the vendored
+#: upstream schemas.
+ADOPTED = {"zfp", "reshape"}
 
 
 def schema_for(name: str) -> dict:
-    path = SPEC / name / "schema.json"
-    assert path.is_file(), f"{name} has no staged schema at {path}"
+    path = (VENDOR / f"{name}.schema.json") if name in ADOPTED else (
+        SPEC / name / "schema.json"
+    )
+    assert path.is_file(), f"{name} has no schema at {path}"
     return json.loads(path.read_text())
 
 
@@ -40,18 +52,18 @@ def matrix_codecs() -> list[dict]:
         codec
         for case in cases
         for codec in case.get("expected", [])
-        if codec["name"] in OURS
+        if codec["name"] in OURS | ADOPTED
     ]
 
 
 def test_the_matrix_exercises_every_specified_codec() -> None:
     """A schema nothing validates against would pass vacuously."""
     names = {codec["name"] for codec in matrix_codecs()}
-    assert names == OURS, f"the fixture matrix only produces {sorted(names)}"
+    assert names == OURS | ADOPTED, f"the fixture matrix only produces {sorted(names)}"
 
 
 def test_every_builder_emitted_codec_validates() -> None:
-    schemas = {name: schema_for(name) for name in OURS}
+    schemas = {name: schema_for(name) for name in OURS | ADOPTED}
     for codec in matrix_codecs():
         jsonschema.validate(codec, schemas[codec["name"]])
 
@@ -63,25 +75,31 @@ def test_schemas_are_valid_json_schema(name: str) -> None:
     assert schema["properties"]["name"]["const"] == name
 
 
+@pytest.mark.parametrize("name", sorted(ADOPTED))
+def test_vendored_schemas_are_valid_json_schema(name: str) -> None:
+    jsonschema.Draft202012Validator.check_schema(schema_for(name))
+
+
 #: Configurations the codecs refuse. Each must fail its schema too — the
 #: schema is a contract about what a conforming writer may emit, so it has to
 #: be at least as strict as the parser.
 REJECTED = [
     # Unknown members are errors, not ignored fields.
     ("htj2k", {"name": "htj2k", "configuration": {"xy_levels": 5, "bogus": 1}}),
-    ("nd_zfp", {"name": "nd_zfp", "configuration": {"mode": "reversible", "rate": 8.0}}),
+    # The registered zfp schema: exactly the mode's own parameter, and no
+    # legacy `dims` — a builder emitting either would break interop.
+    ("zfp", {"name": "zfp", "configuration": {"mode": "reversible", "rate": 8.0}}),
+    ("zfp", {"name": "zfp", "configuration": {"mode": "reversible", "dims": 3}}),
+    ("zfp", {"name": "zfp", "configuration": {"mode": "fixed_rate"}}),
+    ("zfp", {"name": "zfp", "configuration": {"mode": "lossless"}}),
+    ("reshape", {"name": "reshape", "configuration": {}}),
     ("nd_lift", {"name": "nd_lift", "configuration": {"version": "0.1", "transforms": [
         {"axis": "z", "dimension": 0, "kind": "haar", "levels": 1, "quantize": True}
     ]}}),
     # Out-of-range values.
     ("htj2k", {"name": "htj2k", "configuration": {"xy_levels": 40}}),
     ("htj2k", {"name": "htj2k", "configuration": {"progression": "SNAKE"}}),
-    ("nd_zfp", {"name": "nd_zfp", "configuration": {"mode": "fixed_precision", "precision": 0}}),
-    ("nd_zfp", {"name": "nd_zfp", "configuration": {"mode": "fixed_rate", "rate": 0}}),
-    ("nd_zfp", {"name": "nd_zfp", "configuration": {"mode": "reversible", "dims": 5}}),
-    # A mode without its parameter, and an unknown mode.
-    ("nd_zfp", {"name": "nd_zfp", "configuration": {"mode": "fixed_rate"}}),
-    ("nd_zfp", {"name": "nd_zfp", "configuration": {"mode": "lossless"}}),
+    ("zfp", {"name": "zfp", "configuration": {"mode": "fixed_precision", "precision": -1}}),
     # The nd_lift version gate, and lifting kinds without levels.
     ("nd_lift", {"name": "nd_lift", "configuration": {"version": "0.2", "transforms": []}}),
     ("nd_lift", {"name": "nd_lift", "configuration": {"transforms": []}}),

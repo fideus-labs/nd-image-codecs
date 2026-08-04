@@ -66,31 +66,32 @@ extension registration.
 
 ### What the two open criteria still need
 
-**Throughput gating.** The ratio gate runs on every pull request
-(`bench-pr-gate`) and the nightly grid additionally opens an issue on a ratio
-regression. Throughput is measured and reported but never fails a build,
-because the committed baselines were captured on a developer machine and the
-time gate's σ envelope is only meaningful against a baseline from the same
-machine class. `bench-baseline-refresh` now records on a GitHub runner and
-opens a pull request, so closing this is: run it, adopt the result, then flip
-the PR gate to `--gate both`. Adopting it moves the baseline's machine class,
-which is why the workflow makes you name the machine — a decision, not a
-default.
+Both blocking decisions have been taken; what remains is execution.
 
-**Extension registration.** Specifications for all three codecs are staged in
-[`spec/codecs/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/codecs)
-in the layout zarr-extensions expects, with schemas checked against every
-configuration the builder emits. Two things block the pull request itself, and
-both need a person:
+**Throughput gating** — *decision: adopt a CI-runner baseline.* The ratio
+gate runs on every pull request and the nightly grid opens an issue on a
+ratio regression; throughput is reported but not yet gated, because the
+committed baseline is a dev-box capture and the time gate's σ envelope is
+only meaningful against the same machine class. The PR gate now derives its
+gate from the baseline manifest itself: when `bench/baselines/main`'s
+manifest names the runner class the gate job runs on (`gha-ubuntu-24.04`),
+timing gates automatically alongside ratio. Remaining steps, in order,
+after this branch merges: run `bench-baseline-refresh` (machine
+`gha-ubuntu-24.04`), review and merge the pull request it opens — at which
+point the throughput gate switches on by itself and this criterion is met.
 
-- zarr-extensions already registers a `zfp` codec whose stored bytes are
-  identical to `nd_zfp`'s for the same data and mode — only the name and the
-  handling of chunks above four dimensions differ. Registering a second name
-  for a byte-identical format is probably the wrong outcome; adopting `zfp` is
-  a breaking format change. See
-  [`spec/README.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/spec/README.md).
-- Extension documents must be licensed CC BY 3.0, which the copyright holder
-  has to accept.
+**Extension registration** — *decision: adopt the registered `zfp` codec.*
+The nd-zfp family now emits `transpose → reshape → zfp`, all registered
+names, with `nd_zfp` kept as a read alias for existing stores (its legacy
+`dims` member selects the old in-codec chunk mapping) — see
+[Registration and naming](../../architecture/zarr-codec.md). Vendored
+copies of the registered schemas in
+[`spec/vendor/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/vendor)
+gate the builders in CI. The remaining submission is `nd_lift` and `htj2k`
+only, staged in
+[`spec/codecs/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/codecs);
+opening that pull request needs the copyright holder's CC BY 3.0 assent
+(see [`spec/README.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/spec/README.md)).
 
 ### What Phase 6 also changed
 

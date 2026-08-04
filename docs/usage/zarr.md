@@ -11,7 +11,7 @@ The builder and nd-delta work since
 nd-lift-ht family (`transpose → nd_lift → htj2k`) round-trips across zarrs
 and zarr-python since
 [Phase 4](../development/roadmap/phase-4-nd-lift-ht.md); nd-zfp
-(`transpose → nd_zfp`) since
+(`transpose → reshape → zfp`) since
 [Phase 5](../development/roadmap/phase-5-nd-zfp.md).
 :::
 
@@ -24,7 +24,7 @@ array→array and array→bytes codecs — tuned per use case:
 | --- | --- | --- |
 | **nd-delta** | `transpose → numcodecs.delta → bytes → blosc(bitshuffle, zstd/lz4)` | Fast lossless storage; works today with stock codecs |
 | **nd-lift-ht** | `transpose → nd_lift → htj2k` | Scalable microscopy; streaming thumbnails and progressive resolution |
-| **nd-zfp** | `transpose → nd_zfp` | GPU volume rendering, O(1) random brick access, predictable memory |
+| **nd-zfp** | `transpose → reshape → zfp` | GPU volume rendering, O(1) random brick access, predictable memory |
 
 ## The `codec_series` builder
 
@@ -46,7 +46,7 @@ codecs = codec_series(
 )
 
 # zarr-python wants the flat list split at the array→bytes codec.
-SERIALIZERS = {"bytes", "htj2k", "nd_zfp"}
+SERIALIZERS = {"bytes", "htj2k", "zfp"}
 at = next(i for i, codec in enumerate(codecs) if codec["name"] in SERIALIZERS)
 
 store: dict = {}
@@ -83,7 +83,7 @@ nd-lift-ht array→bytes stage:
 nd-zfp:
 
 ```json
-{ "name": "nd_zfp",
+{ "name": "zfp",
   "configuration": { "mode": "fixed_rate", "rate": 8.0, "dims": 3 } }
 ```
 
@@ -107,7 +107,7 @@ Cross-validate pipelines with third-party codecs via
 implementations:
 
 ```python
-# Decode an nd-zfp chunk with imagecodecs' ZFP instead of ndic-zfp. An nd_zfp
+# Decode an nd-zfp chunk with imagecodecs' ZFP instead of ndic-zfp. A zfp
 # chunk is a standard ZFP stream, header and all, so nothing is unwrapped
 # first — and the stream carries its own shape and dtype.
 import imagecodecs

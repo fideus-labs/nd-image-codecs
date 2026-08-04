@@ -103,7 +103,7 @@ def test_multiscales_validate_and_open(
     expected = {
         "nd-delta": "numcodecs.delta",
         "nd-lift-ht": "htj2k",
-        "nd-zfp": "nd_zfp",
+        "nd-zfp": "zfp",
     }[family]
     for meta_path in arrays:
         names = [c["name"] for c in json.loads(meta_path.read_text())["codecs"]]

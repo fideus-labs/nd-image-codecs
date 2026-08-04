@@ -20,7 +20,7 @@ axis metadata:
 | --- | --- | --- |
 | **nd-delta** | `transpose → numcodecs.delta → bitshuffle → zstd/lz4` | Fast lossless storage from **existing** Zarr codecs only |
 | **nd-lift-ht** | `transpose → nd_lift → htj2k` | Scalable microscopy & volume visualization |
-| **nd-zfp** | `transpose → nd_zfp` | GPU volume rendering, random access, fixed-rate memory |
+| **nd-zfp** | `transpose → reshape → zfp` | GPU volume rendering, random access, fixed-rate memory |
 
 ## Install
 

@@ -1,15 +1,19 @@
-//! The `nd_zfp` chunk codec core: chunk bytes ⇄ ZFP stream.
+//! The `zfp` chunk codec core: chunk bytes ⇄ ZFP stream.
 //!
 //! Feature-free on purpose (serde derives for [`NdZfpConfig`] sit behind
 //! the `serde` feature): the `zarrs` codec, the Python (pyo3) binding, and
 //! the WASM (TypeScript) binding all call these functions, so every
 //! ecosystem produces byte-identical chunks.
 //!
-//! A chunk's singleton dimensions are squeezed away and the remainder is
-//! compressed as a `dims`-dimensional ZFP field (left-padded with size-1
-//! axes when fewer than `dims` non-singleton dimensions remain), matching
-//! what the codec-series builder emits: `dims` = the number of
-//! non-singleton chunk dimensions, clamped to at least 2.
+//! Under the registered `zfp` codec semantics (no `dims` in the
+//! configuration), the chunk shape maps **directly** onto the ZFP field —
+//! 1 to 4 dimensions, exactly as zarr-extensions specifies — and the
+//! codec-series builder collapses singleton dimensions with a `reshape`
+//! codec upstream. A configuration carrying the legacy `dims` member (data
+//! written under the deprecated `nd_zfp` name) instead selects the old
+//! in-codec mapping: singleton axes squeezed away, the remainder
+//! left-padded with size-1 axes up to `dims` — so existing stores decode
+//! byte-for-byte.
 //!
 //! `u8`/`i8`/`u16`/`i16` samples are promoted into `i32` exactly as the C
 //! library's `zfp_promote_*` helpers do (shift into the high-order bits,
@@ -112,18 +116,19 @@ pub struct NdZfpConfig {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub precision: Option<u32>,
-    /// ZFP field dimensionality (1–4); the codec-series builder sets this
-    /// to the number of non-singleton chunk dimensions, clamped to ≥ 2.
-    #[cfg_attr(feature = "serde", serde(default = "default_dims"))]
-    pub dims: u8,
+    /// Legacy `nd_zfp` field dimensionality (1–4). Present only in
+    /// configurations written under the deprecated `nd_zfp` name, where it
+    /// selects the old squeeze-and-pad chunk mapping; the registered `zfp`
+    /// codec maps the chunk shape directly and never writes this.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub dims: Option<u8>,
 }
 
 fn default_mode() -> String {
     "reversible".into()
-}
-
-fn default_dims() -> u8 {
-    3
 }
 
 impl Default for NdZfpConfig {
@@ -133,7 +138,7 @@ impl Default for NdZfpConfig {
             rate: None,
             tolerance: None,
             precision: None,
-            dims: default_dims(),
+            dims: None,
         }
     }
 }
@@ -155,9 +160,11 @@ impl NdZfpConfig {
     /// # Errors
     /// As [`NdZfpConfig::validate`].
     pub fn zfp_mode(&self) -> Result<ZfpMode> {
-        if !(1..=4).contains(&self.dims) {
+        if let Some(dims) = self.dims
+            && !(1..=4).contains(&dims)
+        {
             return Err(Error::InvalidArgument {
-                message: format!("nd_zfp: dims must be 1..=4, got {}", self.dims),
+                message: format!("zfp: dims must be 1..=4, got {dims}"),
             });
         }
         let mode = match self.mode.as_str() {
@@ -171,26 +178,26 @@ impl NdZfpConfig {
                 self.forbid(self.tolerance.is_some(), "tolerance")?;
                 self.forbid(self.precision.is_some(), "precision")?;
                 ZfpMode::FixedRate(self.rate.ok_or_else(|| Error::InvalidArgument {
-                    message: "nd_zfp: fixed_rate mode needs a \"rate\"".into(),
+                    message: "zfp: fixed_rate mode needs a \"rate\"".into(),
                 })?)
             }
             "fixed_accuracy" => {
                 self.forbid(self.rate.is_some(), "rate")?;
                 self.forbid(self.precision.is_some(), "precision")?;
                 ZfpMode::FixedAccuracy(self.tolerance.ok_or_else(|| Error::InvalidArgument {
-                    message: "nd_zfp: fixed_accuracy mode needs a \"tolerance\"".into(),
+                    message: "zfp: fixed_accuracy mode needs a \"tolerance\"".into(),
                 })?)
             }
             "fixed_precision" => {
                 self.forbid(self.rate.is_some(), "rate")?;
                 self.forbid(self.tolerance.is_some(), "tolerance")?;
                 ZfpMode::FixedPrecision(self.precision.ok_or_else(|| Error::InvalidArgument {
-                    message: "nd_zfp: fixed_precision mode needs a \"precision\"".into(),
+                    message: "zfp: fixed_precision mode needs a \"precision\"".into(),
                 })?)
             }
             other => {
                 return Err(Error::Unsupported {
-                    message: format!("nd_zfp: unknown mode {other:?}"),
+                    message: format!("zfp: unknown mode {other:?}"),
                 });
             }
         };
@@ -201,25 +208,25 @@ impl NdZfpConfig {
     fn forbid(&self, present: bool, what: &str) -> Result<()> {
         if present {
             return Err(Error::InvalidArgument {
-                message: format!("nd_zfp: {:?} mode does not take {what:?}", self.mode),
+                message: format!("zfp: {:?} mode does not take {what:?}", self.mode),
             });
         }
         Ok(())
     }
 
-    /// The `dims`-dimensional ZFP field shape a chunk of `chunk_shape`
-    /// compresses as (singleton axes squeezed, left-padded with size-1
-    /// axes) — what [`crate::BrickIndex::fixed_rate`] expects.
+    /// The ZFP field shape a chunk of `chunk_shape` compresses as — what
+    /// [`crate::BrickIndex::fixed_rate`] expects. Without legacy `dims`,
+    /// the chunk shape itself (1–4 dimensions); with it, the old
+    /// squeeze-and-pad mapping.
     ///
     /// # Errors
     /// [`Error::InvalidArgument`] for empty/zero-extent shapes, an
-    /// out-of-range `dims`, or more non-singleton dimensions than `dims`.
+    /// out-of-range `dims`, or a geometry the mapping cannot express.
     pub fn effective_shape(&self, chunk_shape: &[usize]) -> Result<Vec<usize>> {
-        if !(1..=4).contains(&self.dims) {
-            return Err(invalid(format!(
-                "nd_zfp: dims must be 1..=4, got {}",
-                self.dims
-            )));
+        if let Some(dims) = self.dims
+            && !(1..=4).contains(&dims)
+        {
+            return Err(invalid(format!("zfp: dims must be 1..=4, got {dims}")));
         }
         effective_shape(chunk_shape, self.dims)
     }
@@ -229,22 +236,37 @@ fn invalid(message: String) -> Error {
     Error::InvalidArgument { message }
 }
 
-/// The `dims`-dimensional field shape a chunk compresses as: singleton
-/// axes squeezed away, then left-padded with size-1 axes up to `dims`.
-fn effective_shape(shape: &[usize], dims: u8) -> Result<Vec<usize>> {
+/// The field shape a chunk compresses as.
+///
+/// `dims: None` is the registered `zfp` mapping: the chunk shape **is** the
+/// field shape, and must have 1–4 dimensions (the codec-series builder
+/// collapses singletons with a `reshape` codec upstream). `dims: Some` is
+/// the legacy `nd_zfp` mapping: singleton axes squeezed away, then
+/// left-padded with size-1 axes up to `dims`.
+fn effective_shape(shape: &[usize], dims: Option<u8>) -> Result<Vec<usize>> {
     if shape.is_empty() {
-        return Err(invalid("nd_zfp: chunk shape has no dimensions".into()));
+        return Err(invalid("zfp: chunk shape has no dimensions".into()));
     }
     if shape.contains(&0) {
         return Err(invalid(format!(
-            "nd_zfp: chunk shape {shape:?} has a zero extent"
+            "zfp: chunk shape {shape:?} has a zero extent"
         )));
     }
+    let Some(dims) = dims else {
+        if shape.len() > 4 {
+            return Err(invalid(format!(
+                "zfp: chunk shape {shape:?} has {} dimensions but ZFP fields are 1-4 \
+                 dimensional; collapse singleton dimensions with a reshape codec upstream",
+                shape.len()
+            )));
+        }
+        return Ok(shape.to_vec());
+    };
     let dims = usize::from(dims);
     let squeezed: Vec<usize> = shape.iter().copied().filter(|&d| d > 1).collect();
     if squeezed.len() > dims {
         return Err(invalid(format!(
-            "nd_zfp: chunk shape {shape:?} has {} non-singleton dimensions but the \
+            "zfp: chunk shape {shape:?} has {} non-singleton dimensions but the \
              configuration declares dims={dims}; reduce chunking or raise dims",
             squeezed.len()
         )));
@@ -264,13 +286,13 @@ fn checked_elements(
     let elements = effective
         .iter()
         .try_fold(1usize, |acc, &d| acc.checked_mul(d))
-        .ok_or_else(|| invalid(format!("nd_zfp: chunk shape {shape:?} overflows usize")))?;
+        .ok_or_else(|| invalid(format!("zfp: chunk shape {shape:?} overflows usize")))?;
     let expected = elements
         .checked_mul(dtype.size_bytes())
-        .ok_or_else(|| invalid(format!("nd_zfp: chunk shape {shape:?} overflows usize")))?;
+        .ok_or_else(|| invalid(format!("zfp: chunk shape {shape:?} overflows usize")))?;
     if len != expected {
         return Err(invalid(format!(
-            "nd_zfp: chunk shape {shape:?} ({dtype:?}) needs {expected} bytes, got {len}"
+            "zfp: chunk shape {shape:?} ({dtype:?}) needs {expected} bytes, got {len}"
         )));
     }
     Ok(elements)
@@ -380,7 +402,7 @@ pub fn decode_chunk(
     let elements = effective
         .iter()
         .try_fold(1usize, |acc, &d| acc.checked_mul(d))
-        .ok_or_else(|| invalid(format!("nd_zfp: chunk shape {shape:?} overflows usize")))?;
+        .ok_or_else(|| invalid(format!("zfp: chunk shape {shape:?} overflows usize")))?;
     match dtype {
         ZfpDtype::F32 => native::<f32>(bytes, &effective, mode, elements),
         ZfpDtype::F64 => native::<f64>(bytes, &effective, mode, elements),
@@ -429,7 +451,7 @@ impl NdZfpBrickDecoder {
     ) -> Result<Self> {
         let ZfpMode::FixedRate(rate) = config.zfp_mode()? else {
             return Err(invalid(format!(
-                "nd_zfp: brick decode needs fixed_rate mode, configuration says {:?}",
+                "zfp: brick decode needs fixed_rate mode, configuration says {:?}",
                 config.mode
             )));
         };
@@ -532,14 +554,14 @@ mod tests {
         NdZfpConfig {
             mode: "fixed_rate".into(),
             rate: Some(rate),
-            dims,
+            dims: Some(dims),
             ..NdZfpConfig::default()
         }
     }
 
     fn reversible(dims: u8) -> NdZfpConfig {
         NdZfpConfig {
-            dims,
+            dims: Some(dims),
             ..NdZfpConfig::default()
         }
     }
@@ -658,11 +680,11 @@ mod tests {
                 ..base.clone()
             },
             NdZfpConfig {
-                dims: 0,
+                dims: Some(0),
                 ..base.clone()
             },
             NdZfpConfig {
-                dims: 5,
+                dims: Some(5),
                 ..base.clone()
             },
         ] {

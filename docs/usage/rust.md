@@ -17,7 +17,7 @@ ndic-codestream = "0.0"
 ndic-lift = "0.0"
 ndic-zfp = "0.0"
 # ndic-zarr has no default features. `zarrs` is the one that registers
-# nd_lift/htj2k/nd_zfp into the zarrs plugin registry, so leaving it off gives
+# nd_lift/htj2k/zfp into the zarrs plugin registry, so leaving it off gives
 # you a crate that cannot open an array using them. The codec_series builder
 # below needs no features; see "Feature flags" for the rest.
 ndic-zarr = { version = "0.0", features = ["zarrs"] }
@@ -83,7 +83,7 @@ assert_eq!(chunk, original);                        // reversible, exactly
 
 ## ZFP chunks and bricks
 
-The `nd_zfp` core ([nd_zfp codec](../architecture/zfp.md)) compresses 1D–4D
+The ZFP core ([zfp codec](../architecture/zfp.md)) compresses 1D–4D
 arrays into standard ZFP streams; in fixed-rate mode every `4^d` brick sits
 at a computed offset:
 

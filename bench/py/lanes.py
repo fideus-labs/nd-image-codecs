@@ -34,7 +34,7 @@ def git_hash() -> str:
 
 
 #: Array-to-bytes codecs a lane pipeline may use as its serializer.
-SERIALIZERS = frozenset({"bytes", "htj2k", "nd_zfp"})
+SERIALIZERS = frozenset({"bytes", "htj2k", "zfp", "nd_zfp"})
 
 
 def split_pipeline(pipeline: list[dict]) -> dict:

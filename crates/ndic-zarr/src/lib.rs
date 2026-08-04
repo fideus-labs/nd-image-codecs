@@ -7,7 +7,7 @@
 //! | --- | --- | --- |
 //! | [`ndic_lift::CODEC_NAME`] (`nd_lift`) | array → array | `ndic-lift` |
 //! | [`HTJ2K_CODEC_NAME`] (`htj2k`) | array → bytes | `ndic-htj2k` + `ndic-codestream` |
-//! | [`ndic_zfp::CODEC_NAME`] (`nd_zfp`) | array → bytes | `ndic-zfp` |
+//! | [`ndic_zfp::CODEC_NAME`] (`zfp`) | array → bytes | `ndic-zfp` |
 //!
 //! The [`series`] module builds complete codec **pipelines** ("series") from
 //! axis metadata — `transpose` → decorrelation → plane/block codec — for the
@@ -40,4 +40,5 @@ pub mod zfp_codec;
 pub const HTJ2K_CODEC_NAME: &str = "htj2k";
 
 pub use ndic_lift::CODEC_NAME as ND_LIFT_CODEC_NAME;
-pub use ndic_zfp::CODEC_NAME as ND_ZFP_CODEC_NAME;
+pub use ndic_zfp::CODEC_NAME as ZFP_CODEC_NAME;
+pub use ndic_zfp::LEGACY_CODEC_NAME as ND_ZFP_LEGACY_CODEC_NAME;

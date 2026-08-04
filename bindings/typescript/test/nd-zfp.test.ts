@@ -13,17 +13,29 @@ const wasmBuilt = existsSync(
 
 describe("NdZfp configuration", () => {
   it("serializes the configuration in the builder's field order", () => {
-    expect(NdZfp.fromConfig({ name: "nd_zfp" }).toDict()).toEqual({
-      name: "nd_zfp",
-      configuration: { mode: "reversible", dims: 3 },
+    // Registered `zfp` semantics: no dims in, none out; the codec name is
+    // always re-emitted as the registered one.
+    expect(NdZfp.fromConfig({ name: "zfp" }).toDict()).toEqual({
+      name: "zfp",
+      configuration: { mode: "reversible" },
     });
+    expect(
+      NdZfp.fromConfig({
+        name: "zfp",
+        configuration: { mode: "fixed_rate", rate: 8 },
+      }).toDict(),
+    ).toEqual({
+      name: "zfp",
+      configuration: { mode: "fixed_rate", rate: 8 },
+    });
+    // A legacy nd_zfp configuration keeps its dims through the round trip.
     expect(
       NdZfp.fromConfig({
         name: "nd_zfp",
         configuration: { mode: "fixed_rate", rate: 8, dims: 3 },
       }).toDict(),
     ).toEqual({
-      name: "nd_zfp",
+      name: "zfp",
       configuration: { mode: "fixed_rate", rate: 8, dims: 3 },
     });
   });
