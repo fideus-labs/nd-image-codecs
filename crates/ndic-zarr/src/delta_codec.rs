@@ -115,11 +115,11 @@ struct DeltaElem {
 macro_rules! delta_int {
     ($t:ty) => {
         DeltaElem {
-            size: size_of::<$t>(),
+            size: std::mem::size_of::<$t>(),
             diff: |bytes| {
                 let mut prev: $t = 0;
                 let mut first = true;
-                for chunk in bytes.chunks_exact_mut(size_of::<$t>()) {
+                for chunk in bytes.chunks_exact_mut(std::mem::size_of::<$t>()) {
                     let v = <$t>::from_le_bytes(chunk.try_into().unwrap());
                     let enc = if first { v } else { v.wrapping_sub(prev) };
                     first = false;
@@ -129,7 +129,7 @@ macro_rules! delta_int {
             },
             cumsum: |bytes| {
                 let mut acc: $t = 0;
-                for chunk in bytes.chunks_exact_mut(size_of::<$t>()) {
+                for chunk in bytes.chunks_exact_mut(std::mem::size_of::<$t>()) {
                     let v = <$t>::from_le_bytes(chunk.try_into().unwrap());
                     acc = acc.wrapping_add(v);
                     chunk.copy_from_slice(&acc.to_le_bytes());
@@ -144,11 +144,11 @@ macro_rules! delta_int {
 macro_rules! delta_float {
     ($t:ty) => {
         DeltaElem {
-            size: size_of::<$t>(),
+            size: std::mem::size_of::<$t>(),
             diff: |bytes| {
                 let mut prev: $t = 0.0;
                 let mut first = true;
-                for chunk in bytes.chunks_exact_mut(size_of::<$t>()) {
+                for chunk in bytes.chunks_exact_mut(std::mem::size_of::<$t>()) {
                     let v = <$t>::from_le_bytes(chunk.try_into().unwrap());
                     let enc = if first { v } else { v - prev };
                     first = false;
@@ -158,7 +158,7 @@ macro_rules! delta_float {
             },
             cumsum: |bytes| {
                 let mut acc: $t = 0.0;
-                for chunk in bytes.chunks_exact_mut(size_of::<$t>()) {
+                for chunk in bytes.chunks_exact_mut(std::mem::size_of::<$t>()) {
                     let v = <$t>::from_le_bytes(chunk.try_into().unwrap());
                     acc += v;
                     chunk.copy_from_slice(&acc.to_le_bytes());

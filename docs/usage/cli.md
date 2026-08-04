@@ -91,13 +91,15 @@ ndic index out.jph --target region --rect 128,128,256,256 --level 1
 for that flow.
 
 Output is a JSON list of `{start, end}` ranges; execute them with any HTTP
-client against a host that honors `Range:`. The example below serves the
-working directory locally, but S3, GCS, and nginx all behave the same way:
+client against a host that honors `Range:` — S3, GCS, and nginx all do. For
+a local server use the repository's `scripts/range-server.py`
+(`python3 -m http.server` ignores `Range:` and would return whole files):
 
 ```bash
 # CI passes its own port; pick any free one when following along.
 port="${DOCS_HTTP_PORT:-8000}"
-python3 -m http.server "$port" >/dev/null 2>&1 &
+repo="$(git rev-parse --show-toplevel)"
+python3 "$repo/scripts/range-server.py" "$port" &
 trap 'kill %1' EXIT
 url="http://127.0.0.1:$port/out.jph"
 sleep 1
@@ -105,6 +107,9 @@ sleep 1
 ranges=$(ndic index "$url" --target thumbnail --format curl)
 curl -s -H "Range: bytes=$ranges" "$url" -o thumb.part
 ndic expand -i thumb.part --partial -o thumb.raw
+
+# The fetch really was partial: fewer bytes than the whole codestream.
+test "$(stat -c%s thumb.part)" -lt "$(stat -c%s out.jph)"
 ```
 
 ## Thumbnail

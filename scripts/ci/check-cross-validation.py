@@ -184,7 +184,7 @@ def check_case(case: dict, runners: list[Runner], workdir: pathlib.Path) -> list
                 reader.read(store, out)
                 outputs[(writer_name, reader.name)] = out.read_bytes()
             except RuntimeError as err:
-                failures.append(f"{writer_name} → {reader.name}: {err}")
+                failures.append(f"{writer_name} -> {reader.name}: {err}")
 
     if outputs:
         reference_key = min(outputs)
@@ -192,7 +192,7 @@ def check_case(case: dict, runners: list[Runner], workdir: pathlib.Path) -> list
         for key, got in outputs.items():
             if got != reference:
                 failures.append(
-                    f"{key[0]} → {key[1]} disagrees with {reference_key[0]} → {reference_key[1]}"
+                    f"{key[0]} -> {key[1]} disagrees with {reference_key[0]} -> {reference_key[1]}"
                 )
         if is_lossless(case) and reference != input_.read_bytes():
             failures.append("lossless decode does not match the input")
@@ -244,7 +244,7 @@ def main() -> int:
             workdir.mkdir()
             failures = check_case(case, runners, workdir)
             status = "ok" if not failures else "FAIL"
-            pairs = f"{len(runners)}×{len(runners)}"
+            pairs = f"{len(runners)}x{len(runners)}"
             print(f"  {case['name']:<32} [{case['family']}] {pairs} {status}", flush=True)
             for failure in failures:
                 print(f"    - {failure}", file=sys.stderr)
@@ -257,7 +257,7 @@ def main() -> int:
 
     total = len(cases)
     print(f"{total - failed}/{total} cases green "
-          f"({len(runners)} writers × {len(runners)} readers each)")
+          f"({len(runners)} writers x {len(runners)} readers each)")
     return 1 if failed else 0
 
 

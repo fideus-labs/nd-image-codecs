@@ -254,7 +254,13 @@ where
     P: PlaneSample + PlaneLe,
 {
     config.validate(shape.len())?;
-    let n: usize = shape.iter().product();
+    let n = shape
+        .iter()
+        .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+        .and_then(|n| n.checked_mul(size_of::<P>()).map(|_| n))
+        .ok_or_else(|| Error::InvalidArgument {
+            message: format!("nd_lift: chunk shape {shape:?} overflows usize"),
+        })?;
     if forward {
         if bytes.len() != n * size_of::<In>() {
             return Err(Error::InvalidArgument {

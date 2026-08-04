@@ -94,6 +94,15 @@ def main() -> int:
               "(run scripts/fetch-bench-data.sh to enable them)")
         return 0
 
+    missing_chunks = [slug for slug in slugs if slug not in CHUNKS]
+    if missing_chunks:
+        print(
+            f"no CHUNKS entry for {missing_chunks} in bench/py/run_macro.py; "
+            "a new lock-file volume needs a chunk shape here before it can be benched",
+            file=sys.stderr,
+        )
+        return 1
+
     out = args.out or REPO / "target" / "benchmarks" / git_hash()
     for slug in slugs:
         volume = tier3.entry(slug)

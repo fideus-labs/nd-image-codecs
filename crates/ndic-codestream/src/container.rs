@@ -200,8 +200,11 @@ impl ChunkHeader {
             return Err(err(5, "unknown htj2k chunk container flags"));
         }
         let xy_levels = bytes[6];
-        if xy_levels > 33 {
-            return Err(err(6, "xy_levels exceeds the 33-level J2K bound"));
+        if xy_levels > 32 {
+            return Err(err(
+                6,
+                "xy_levels exceeds the 32-level J2K bound (T.800 SPcod)",
+            ));
         }
         let ndim = usize::from(bytes[7]);
         if !(2..=MAX_NDIM).contains(&ndim) {

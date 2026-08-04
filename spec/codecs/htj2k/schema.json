@@ -11,7 +11,7 @@
         "xy_levels": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 33
+          "maximum": 32
         },
         "reversible": {
           "type": "boolean"

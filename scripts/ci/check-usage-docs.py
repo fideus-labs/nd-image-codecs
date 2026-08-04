@@ -21,9 +21,10 @@ language runs:
 
 ``bash``
     One script per page in a scratch directory, ``set -euo pipefail``, with
-    the built ``ndic`` on ``PATH`` and a Range-capable HTTP server for the
-    page's workdir at ``http://127.0.0.1:<port>``. Pages that use it say so
-    in the snippet.
+    the built ``ndic`` on ``PATH`` and a free port in ``DOCS_HTTP_PORT``.
+    Pages that demonstrate HTTP Range start ``scripts/range-server.py``
+    themselves — the checker deliberately runs no server of its own, so CI
+    exercises exactly the command the documentation shows.
 ``rust``
     Concatenated into ``fn main() -> Result<(), Box<dyn Error>>`` inside a
     generated crate with path dependencies on the workspace, then built and
@@ -122,54 +123,10 @@ def parse_blocks(path: pathlib.Path) -> list[Block]:
     return blocks
 
 
-class RangeHandler(http.server.SimpleHTTPRequestHandler):
-    """SimpleHTTPRequestHandler plus single-range support.
-
-    The stock handler ignores `Range:` entirely and answers 200 with the whole
-    file, which would let a broken plan pass. Multi-range requests are
-    answered as the union span, which is what a coalesced plan wants and what
-    `ndic expand --partial` accepts.
-    """
-
-    def log_message(self, *args) -> None:  # noqa: ANN002 - stdlib signature
-        pass
-
-    def send_head(self):  # noqa: ANN201 - stdlib signature
-        header = self.headers.get("Range")
-        if not header or not header.startswith("bytes="):
-            return super().send_head()
-        path = self.translate_path(self.path)
-        try:
-            data = pathlib.Path(path).read_bytes()
-        except OSError:
-            self.send_error(404)
-            return None
-        spans = []
-        for part in header.removeprefix("bytes=").split(","):
-            lo, _, hi = part.partition("-")
-            start = int(lo) if lo else 0
-            end = int(hi) if hi else len(data) - 1
-            spans.append((start, min(end, len(data) - 1)))
-        start = min(s for s, _ in spans)
-        end = max(e for _, e in spans)
-        body = data[start : end + 1]
-        self.send_response(206)
-        self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Accept-Ranges", "bytes")
-        self.end_headers()
-        import io
-
-        return io.BytesIO(body)
-
-
-def serve(directory: pathlib.Path) -> tuple[socketserver.TCPServer, int]:
-    handler = lambda *a, **kw: RangeHandler(*a, directory=str(directory), **kw)  # noqa: E731
-    server = socketserver.TCPServer(("127.0.0.1", 0), handler)
-    port = server.server_address[1]
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server, port
+def free_port() -> int:
+    """A port that is free right now, for the docs' own server to bind."""
+    with socketserver.TCPServer(("127.0.0.1", 0), http.server.BaseHTTPRequestHandler) as probe:
+        return probe.server_address[1]
 
 
 def build_ndic() -> pathlib.Path:
@@ -197,22 +154,17 @@ def run(argv: list[str], cwd: pathlib.Path, env: dict | None = None) -> None:
 
 
 def run_bash(blocks: list[Block], workdir: pathlib.Path, ndic: pathlib.Path) -> None:
-    server, port = serve(workdir)
-    try:
-        script = workdir / "_docs_check.sh"
-        body = "\n\n".join(b.code for b in blocks)
-        script.write_text(f"set -euo pipefail\n\n{body}\n")
-        env = {
-            **__import__("os").environ,
-            "PATH": f"{ndic.parent}:{__import__('os').environ['PATH']}",
-            # The pages spell this out: the Range examples point at a local
-            # server, and CI supplies its port.
-            "DOCS_HTTP_PORT": str(port),
-        }
-        run(["bash", str(script)], workdir, env)
-    finally:
-        server.shutdown()
-        server.server_close()
+    script = workdir / "_docs_check.sh"
+    body = "\n\n".join(b.code for b in blocks)
+    script.write_text(f"set -euo pipefail\n\n{body}\n")
+    env = {
+        **__import__("os").environ,
+        "PATH": f"{ndic.parent}:{__import__('os').environ['PATH']}",
+        # The Range examples start scripts/range-server.py themselves; CI
+        # only supplies a port that is free to bind.
+        "DOCS_HTTP_PORT": str(free_port()),
+    }
+    run(["bash", str(script)], workdir, env)
 
 
 RUST_CRATE_MANIFEST = """\
@@ -395,7 +347,10 @@ def main() -> int:
 
     print("building ndic…", flush=True)
     ndic = build_ndic()
-    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ndic-usage-docs-"))
+    # Under target/ (not the system tmpdir) so repository-relative commands
+    # in the snippets — `git rev-parse --show-toplevel` above all — resolve.
+    (REPO / "target").mkdir(exist_ok=True)
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="usage-docs-", dir=REPO / "target"))
     failed = 0
     skipped: list[Block] = []
     try:

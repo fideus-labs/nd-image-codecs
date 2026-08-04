@@ -32,6 +32,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v5
@@ -70,6 +72,9 @@ jobs:
       - name: Run the Rust benchmarks
         run: cargo run -p ndic-bench-cli --release -- run --quiet
 
+      # Exit 1 is a gated regression; exit 2 is a comparison failure
+      # (missing or unreadable records). Only the former is a ratio
+      # regression worth an issue — the latter fails the job.
       - name: Report against the main baseline
         id: compare
         shell: bash
@@ -79,7 +84,12 @@ jobs:
             --gate ratio \
             --fail-on-regression \
             --format markdown | tee bench-nightly.md
-          echo "ratio_regressed=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          status="${PIPESTATUS[0]}"
+          echo "ratio_regressed=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -gt 1 ]; then
+            echo "compare failed with exit $status (not a regression)" >&2
+            exit "$status"
+          fi
 
       - name: Upload the records and report
         uses: actions/upload-artifact@v4
@@ -94,7 +104,7 @@ jobs:
       # A ratio regression is deterministic — it does not depend on the
       # runner — so it is worth a human's attention even overnight.
       - name: Open an issue on a ratio regression
-        if: steps.compare.outputs.ratio_regressed != '0'
+        if: steps.compare.outputs.ratio_regressed == '1'
         uses: actions/github-script@v7
         with:
           script: |

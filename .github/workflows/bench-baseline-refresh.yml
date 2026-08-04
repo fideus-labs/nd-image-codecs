@@ -28,6 +28,10 @@ on:
         description: "Samples per benchmark"
         required: true
         default: "30"
+      macro_samples:
+        description: "Samples per macro-tier benchmark (each sample compresses a full Tier 3 volume)"
+        required: true
+        default: "5"
       include_macro:
         description: "Include the macro tier (fetches the Tier 3 volumes)"
         type: boolean
@@ -62,15 +66,22 @@ jobs:
         if: inputs.include_macro
         run: scripts/fetch-bench-data.sh
 
+      # Inputs reach the shell through `env`, never by template
+      # interpolation — a free-text dispatch input must not become shell
+      # syntax (zizmor: template-injection).
       - name: Record the Python lanes
+        env:
+          SAMPLES: ${{ inputs.samples }}
         run: |
-          python3 bench/py/run_nd_delta.py --samples "${{ inputs.samples }}"
-          python3 bench/py/run_nd_lift.py --samples "${{ inputs.samples }}"
-          python3 bench/py/run_nd_zfp.py --samples "${{ inputs.samples }}"
+          python3 bench/py/run_nd_delta.py --samples "$SAMPLES"
+          python3 bench/py/run_nd_lift.py --samples "$SAMPLES"
+          python3 bench/py/run_nd_zfp.py --samples "$SAMPLES"
 
       - name: Record the macro lanes
         if: inputs.include_macro
-        run: python3 bench/py/run_macro.py --samples 5
+        env:
+          MACRO_SAMPLES: ${{ inputs.macro_samples }}
+        run: python3 bench/py/run_macro.py --samples "$MACRO_SAMPLES"
 
       - name: Record the Rust benchmarks
         run: cargo run -p ndic-bench-cli --release -- run --quiet
@@ -79,19 +90,34 @@ jobs:
       # the numbers moved rather than only that they did.
       - name: Diff against the outgoing baseline
         shell: bash
+        env:
+          BASELINE: ${{ inputs.baseline }}
         run: |
           set +e
           cargo run -p ndic-bench-cli --release -- \
-            compare "bench/baselines/${{ inputs.baseline }}" --format markdown \
+            compare "bench/baselines/$BASELINE" --format markdown \
             | tee baseline-diff.md
 
       - name: Replace the baseline records
         shell: bash
+        env:
+          BASELINE: ${{ inputs.baseline }}
+          INCLUDE_MACRO: ${{ inputs.include_macro }}
+          MACHINE: ${{ inputs.machine }}
         run: |
           set -euo pipefail
           records="target/benchmarks/$(git rev-parse --short HEAD)"
           test -d "$records" || { echo "no records at $records"; exit 1; }
-          target="bench/baselines/${{ inputs.baseline }}"
+          target="bench/baselines/$BASELINE"
+          # The whole directory is replaced so renamed benchmarks cannot
+          # leave stale records behind — which means a refresh that skipped
+          # the macro tier would silently delete any committed macro
+          # baselines. Refuse that combination instead.
+          if [ "$INCLUDE_MACRO" != "true" ] && ls "$target"/*/macro__*.json >/dev/null 2>&1; then
+            echo "the $BASELINE baseline contains macro-tier records;" \
+                 "re-run with include_macro so the refresh replaces them" >&2
+            exit 1
+          fi
           rm -rf "$target"
           mkdir -p "$target"
           cp -r "$records"/. "$target"/
@@ -122,9 +148,6 @@ jobs:
           (target / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
           print(json.dumps(manifest, indent=2))
           PY
-        env:
-          BASELINE: ${{ inputs.baseline }}
-          MACHINE: ${{ inputs.machine }}
 
       - name: Open the refresh pull request
         uses: peter-evans/create-pull-request@v7

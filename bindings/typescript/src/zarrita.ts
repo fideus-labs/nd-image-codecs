@@ -491,8 +491,14 @@ export function registerZarritaCodecs(registry: {
     };
     return {
       fromConfig(config: Record<string, unknown>): unknown {
+        // Absent means the Zarr v3 default, `noshuffle` — a store written by
+        // a writer that omits it must stay readable. Unknown strings error.
         const shuffle =
-          typeof config.shuffle === "string" ? BLOSC_SHUFFLE[config.shuffle] : config.shuffle;
+          config.shuffle === undefined
+            ? 0
+            : typeof config.shuffle === "string"
+              ? BLOSC_SHUFFLE[config.shuffle]
+              : config.shuffle;
         if (shuffle === undefined) {
           throw new Error(`blosc: unknown shuffle ${JSON.stringify(config.shuffle)}`);
         }

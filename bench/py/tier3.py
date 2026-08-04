@@ -135,9 +135,11 @@ def main() -> int:
             print(f"no Tier 3 volume named {args.only!r}", file=sys.stderr)
             return 1
 
-    print(f"Tier 3 benchmark volumes → {cache_dir()}")
-    ok = all(fetch(volume, args.check) for volume in selected)
-    return 0 if ok else 1
+    print(f"Tier 3 benchmark volumes -> {cache_dir()}")
+    # Materialized first: `all()` on a generator would stop at the first
+    # failure and leave every later volume unfetched and unreported.
+    results = [fetch(volume, args.check) for volume in selected]
+    return 0 if all(results) else 1
 
 
 if __name__ == "__main__":

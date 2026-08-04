@@ -71,9 +71,9 @@ impl Htj2kConfig {
     /// [`Error::Unsupported`] for an unknown progression;
     /// [`Error::InvalidArgument`] for out-of-range levels.
     pub fn validate(&self) -> Result<()> {
-        if self.xy_levels > 33 {
+        if self.xy_levels > 32 {
             return Err(Error::InvalidArgument {
-                message: "htj2k: xy_levels exceeds the 33-level J2K bound".into(),
+                message: "htj2k: xy_levels exceeds the 32-level J2K bound (T.800 SPcod)".into(),
             });
         }
         self.progression_order().map(|_| ())

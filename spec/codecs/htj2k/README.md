@@ -21,7 +21,7 @@ The value of the `name` member in the codec object MUST be `htj2k`.
 
 | Member | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `xy_levels` | unsigned integer | `5` | In-plane wavelet decomposition levels. Resolutions available = `xy_levels + 1`. MUST be ≤ 33 (the JPEG 2000 bound). |
+| `xy_levels` | unsigned integer | `5` | In-plane wavelet decomposition levels. Resolutions available = `xy_levels + 1`. MUST be ≤ 32 (the JPEG 2000 Part 1 `SPcod` bound). |
 | `reversible` | boolean | `true` | `true` selects the reversible 5/3 wavelet (lossless). `false` selects the irreversible 9/7 wavelet (lossy). |
 | `progression` | string | `"RPCL"` | Progression order: one of `"LRCP"`, `"RLCP"`, `"RPCL"`, `"PCRL"`, `"CPRL"`. `"RPCL"` is what makes a byte prefix a resolution prefix; other orders are conformant but forfeit that property. |
 | `index` | boolean | `true` | Write the coefficient-plane index (and per-plane `TLM`/`PLT` marker segments). With `index: false` the chunk is a bare concatenation and only whole-chunk decode is possible. |
@@ -143,10 +143,12 @@ separate array-to-array codec upstream (see [`nd_lift`](../nd_lift/README.md)).
 
 ## Interoperability and compatibility
 
-Each plane codestream is conforming Part 1 / Part 15 and decodes with
-third-party JPEG 2000 implementations that read HT codestreams — OpenJPH, and
-OpenJPEG 2.5 and later (hence `imagecodecs.jpeg2k_decode`). Extracting a plane
-needs only its `offset` and `len` from the index above.
+Each plane codestream is conforming Part 1 / Part 15, so any JPEG 2000
+implementation that reads HT codestreams can decode it. What the reference
+implementation's CI actually pins is bit-exact plane decode through
+`imagecodecs.jpeg2k_decode` (OpenJPEG); OpenJPH interop is exercised by
+opt-in corpus and differential suites that fetch and build OpenJPH locally.
+Extracting a plane needs only its `offset` and `len` from the index above.
 
 What is specific to this codec is the *container*: the header and index that
 bind a chunk's planes together. A third-party reader that wants whole planes

@@ -170,8 +170,8 @@ class Htj2kCodec(ArrayBytesCodec):
     index: bool = True
 
     def __post_init__(self) -> None:
-        if not 0 <= int(self.xy_levels) <= 33:
-            raise ValueError("htj2k: xy_levels must be in 0..=33")
+        if not 0 <= int(self.xy_levels) <= 32:
+            raise ValueError("htj2k: xy_levels must be in 0..=32")
         if self.progression not in _HTJ2K_PROGRESSIONS:
             raise ValueError(f"htj2k: unknown progression order {self.progression!r}")
 

@@ -198,8 +198,15 @@ fn write(args: &WriteArgs) -> Result<()> {
     let case: CaseSpec = serde_json::from_str(&spec_text)
         .with_context(|| format!("parsing spec {}", args.spec.display()))?;
     let (data_type, itemsize) = named_data_type(&case.dtype)?;
-    let elements: u64 = case.shape.iter().product();
-    let expected_len = usize::try_from(elements).context("shape overflows usize")? * itemsize;
+    let elements: u64 = case
+        .shape
+        .iter()
+        .try_fold(1u64, |acc, &d| acc.checked_mul(d))
+        .with_context(|| format!("shape {:?} overflows u64", case.shape))?;
+    let expected_len = usize::try_from(elements)
+        .ok()
+        .and_then(|n| n.checked_mul(itemsize))
+        .with_context(|| format!("shape {:?} x {} overflows usize", case.shape, case.dtype))?;
     let input = std::fs::read(&args.input)
         .with_context(|| format!("reading input {}", args.input.display()))?;
     if input.len() != expected_len {

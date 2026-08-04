@@ -6,10 +6,12 @@ description: Task-oriented guides for using nd-image-codecs from Zarr, the ndic 
 # Usage
 
 :::{note} Status
-Every code block on these pages is **executed by CI** against the current
+Every code block on these pages is **checked by CI** against the current
 API — the Rust snippets are compiled and run, the Python and TypeScript ones
-imported and run, the shell ones executed, and the codec configurations
-round-tripped through the codecs that own them
+imported and run, the bash ones executed, the codec configurations
+round-tripped through the codecs that own them, and the `$`-prompt
+transcripts' displayed JSON parsed (their commands are exercised by the
+executable bash blocks)
 ([`scripts/ci/check-usage-docs.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/ci/check-usage-docs.py)).
 A snippet that cannot run in CI carries a comment saying why, and the check
 reports those exemptions; there are a handful, all of them install commands

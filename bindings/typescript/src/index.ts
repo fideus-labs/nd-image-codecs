@@ -336,8 +336,8 @@ export class Htj2k {
     public readonly meta?: Htj2kChunkMeta,
   ) {
     const { xy_levels = 5, progression = "RPCL" } = config.configuration ?? {};
-    if (!Number.isInteger(xy_levels) || xy_levels < 0 || xy_levels > 33) {
-      throw new Error(`htj2k: xy_levels must be an integer in 0..=33, got ${xy_levels}`);
+    if (!Number.isInteger(xy_levels) || xy_levels < 0 || xy_levels > 32) {
+      throw new Error(`htj2k: xy_levels must be an integer in 0..=32, got ${xy_levels}`);
     }
     if (!HTJ2K_PROGRESSIONS.has(progression)) {
       throw new Error(`htj2k: unknown progression order ${JSON.stringify(progression)}`);

@@ -11,7 +11,7 @@ Helper scripts, created as their roadmap phases land:
 | `ci/check-docs-links.py` | 1 | Check the outbound `http(s)` links cited by `docs/` — manual/pre-release, deliberately not a CI gate (external specification hosts are too flaky) |
 | `fetch-conformance.sh` | 3 | Fetch + cache the OpenJPH conformance corpus (Tier 2 test data) |
 | `fetch-bench-data.sh` | 6 | Fetch, verify, and cache the Tier 3 benchmark volumes pinned in `bench-data.lock.toml` (implementation: `bench/py/tier3.py`) |
-| `range-demo.sh` | 2 | Execute an `ndic index` plan with curl against a static server |
+| `range-server.py` | 6 | Static file server honoring HTTP `Range:` (`python3 -m http.server` does not) — what the usage docs' byte-range examples run against, in CI and by hand |
 | `profile.sh` | 6 | `perf record`/flamegraph wrapper for one bench workload (workspace `profiling` profile) |
 | `asm.sh` | 5 | Inspect release codegen of hot functions per SIMD lane |
 | `ci/check-usage-docs.py` | 6 | Extract and execute every code block in `docs/usage/*` against the current API (the `usage-docs` CI job) |

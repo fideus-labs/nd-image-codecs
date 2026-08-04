@@ -56,7 +56,9 @@ The examples below run against a local static server so they can be executed;
 any host that honors `Range:` — S3, GCS, nginx — behaves identically.
 
 ```bash
-# A plane to plan against, and a server for it. CI passes its own port.
+# A plane to plan against, and a Range-capable server for it — the
+# repository ships one because `python3 -m http.server` ignores `Range:`.
+# CI passes its own port.
 python3 -c "
 import sys
 w, h = 256, 256
@@ -67,14 +69,17 @@ sys.stdout.buffer.write(b''.join(
 ndic compress -i volume.raw --raw-size 256x256 --raw-dtype u16 -o volume.jph
 
 port="${DOCS_HTTP_PORT:-8000}"
-python3 -m http.server "$port" >/dev/null 2>&1 &
+repo="$(git rev-parse --show-toplevel)"
+python3 "$repo/scripts/range-server.py" "$port" &
 trap 'kill %1' EXIT
 url="http://127.0.0.1:$port/volume.jph"
 sleep 1
 
-# Plan, fetch the planned span, decode what arrived.
+# Plan, fetch the planned span, decode what arrived — and check the fetch
+# really was partial.
 ranges=$(ndic index "$url" --target thumbnail --max 64 --format curl)
 curl -s -H "Range: bytes=$ranges" "$url" -o thumb.part
+test "$(stat -c%s thumb.part)" -lt "$(stat -c%s volume.jph)"
 ndic expand -i thumb.part --partial -o thumb.raw
 ```
 
