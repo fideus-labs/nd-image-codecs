@@ -1,4 +1,4 @@
-"""The ``nd_zfp`` zarr-python codec: full nd-zfp series round-trips and the
+"""The ``zfp`` zarr-python codec: full nd-zfp series round-trips and the
 differential lane against ``imagecodecs`` (the LLNL C reference via FFI).
 
 Needs the native extension module (``maturin develop`` / an installed
@@ -55,8 +55,11 @@ def smooth_volume(dtype: str) -> np.ndarray:
 def test_nd_zfp_series_roundtrips_reversibly(dtype: str) -> None:
     data = smooth_volume(dtype)
     pipeline = codec_series(AXES, list(CHUNKS), dtype, "nd-zfp")
-    # The array-to-bytes serializer is nd_zfp itself: no "bytes" codec.
-    assert pipeline[-1]["name"] == "nd_zfp"
+    # The array-to-bytes serializer is zfp itself: no "bytes" codec. The
+    # chunk shape (2, 1, 4, 32, 32) carries a singleton, so the builder
+    # collapses it with a reshape filter before zfp.
+    assert pipeline[-1]["name"] == "zfp"
+    assert any(codec["name"] == "reshape" for codec in pipeline[:-1])
     store: dict = {}
     array = zarr.create_array(
         store,
@@ -159,14 +162,24 @@ def test_streams_match_the_c_reference_via_imagecodecs() -> None:
 @needs_native
 def test_metadata_round_trips_and_bad_configs_are_refused() -> None:
     codec = NdZfpCodec.from_dict(
-        {"name": "nd_zfp", "configuration": {"mode": "fixed_rate", "rate": 8.0}}
+        {"name": "zfp", "configuration": {"mode": "fixed_rate", "rate": 8.0}}
     )
+    # Registered `zfp` semantics: no `dims` in, none out.
     assert codec.to_dict() == {
-        "name": "nd_zfp",
-        "configuration": {"mode": "fixed_rate", "rate": 8.0, "dims": 3},
+        "name": "zfp",
+        "configuration": {"mode": "fixed_rate", "rate": 8.0},
     }
-    assert NdZfpCodec.from_dict({"name": "nd_zfp"}).to_dict() == {
-        "name": "nd_zfp",
+    assert NdZfpCodec.from_dict({"name": "zfp"}).to_dict() == {
+        "name": "zfp",
+        "configuration": {"mode": "reversible"},
+    }
+    # A legacy nd_zfp configuration parses, keeps its dims, and re-emits
+    # under the registered name.
+    legacy = NdZfpCodec.from_dict(
+        {"name": "nd_zfp", "configuration": {"mode": "reversible", "dims": 3}}
+    )
+    assert legacy.to_dict() == {
+        "name": "zfp",
         "configuration": {"mode": "reversible", "dims": 3},
     }
     with pytest.raises(ValueError, match="mode"):
@@ -195,5 +208,5 @@ def test_unsupported_dtypes_are_refused() -> None:
     import zarr.core.dtype as zdt
 
     codec = NdZfpCodec()
-    with pytest.raises(ValueError, match="nd_zfp"):
+    with pytest.raises(ValueError, match="zfp"):
         codec.validate(shape=(4, 8, 8), dtype=zdt.UInt32(), chunk_grid=None)

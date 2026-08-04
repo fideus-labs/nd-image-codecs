@@ -54,8 +54,14 @@ pub use chunk::{
     NdZfpBrickDecoder, NdZfpConfig, ZfpDtype, decode_chunk, decode_chunk_brick, encode_chunk,
 };
 
-/// The registered Zarr v3 array-to-bytes codec identifier.
-pub const CODEC_NAME: &str = "nd_zfp";
+/// The Zarr v3 array-to-bytes codec identifier: the name registered in
+/// zarr-extensions, whose streams this codec reads and writes.
+pub const CODEC_NAME: &str = "zfp";
+
+/// The deprecated pre-registration codec name, kept as a read alias so
+/// stores written before the `zfp` adoption keep decoding. Configurations
+/// under this name may carry the legacy `dims` member.
+pub const LEGACY_CODEC_NAME: &str = "nd_zfp";
 
 /// Bits in the fixed part of a full ZFP header (32-bit magic + 52-bit field
 /// metadata); the mode word follows.

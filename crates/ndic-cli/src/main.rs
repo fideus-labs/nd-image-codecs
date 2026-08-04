@@ -10,6 +10,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 mod commands;
 mod image_io;
 mod plans;
+#[cfg(feature = "zarr")]
+mod zarr_io;
 
 /// nd-image-codecs command-line interface.
 #[derive(Parser)]
@@ -37,17 +39,27 @@ enum Command {
     /// Plan, fetch (local file or HTTP Range), and decode a thumbnail or
     /// low-pass 3D preview in one step.
     Thumbnail(plans::ThumbnailArgs),
+    /// Write / read Zarr v3 filesystem stores with the registered
+    /// nd-image-codecs pipelines (build with `--features zarr`).
+    #[cfg(feature = "zarr")]
+    Zarr(zarr_io::ZarrArgs),
 }
 
 /// Arguments for `ndic series`.
 #[derive(clap::Args)]
 struct SeriesArgs {
+    /// Parse one Zarr v3 codec object with that codec's own configuration
+    /// type and print it back, instead of building a series. Round-tripping
+    /// through the codec is how a documented or hand-written configuration
+    /// is checked against what the codec actually accepts.
+    #[arg(long, conflicts_with = "chunks", value_name = "JSON")]
+    validate_codec: Option<String>,
     /// Comma-separated axis names in dimension order, e.g. `t,c,z,y,x`.
     #[arg(long, default_value = "t,c,z,y,x")]
     axes: String,
     /// Comma-separated chunk shape, e.g. `1,1,32,256,256`.
-    #[arg(long)]
-    chunks: String,
+    #[arg(long, required_unless_present = "validate_codec")]
+    chunks: Option<String>,
     /// Zarr data type, e.g. `uint16`.
     #[arg(long, default_value = "uint16")]
     dtype: String,
@@ -116,6 +128,8 @@ fn main() {
         Command::Inspect(args) => exit_on_error(commands::inspect(&args)),
         Command::Index(args) => exit_on_error(plans::index(&args)),
         Command::Thumbnail(args) => exit_on_error(plans::thumbnail(&args)),
+        #[cfg(feature = "zarr")]
+        Command::Zarr(args) => exit_on_error(zarr_io::run(&args)),
     }
 }
 
@@ -126,9 +140,49 @@ fn exit_on_error(result: anyhow::Result<()>) {
     }
 }
 
+/// Parse one Zarr v3 codec object through the owning codec's configuration
+/// type and re-emit it. Each type is `deny_unknown_fields`, so an unknown or
+/// misspelled key is an error rather than a silently ignored field.
+fn validate_codec(json: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let value: serde_json::Value = serde_json::from_str(json)?;
+    let name = value
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("a codec object needs a string \"name\"")?;
+    let configuration = value
+        .get("configuration")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    let parsed = match name {
+        "nd_lift" => serde_json::to_value(serde_json::from_value::<ndic_lift::NdLiftConfig>(
+            configuration,
+        )?)?,
+        "htj2k" => serde_json::to_value(serde_json::from_value::<ndic_zarr::htj2k::Htj2kConfig>(
+            configuration,
+        )?)?,
+        // `zfp` is the registered name; `nd_zfp` predates the adoption and
+        // stays readable (its configurations may carry the legacy `dims`).
+        "zfp" | "nd_zfp" => serde_json::to_value(serde_json::from_value::<ndic_zfp::NdZfpConfig>(
+            configuration,
+        )?)?,
+        other => {
+            return Err(
+                format!("{other:?} is not an nd-image-codecs codec (nd_lift, htj2k, zfp)").into(),
+            );
+        }
+    };
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "name": name,
+        "configuration": parsed,
+    }))?)
+}
+
 fn run_series(args: &SeriesArgs) -> Result<String, Box<dyn std::error::Error>> {
     use ndic_lift::LiftKind;
     use ndic_zarr::series::{Axis, Decorrelate, DeltaBackend, Family, SeriesSpec, codec_series};
+    if let Some(json) = &args.validate_codec {
+        return validate_codec(json);
+    }
     let axes: Vec<Axis> = args
         .axes
         .split(',')
@@ -137,6 +191,8 @@ fn run_series(args: &SeriesArgs) -> Result<String, Box<dyn std::error::Error>> {
         .collect();
     let chunks: Vec<u64> = args
         .chunks
+        .as_deref()
+        .ok_or("--chunks is required")?
         .split(',')
         .map(|c| c.trim().parse())
         .collect::<Result<_, _>>()?;
@@ -192,7 +248,7 @@ mod tests {
         for (family, tail) in [
             ("nd-delta", "blosc"),
             ("nd-lift-ht", "htj2k"),
-            ("nd-zfp", "nd_zfp"),
+            ("nd-zfp", "zfp"),
         ] {
             let codecs = series(&["--chunks", "1,1,32,256,256", "--family", family]).unwrap();
             let names: Vec<_> = codecs

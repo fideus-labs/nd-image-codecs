@@ -19,7 +19,7 @@ description: What nd-image-codecs optimizes for — composability, explicit cros
 - **Standards-only plane coding.** The `htj2k` codec emits only conforming
   JPEG 2000 Part 1 (T.800) + Part 15 (T.814) codestreams; any HTJ2K decoder can
   read a plane.
-- **Faithful ZFP.** The `nd_zfp` codec is a clean-room Rust port of
+- **Faithful ZFP.** The `zfp` codec is a clean-room Rust port of
   [LLNL ZFP](https://github.com/LLNL/zfp) for 2D/3D/4D blocks that reproduces
   upstream's bitstreams and test vectors, verified against the C library via an
   FFI reference lane (see [the Rust ZFP port](./zfp.md)).

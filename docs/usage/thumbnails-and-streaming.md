@@ -19,36 +19,83 @@ works: [range-access architecture](../architecture/range-access.md).
 ## The plan format
 
 ```shell
-$ ndic index https://example.com/volume.jph --target thumbnail
+$ ndic index volume.jph --target thumbnail --max 64
 {
   "target": "thumbnail",
-  "decoded_size": [64, 64],
-  "ranges": [
-    {"start": 0, "end": 1233},        // main header
-    {"start": 1234, "end": 18761}     // R0..R1 packet prefix
+  "decoded_size": [
+    64,
+    64
   ],
-  "total_bytes": 18762
+  "max_res": 3,
+  "planes": [
+    0
+  ],
+  "ranges": [
+    {
+      "start": 85,
+      "end": 604
+    }
+  ],
+  "total_bytes": 520
 }
 ```
+
+That is the real plan for the 256×256 plane built in the next section: 520 of
+the codestream's 1049 bytes for a 64×64 preview — a modest saving at this
+size, and the same mechanism that fetches a few kilobytes out of a gigabyte
+plane. `decoded_size` is
+the shape those bytes decode to and `max_res` the highest resolution they
+cover — what `ndic expand --partial` and `decode_to_resolution` need.
+`planes` lists the chunk plane indices a plan fetches.
 
 Plans are coalesced — a thumbnail is typically 1–3 ranges.
 
 ## Executing a plan
 
+The examples below run against a local static server so they can be executed;
+any host that honors `Range:` — S3, GCS, nginx — behaves identically.
+
 ```bash
-curl -s -H "Range: bytes=0-1233,1234-18761" https://example.com/volume.jph -o thumb.part
-ndic expand thumb.part --partial -o thumb.raw
+# A plane to plan against, and a Range-capable server for it — the
+# repository ships one because `python3 -m http.server` ignores `Range:`.
+# CI passes its own port.
+python3 -c "
+import sys
+w, h = 256, 256
+sys.stdout.buffer.write(b''.join(
+    ((3 * x + 5 * y) % 4096).to_bytes(2, 'little')
+    for y in range(h) for x in range(w)))
+" > volume.raw
+ndic compress -i volume.raw --raw-size 256x256 --raw-dtype u16 -o volume.jph
+
+port="${DOCS_HTTP_PORT:-8000}"
+repo="$(git rev-parse --show-toplevel)"
+python3 "$repo/scripts/range-server.py" "$port" &
+trap 'kill %1' EXIT
+url="http://127.0.0.1:$port/volume.jph"
+sleep 1
+
+# Plan, fetch the planned span, decode what arrived — and check the fetch
+# really was partial.
+ranges=$(ndic index "$url" --target thumbnail --max 64 --format curl)
+curl -s -H "Range: bytes=$ranges" "$url" -o thumb.part
+test "$(stat -c%s thumb.part)" -lt "$(stat -c%s volume.jph)"
+ndic expand -i thumb.part --partial -o thumb.raw
 ```
 
 Or in one step:
 
 ```bash
-ndic thumbnail https://example.com/volume.jph --max 256 -o thumb.png
+ndic thumbnail "$url" --max 64 -o thumb.png
 ```
 
+In the browser, fetch the same ranges and hand the bytes to the WASM codec
+([TypeScript](./typescript.md)):
+
+<!-- docs-check: skip — the browser fetch path; the bash blocks above execute the same plan -->
 ```typescript
-// Browser: fetch ranges, hand bytes to the WASM codec (typescript.md)
 const res = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
+const thumb = await codec.decode(new Uint8Array(await res.arrayBuffer()));
 ```
 
 ## Targets

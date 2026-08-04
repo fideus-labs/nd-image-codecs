@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "const": "htj2k"
+    },
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "xy_levels": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        },
+        "reversible": {
+          "type": "boolean"
+        },
+        "progression": {
+          "enum": ["LRCP", "RLCP", "RPCL", "PCRL", "CPRL"]
+        },
+        "index": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

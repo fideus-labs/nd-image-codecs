@@ -28,6 +28,8 @@ use zarrs::plugin::{PluginCreateError, ZarrVersion};
 
 use ndic_lift::NdLiftConfig;
 
+use crate::lift::LiftDtype;
+
 /// The `nd_lift` codec: explicit cross-axis integer lifting, specified by
 /// `docs/architecture/nd-transform.md` (never JPEG 2000 Part 2 MCT syntax).
 #[derive(Clone, Debug)]
@@ -78,23 +80,24 @@ impl NdLiftCodec {
     }
 }
 
-/// The widened coefficient plane a decoded data type transforms in.
-enum Plane {
-    I32,
-    I64,
-}
-
-fn plane_of(data_type: &DataType) -> Result<Plane, CodecError> {
-    if data_type.is::<UInt8DataType>()
-        || data_type.is::<Int8DataType>()
-        || data_type.is::<UInt16DataType>()
-        || data_type.is::<Int16DataType>()
-        || data_type.is::<UInt32DataType>()
-        || data_type.is::<Int32DataType>()
-    {
-        Ok(Plane::I32)
-    } else if data_type.is::<UInt64DataType>() || data_type.is::<Int64DataType>() {
-        Ok(Plane::I64)
+/// Map a `zarrs` data type onto the chunk core's element type.
+fn lift_dtype(data_type: &DataType) -> Result<LiftDtype, CodecError> {
+    if data_type.is::<UInt8DataType>() {
+        Ok(LiftDtype::U8)
+    } else if data_type.is::<Int8DataType>() {
+        Ok(LiftDtype::I8)
+    } else if data_type.is::<UInt16DataType>() {
+        Ok(LiftDtype::U16)
+    } else if data_type.is::<Int16DataType>() {
+        Ok(LiftDtype::I16)
+    } else if data_type.is::<UInt32DataType>() {
+        Ok(LiftDtype::U32)
+    } else if data_type.is::<Int32DataType>() {
+        Ok(LiftDtype::I32)
+    } else if data_type.is::<UInt64DataType>() {
+        Ok(LiftDtype::U64)
+    } else if data_type.is::<Int64DataType>() {
+        Ok(LiftDtype::I64)
     } else {
         Err(CodecError::UnsupportedDataType(
             data_type.clone(),
@@ -113,174 +116,11 @@ fn shape_usize(shape: &[NonZeroU64]) -> Result<Vec<usize>, CodecError> {
         .collect()
 }
 
-/// Bulk conversion between an array element type and its widened coefficient
-/// plane.
+/// Run the chunk core's transform with the element type for `data_type`.
 ///
-/// Whole-slice operations so they compile to vectorized loops: the
-/// infallible directions are straight casts, and the only value checks that
-/// exist — `u32`/`u64` widening into the signed plane, and every narrow on
-/// decode — run as min/max reductions *before* a bulk cast, never as a
-/// branch per element.
-trait PlaneConvert<P>: Sized {
-    /// Read native-endian samples from `bytes`, widened into the plane.
-    ///
-    /// # Errors
-    /// [`CodecError`] when a sample does not fit the plane (unsigned input
-    /// at or above the plane's sign bit) — the overflow-budget refusal.
-    fn widen_bytes(bytes: &[u8]) -> Result<Vec<P>, CodecError>;
-
-    /// Narrow the plane back to samples.
-    ///
-    /// # Errors
-    /// [`CodecError`] when a coefficient is outside the element type's range
-    /// (a corrupt or mismatched chunk).
-    fn narrow(plane: &[P]) -> Result<Vec<Self>, CodecError>;
-}
-
-/// The elements the identity pairs (`i32 → i32`, `i64 → i64`) memcpy.
-macro_rules! plane_convert_identity {
-    ($t:ty) => {
-        impl PlaneConvert<$t> for $t {
-            fn widen_bytes(bytes: &[u8]) -> Result<Vec<$t>, CodecError> {
-                Ok(bytemuck::pod_collect_to_vec(bytes))
-            }
-            fn narrow(plane: &[$t]) -> Result<Vec<$t>, CodecError> {
-                Ok(plane.to_vec())
-            }
-        }
-    };
-}
-
-/// Element types strictly narrower than the plane: widening cannot fail;
-/// narrowing range-checks via one min/max scan, then bulk-casts.
-macro_rules! plane_convert_narrower {
-    ($in:ty => $p:ty) => {
-        impl PlaneConvert<$p> for $in {
-            fn widen_bytes(bytes: &[u8]) -> Result<Vec<$p>, CodecError> {
-                Ok(bytes
-                    .chunks_exact(size_of::<$in>())
-                    .map(|c| <$p>::from(bytemuck::pod_read_unaligned::<$in>(c)))
-                    .collect())
-            }
-            fn narrow(plane: &[$p]) -> Result<Vec<$in>, CodecError> {
-                const LO: $p = <$in>::MIN as $p;
-                const HI: $p = <$in>::MAX as $p;
-                let lo = plane.iter().copied().min().unwrap_or(LO);
-                let hi = plane.iter().copied().max().unwrap_or(HI);
-                if lo < LO || hi > HI {
-                    return Err(narrow_error(lo.into(), hi.into(), stringify!($in)));
-                }
-                // Range-checked above, so the truncating cast is exact.
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                let out = plane.iter().map(|&v| v as $in).collect();
-                Ok(out)
-            }
-        }
-    };
-}
-
-/// Unsigned element types as wide as the plane (`u32 → i32`, `u64 → i64`):
-/// both directions range-check via one min/max scan, then bulk-cast.
-macro_rules! plane_convert_unsigned_full_width {
-    ($in:ty => $p:ty) => {
-        impl PlaneConvert<$p> for $in {
-            fn widen_bytes(bytes: &[u8]) -> Result<Vec<$p>, CodecError> {
-                #[allow(clippy::cast_sign_loss)]
-                const PLANE_MAX: $in = <$p>::MAX as $in;
-                let decode = |c| bytemuck::pod_read_unaligned::<$in>(c);
-                let max = bytes
-                    .chunks_exact(size_of::<$in>())
-                    .map(decode)
-                    .max()
-                    .unwrap_or(0);
-                if max > PLANE_MAX {
-                    return Err(CodecError::Other(format!(
-                        "nd_lift overflow budget: input value {max} does not fit the widened \
-                         {} coefficient plane",
-                        stringify!($p),
-                    )));
-                }
-                // Range-checked above, so the wrapping cast is exact.
-                #[allow(clippy::cast_possible_wrap)]
-                let out = bytes
-                    .chunks_exact(size_of::<$in>())
-                    .map(|c| decode(c) as $p)
-                    .collect();
-                Ok(out)
-            }
-            fn narrow(plane: &[$p]) -> Result<Vec<$in>, CodecError> {
-                let lo = plane.iter().copied().min().unwrap_or(0);
-                if lo < 0 {
-                    let hi = plane.iter().copied().max().unwrap_or(0);
-                    return Err(narrow_error(lo.into(), hi.into(), stringify!($in)));
-                }
-                // Non-negative per the check above, so the cast is exact.
-                #[allow(clippy::cast_sign_loss)]
-                let out = plane.iter().map(|&v| v as $in).collect();
-                Ok(out)
-            }
-        }
-    };
-}
-
-plane_convert_identity!(i32);
-plane_convert_identity!(i64);
-plane_convert_narrower!(u8 => i32);
-plane_convert_narrower!(i8 => i32);
-plane_convert_narrower!(u16 => i32);
-plane_convert_narrower!(i16 => i32);
-plane_convert_unsigned_full_width!(u32 => i32);
-plane_convert_unsigned_full_width!(u64 => i64);
-
-fn narrow_error(lo: i128, hi: i128, dtype: &str) -> CodecError {
-    CodecError::Other(format!(
-        "nd_lift decode: coefficient range [{lo}, {hi}] does not narrow back to {dtype} \
-         (corrupt or mismatched chunk)"
-    ))
-}
-
-/// Reinterpret native-endian chunk bytes as `In` elements, widen to the
-/// plane type `P`, transform, and emit the plane's bytes (or the reverse).
-fn transform_bytes<In, P>(
-    bytes: &[u8],
-    shape: &[usize],
-    config: &NdLiftConfig,
-    forward: bool,
-) -> Result<Vec<u8>, CodecError>
-where
-    In: bytemuck::Pod + PlaneConvert<P>,
-    P: ndic_lift::PlaneSample + bytemuck::Pod,
-{
-    let n: usize = shape.iter().product();
-    if forward {
-        if bytes.len() != n * size_of::<In>() {
-            return Err(CodecError::Other(format!(
-                "nd_lift encode: got {} bytes for {n} elements of {} bytes",
-                bytes.len(),
-                size_of::<In>()
-            )));
-        }
-        let mut plane = In::widen_bytes(bytes)?;
-        ndic_lift::forward(&mut plane, shape, &config.transforms)
-            .map_err(|err| CodecError::Other(err.to_string()))?;
-        Ok(bytemuck::cast_slice(&plane).to_vec())
-    } else {
-        if bytes.len() != n * size_of::<P>() {
-            return Err(CodecError::Other(format!(
-                "nd_lift decode: got {} bytes for {n} coefficients of {} bytes",
-                bytes.len(),
-                size_of::<P>()
-            )));
-        }
-        let mut plane: Vec<P> = bytemuck::pod_collect_to_vec(bytes);
-        ndic_lift::inverse(&mut plane, shape, &config.transforms)
-            .map_err(|err| CodecError::Other(err.to_string()))?;
-        let output = In::narrow(&plane)?;
-        Ok(bytemuck::cast_slice(&output).to_vec())
-    }
-}
-
-/// Run [`transform_bytes`] with the element/plane pair for `data_type`.
+/// The core works on little-endian bytes while `zarrs` hands over
+/// native-endian element bytes; every supported target is little-endian (the
+/// same assumption `htj2k_codec` and `zfp_codec` make), so the two agree.
 fn transform_dispatch(
     bytes: &[u8],
     shape: &[usize],
@@ -288,28 +128,13 @@ fn transform_dispatch(
     config: &NdLiftConfig,
     forward: bool,
 ) -> Result<Vec<u8>, CodecError> {
-    if data_type.is::<UInt8DataType>() {
-        transform_bytes::<u8, i32>(bytes, shape, config, forward)
-    } else if data_type.is::<Int8DataType>() {
-        transform_bytes::<i8, i32>(bytes, shape, config, forward)
-    } else if data_type.is::<UInt16DataType>() {
-        transform_bytes::<u16, i32>(bytes, shape, config, forward)
-    } else if data_type.is::<Int16DataType>() {
-        transform_bytes::<i16, i32>(bytes, shape, config, forward)
-    } else if data_type.is::<UInt32DataType>() {
-        transform_bytes::<u32, i32>(bytes, shape, config, forward)
-    } else if data_type.is::<Int32DataType>() {
-        transform_bytes::<i32, i32>(bytes, shape, config, forward)
-    } else if data_type.is::<UInt64DataType>() {
-        transform_bytes::<u64, i64>(bytes, shape, config, forward)
-    } else if data_type.is::<Int64DataType>() {
-        transform_bytes::<i64, i64>(bytes, shape, config, forward)
+    let dtype = lift_dtype(data_type)?;
+    let run = if forward {
+        crate::lift::forward_chunk
     } else {
-        Err(CodecError::UnsupportedDataType(
-            data_type.clone(),
-            ndic_lift::CODEC_NAME.to_string(),
-        ))
-    }
+        crate::lift::inverse_chunk
+    };
+    run(bytes, shape, dtype, config).map_err(|err| CodecError::Other(err.to_string()))
 }
 
 impl CodecTraits for NdLiftCodec {
@@ -450,9 +275,9 @@ impl ArrayToArrayCodecTraits for NdLiftCodec {
     }
 
     fn encoded_data_type(&self, decoded_data_type: &DataType) -> Result<DataType, CodecError> {
-        Ok(match plane_of(decoded_data_type)? {
-            Plane::I32 => data_type::int32(),
-            Plane::I64 => data_type::int64(),
+        Ok(match lift_dtype(decoded_data_type)?.plane_size_bytes() {
+            8 => data_type::int64(),
+            _ => data_type::int32(),
         })
     }
 
@@ -490,9 +315,6 @@ impl ArrayToArrayCodecTraits for NdLiftCodec {
         _options: &CodecOptions,
     ) -> Result<ArrayBytes<'a>, CodecError> {
         let shape = shape_usize(shape)?;
-        self.config
-            .validate(shape.len())
-            .map_err(|err| CodecError::Other(err.to_string()))?;
         let fixed = bytes.into_fixed()?;
         let out = transform_dispatch(&fixed, &shape, data_type, &self.config, true)?;
         Ok(ArrayBytes::from(out))
@@ -507,9 +329,6 @@ impl ArrayToArrayCodecTraits for NdLiftCodec {
         _options: &CodecOptions,
     ) -> Result<ArrayBytes<'a>, CodecError> {
         let shape = shape_usize(shape)?;
-        self.config
-            .validate(shape.len())
-            .map_err(|err| CodecError::Other(err.to_string()))?;
         let fixed = bytes.into_fixed()?;
         let out = transform_dispatch(&fixed, &shape, data_type, &self.config, false)?;
         Ok(ArrayBytes::from(out))

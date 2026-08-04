@@ -1,13 +1,13 @@
 ---
-title: The nd_zfp Codec (ZFP over zfp-rs)
-short_title: nd_zfp Codec
-description: nd_zfp wraps the pure-Rust zfp-rs implementation of LLNL ZFP for 1D–4D blocks, registered as a Zarr v3 array-to-bytes codec for GPU volume rendering and O(1) random brick access.
+title: The zfp Codec (ZFP over zfp-rs)
+short_title: zfp Codec
+description: The zfp codec wraps the pure-Rust zfp-rs implementation of LLNL ZFP for 1D–4D blocks, implementing the zarr-extensions-registered zfp array-to-bytes codec for GPU volume rendering and O(1) random brick access.
 ---
 
 **Crate:** [`ndic-zfp`](https://github.com/fideus-labs/nd-image-codecs/tree/main/crates/ndic-zfp) · **Roadmap:**
 [Phase 5](../development/roadmap/phase-5-nd-zfp.md)
 
-`nd_zfp` is [LLNL ZFP](https://github.com/LLNL/zfp) for **1D–4D** chunks,
+The `zfp` codec is [LLNL ZFP](https://github.com/LLNL/zfp) for **1D–4D** chunks,
 registered as a Zarr v3 **array-to-bytes** codec. It targets GPU volume
 rendering, random brick access, and predictable memory: ZFP's fixed-rate
 mode gives every `4^d` block a constant bit budget, so a renderer can
@@ -36,7 +36,7 @@ of nd-lift-ht.
 Chunks are **standard ZFP streams**: the full ZFP header (32-bit magic,
 52-bit field metadata, 12- or 64-bit compression mode) followed by the
 compressed blocks, padded to a 64-bit word. This is the byte layout
-`zfp -h`, `zfpy`, and `imagecodecs`' numcodecs ZFP produce, so `nd_zfp`
+`zfp -h`, `zfpy`, and `imagecodecs`' numcodecs ZFP produce, so this codec
 chunks cross-decode with those implementations where modes overlap — the
 Python test suite asserts byte-identical output against `imagecodecs`
 (the C library via FFI) and cross-decodes in both directions. On decode the
@@ -61,13 +61,20 @@ reversible mode round-trips bit-exactly
 
 ## Chunk semantics
 
-A chunk's singleton dimensions are squeezed away and the remainder is
-compressed as a `dims`-dimensional ZFP field (left-padded with size-1 axes
-when fewer non-singleton dimensions remain). `dims` is set by the
-codec-series builder to the number of non-singleton chunk dimensions,
-clamped to at least 2 — so the `transpose → nd_zfp` series moves singleton
-axes (like a size-1 channel) out of ZFP's way instead of wasting `4^d`
-block volume on them.
+The chunk shape maps **directly** onto the ZFP field, 1–4 dimensions,
+exactly as the [registered `zfp`
+codec](https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/zfp)
+specifies. Singleton dimensions (a size-1 channel, an unchunked `t`) are
+collapsed by a `reshape` codec the series builder places upstream — so the
+`transpose → reshape → zfp` series moves them out of ZFP's way instead of
+wasting `4^d` block volume on them, and the `zfp` stage itself stays
+exactly what any other implementation of the registered codec expects.
+
+A configuration carrying the **legacy `dims` member** — data written under
+the deprecated `nd_zfp` name, before the registered name was adopted —
+selects the old in-codec mapping instead: singleton axes squeezed away,
+the remainder left-padded with size-1 axes up to `dims`. The codec answers
+to both names, so existing stores keep decoding byte-for-byte.
 
 ## Brick index
 
@@ -86,14 +93,17 @@ work.
 ## Configuration
 
 ```json
-{ "name": "nd_zfp", "configuration": { "mode": "fixed_rate", "rate": 8.0, "dims": 3 } }
+{ "name": "zfp", "configuration": { "mode": "fixed_rate", "rate": 8.0 } }
 ```
 
 `mode` is one of `reversible`, `fixed_rate`, `fixed_accuracy`,
 `fixed_precision`, with the corresponding parameter
 (`rate`/`tolerance`/`precision`); exactly the mode's own parameter may be
-present. The same configuration object is parsed by the Rust codec, the
-Python `zarr_codec.NdZfpCodec`, and the TypeScript `NdZfp` class.
+present, and the schema is the registered one (a vendored copy sits at
+`spec/vendor/zfp.schema.json` and CI validates every builder-emitted
+configuration against it). The same configuration object is parsed by the
+Rust codec, the Python `zarr_codec.NdZfpCodec`, and the TypeScript `NdZfp`
+class.
 
 ## Testing
 

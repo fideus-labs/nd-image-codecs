@@ -40,21 +40,35 @@ Hand-constructed, byte-stable, < 100 KB total:
 ## Tier 3 — domain volumes (benchmarks, fetched)
 
 Representative volumetric data for rate/throughput benchmarks and
-decorrelation-gain measurements (`scripts/fetch-bench-data.sh`):
+decorrelation-gain measurements, fetched by
+[`scripts/fetch-bench-data.sh`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/fetch-bench-data.sh)
+and pinned in
+[`scripts/bench-data.lock.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/bench-data.lock.toml)
+by URL, license, and the SHA-256 of the volume's *decoded* bytes — so an
+upstream re-chunk or recompression is caught as the content change it is.
+Two volumes are pinned today, both OME-Zarr levels from the
+[Image Data Resource](https://idr.openmicroscopy.org/) under CC BY 4.0:
 
-- OME-Zarr microscopy volumes from public S3 buckets listed on
-  [OME-NGFF example data](https://ngff.openmicroscopy.org/data/) for isotropic
-  fluorescence stacks and multi-timepoint (t > 1) series;
-- an anisotropic-z volumetric series (e.g. light-sheet or EM stacks) for
-  `nd_lift` gain measurement;
-- float-valued simulation/scientific fields for the nd-zfp lanes.
+- an **anisotropic-z** serial-section EM stack (~0.50 µm in z against ~0.36 µm
+  in x/y), which is the case `nd_lift`'s cross-axis gain is measured on;
+- a **multi-timepoint** fluorescence series (40 timepoints × 3 channels × 31
+  z), which exercises the builder's t-grouping path — no single-timepoint
+  fixture reaches it.
 
-Exact URLs, licenses, and SHA-256 pins live in `scripts/bench-data.lock.toml`
-(created with the Phase 5 fetch script). Cached under `~/.cache/nd-image-codecs/` — CI
-restores this cache rather than re-downloading. Until then, the Phase 1 bench
-lanes run on the deterministic synthetic microscopy generator committed at
-`bench/py/synthetic.py` (seeded Gaussian blobs + Poisson noise), so records are
-reproducible without any download.
+A float-valued simulation field for the nd-zfp lanes is not pinned yet: the
+public OME-NGFF corpora are integer microscopy, so float coverage still comes
+from the deterministic generator described below. Finding one with a stable
+URL and a clear license is a data-sourcing task rather than a code change.
+
+Volumes cache under `~/.cache/nd-image-codecs/bench-data/` (override with
+`NDIC_BENCH_DATA_DIR`); the nightly workflow restores that cache rather than
+re-downloading. Nothing *requires* them: the macro lanes
+([`bench/py/run_macro.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/bench/py/run_macro.py))
+skip cleanly when the cache is empty, and the micro/meso lanes run on the
+deterministic synthetic microscopy generator at
+[`bench/py/synthetic.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/bench/py/synthetic.py)
+(seeded Gaussian blobs + Poisson noise), so records are reproducible without
+any download.
 
 ## Round-trip invariants (enforced by proptest)
 

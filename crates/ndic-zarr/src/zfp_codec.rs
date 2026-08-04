@@ -33,14 +33,18 @@ use ndic_zfp::{
     BrickIndex, NdZfpBrickDecoder, NdZfpConfig, ZfpDtype, ZfpMode, decode_chunk, encode_chunk,
 };
 
-/// The `nd_zfp` codec: ZFP-compressed chunks with O(1) brick addressing in
-/// fixed-rate mode (`docs/architecture/zfp.md`).
+/// The `zfp` codec: ZFP-compressed chunks with O(1) brick addressing in
+/// fixed-rate mode (`docs/architecture/zfp.md`). Also answers to the
+/// deprecated `nd_zfp` name for data written before the registered-name
+/// adoption.
 #[derive(Clone, Debug)]
 pub struct NdZfpCodec {
     config: NdZfpConfig,
 }
 
-zarrs::plugin::impl_extension_aliases!(NdZfpCodec, v3: "nd_zfp", []);
+// Primary name `zfp` (the zarr-extensions registration); `nd_zfp` stays a
+// read alias for stores written before the adoption.
+zarrs::plugin::impl_extension_aliases!(NdZfpCodec, v3: "zfp", ["nd_zfp"]);
 
 // Register into the zarrs Zarr v3 codec plugin registry at link time.
 inventory::submit! {

@@ -95,12 +95,16 @@ series is just the `htj2k` plane codec.
 **nd-zfp**:
 
 ```text
-transpose → nd_zfp{mode, dims, [rate]}
+transpose → reshape{shape}? → zfp{mode, [rate]}
 ```
 
-`dims` is the number of non-singleton chunk dimensions (2–4). Requesting more
-than 4 non-singleton chunk dimensions is an error — reduce the chunking or split
-the array.
+The `reshape` codec appears when the (post-transpose) chunk shape contains
+singleton dimensions: its `shape` is a list of contiguous input-dimension
+groups, one per non-singleton dimension, each absorbing the singletons
+before it (trailing singletons merge into the final group) — so the chunk
+reaching `zfp` is a direct 1–4D field, as the registered codec specifies.
+Requesting more than 4 non-singleton chunk dimensions is an error — reduce
+the chunking or split the array.
 
 ## Output
 

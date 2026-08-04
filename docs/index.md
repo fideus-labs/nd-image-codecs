@@ -34,7 +34,7 @@ Three families trade off ratio, speed, and access pattern:
 | --- | --- | --- |
 | **nd-delta** | `transpose → numcodecs.delta → bitshuffle → zstd/lz4` | Fast lossless storage from **existing** Zarr codecs only |
 | **nd-lift-ht** | `transpose → nd_lift → htj2k` | Scalable microscopy & volume visualization (resolution pyramids, thumbnails) |
-| **nd-zfp** | `transpose → nd_zfp` | GPU volume rendering, random access, predictable (fixed-rate) memory |
+| **nd-zfp** | `transpose → reshape → zfp` | GPU volume rendering, random access, predictable (fixed-rate) memory |
 
 Each family is produced by [`codec_series`](architecture/codec-series.md), which
 chooses a transpose order and decorrelation axes from the axis names (`t`, `c`,
@@ -47,7 +47,7 @@ Transformation, MCT)**. Cross-axis decorrelation is instead expressed as
 `nd_lift`, an explicit, independently specified Zarr array-to-array codec, so the
 transform runs first and ordinary 2D coding compresses the resulting planes. The
 `htj2k` codec emits only conforming JPEG 2000 **Part 1** (T.800) and **Part 15 /
-HTJ2K** (T.814) syntax, and `nd_zfp` is a clean-room port of
+HTJ2K** (T.814) syntax, and `zfp` is a clean-room port of
 [LLNL ZFP](https://github.com/LLNL/zfp). This keeps the whole system clear of
 Part 2 MCT patent concerns while still capturing the correlation that makes
 scientific volumes compressible.

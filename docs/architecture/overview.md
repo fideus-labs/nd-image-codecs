@@ -7,7 +7,7 @@ nd-image-codecs is a **family of composable Zarr v3 codecs** for ND scientific
 images. Instead of one monolithic format, it provides a *builder* that
 assembles a *series* (pipeline) of Zarr v3 codecs from an array's axis
 metadata, plus the two novel codecs those pipelines need (`nd_lift` and
-`nd_zfp`) and a fast HTJ2K plane codec (`htj2k`).
+`zfp`) and a fast HTJ2K plane codec (`htj2k`).
 
 The unifying idea: **capture cross-axis correlation with an explicit,
 independently specified transform, then compress the transformed planes with a
@@ -28,7 +28,7 @@ the whole system is free of Part 2 IP.
         ▼                           ▼                           ▼
    ── nd-delta ──              ── nd-lift-ht ──             ── nd-zfp ──
    transpose                  transpose                    transpose
-   numcodecs.delta            nd_lift  (array→array)        nd_zfp (array→bytes)
+   numcodecs.delta            nd_lift  (array→array)        zfp (array→bytes)
    bytes                      htj2k    (array→bytes)          │  ZFP 2/3/4D blocks
    blosc(bitshuffle,zstd/lz4)   │  Part 1/15 planes           │  + brick index
         │                        │  + coeff-plane index        │
@@ -41,7 +41,7 @@ the whole system is free of Part 2 IP.
 | --- | --- | --- | --- |
 | **nd-delta** | `transpose → numcodecs.delta → bitshuffle → zstd/lz4` | Yes | Fast lossless storage from **existing** Zarr codecs only |
 | **nd-lift-ht** | `transpose → nd_lift → htj2k` | 5/3 lossless or 9/7 lossy | Resolution pyramids, thumbnails, streaming |
-| **nd-zfp** | `transpose → nd_zfp` | Reversible or fixed-rate/-accuracy/-precision | GPU bricks, random access, predictable memory |
+| **nd-zfp** | `transpose → reshape → zfp` | Reversible or fixed-rate/-accuracy/-precision | GPU bricks, random access, predictable memory |
 
 ## Why this combination
 
@@ -93,7 +93,7 @@ The workspace forms an acyclic graph:
 | `ndic-lift` | `nd_lift` cross-axis lifting transform | — |
 | `ndic-htj2k` | FBCOT block encode/decode | OpenJPH `coding/` |
 | `ndic-codestream` | Part 1/15 markers, packets, tiles, byte-range index | OpenJPH `codestream/` |
-| `ndic-zfp` | `nd_zfp` Rust ZFP port | LLNL ZFP |
+| `ndic-zfp` | `zfp` Rust ZFP port | LLNL ZFP |
 | `ndic-zarr` | The three Zarr v3 codecs + `codec_series` builder | — |
 | `ndic-cli` | `ndic` binary | `ojph_compress` / `ojph_expand` |
 

@@ -1,0 +1,179 @@
+name: Bench Baseline Refresh
+
+# Re-record the committed baselines and open a pull request. Manual only:
+# a baseline refresh resets what "regression" means, so it is a reviewed
+# change, never a side effect of a feature PR.
+#
+# The machine class matters. `bench/baselines/main/manifest.json` names the
+# machine its records came from, and the timing gate's σ envelope is only
+# valid on that class — which is why the PR gate runs `--gate ratio` while
+# the current baseline is a dev-box capture. Refreshing here re-records on a
+# GitHub runner, so adopting the result *moves* the baseline to the runner
+# class: ratios are unaffected (they are deterministic), timings are not
+# comparable to the old numbers at all. The `machine` input has to be
+# spelled out so that move is a decision, not a default.
+
+on:
+  workflow_dispatch:
+    inputs:
+      machine:
+        description: "Machine class to record in the manifest (e.g. gha-ubuntu-24.04)"
+        required: true
+        default: "gha-ubuntu-24.04"
+      baseline:
+        description: "Baseline directory under bench/baselines/"
+        required: true
+        default: "main"
+      samples:
+        description: "Samples per benchmark"
+        required: true
+        default: "30"
+      macro_samples:
+        description: "Samples per macro-tier benchmark (each sample compresses a full Tier 3 volume)"
+        required: true
+        default: "5"
+      include_macro:
+        description: "Include the macro tier (fetches the Tier 3 volumes)"
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      # `baseline` names the directory the refresh later `rm -rf`s (and a
+      # branch suffix), so it must be one plain path segment — a separator
+      # or traversal component must never reach those steps. First, before
+      # anything else runs, so a bad name fails in seconds.
+      - name: Validate the baseline name
+        env:
+          BASELINE: ${{ inputs.baseline }}
+        run: |
+          if [[ ! "$BASELINE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "baseline must be a plain directory name" \
+                 "([A-Za-z0-9][A-Za-z0-9._-]*), got: $BASELINE" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python bench dependencies
+        run: pip install "zarr>=3.1" numpy numcodecs
+
+      - name: Build and install the nd-image-codecs wheel
+        run: pip install bindings/python/nd-image-codecs
+
+      - name: Fetch the Tier 3 volumes
+        if: inputs.include_macro
+        run: scripts/fetch-bench-data.sh
+
+      # Inputs reach the shell through `env`, never by template
+      # interpolation — a free-text dispatch input must not become shell
+      # syntax (zizmor: template-injection).
+      - name: Record the Python lanes
+        env:
+          SAMPLES: ${{ inputs.samples }}
+        run: |
+          python3 bench/py/run_nd_delta.py --samples "$SAMPLES"
+          python3 bench/py/run_nd_lift.py --samples "$SAMPLES"
+          python3 bench/py/run_nd_zfp.py --samples "$SAMPLES"
+
+      - name: Record the macro lanes
+        if: inputs.include_macro
+        env:
+          MACRO_SAMPLES: ${{ inputs.macro_samples }}
+        run: python3 bench/py/run_macro.py --samples "$MACRO_SAMPLES"
+
+      - name: Record the Rust benchmarks
+        run: cargo run -p ndic-bench-cli --release -- run --quiet
+
+      # Report what changed *before* overwriting, so the PR body says how far
+      # the numbers moved rather than only that they did.
+      - name: Diff against the outgoing baseline
+        shell: bash
+        env:
+          BASELINE: ${{ inputs.baseline }}
+        run: |
+          set +e
+          cargo run -p ndic-bench-cli --release -- \
+            compare "bench/baselines/$BASELINE" --format markdown \
+            | tee baseline-diff.md
+
+      - name: Replace the baseline records
+        shell: bash
+        env:
+          BASELINE: ${{ inputs.baseline }}
+          INCLUDE_MACRO: ${{ inputs.include_macro }}
+          MACHINE: ${{ inputs.machine }}
+        run: |
+          set -euo pipefail
+          records="target/benchmarks/$(git rev-parse --short HEAD)"
+          test -d "$records" || { echo "no records at $records"; exit 1; }
+          target="bench/baselines/$BASELINE"
+          # The whole directory is replaced so renamed benchmarks cannot
+          # leave stale records behind — which means a refresh that skipped
+          # the macro tier would silently delete any committed macro
+          # baselines. Refuse that combination instead.
+          if [ "$INCLUDE_MACRO" != "true" ] && ls "$target"/*/macro__*.json >/dev/null 2>&1; then
+            echo "the $BASELINE baseline contains macro-tier records;" \
+                 "re-run with include_macro so the refresh replaces them" >&2
+            exit 1
+          fi
+          rm -rf "$target"
+          mkdir -p "$target"
+          cp -r "$records"/. "$target"/
+          CAPTURED="$(date -u +%F)" python3 - <<'PY'
+          import json, os, pathlib, subprocess
+
+          def version(argv, fallback="unknown"):
+              try:
+                  return subprocess.run(argv, capture_output=True, text=True,
+                                        check=True).stdout.strip()
+              except Exception:
+                  return fallback
+
+          target = pathlib.Path("bench/baselines") / os.environ["BASELINE"]
+          git_hash = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+          rustc = version(["rustc", "--version"]).removeprefix("rustc ")
+          python = version(["python3", "-c", "import platform; print(platform.python_version())"])
+          zarr = version(["python3", "-c", "import zarr; print(zarr.__version__)"])
+          numcodecs = version(["python3", "-c", "import numcodecs; print(numcodecs.__version__)"])
+          manifest = {
+              "name": os.environ["BASELINE"],
+              "git_hash": git_hash,
+              "machine": os.environ["MACHINE"],
+              "toolchain": f"rustc {rustc} / Python {python} / zarr {zarr} / numcodecs {numcodecs}",
+              "captured": os.environ["CAPTURED"],
+          }
+          (target / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Open the refresh pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bench/baseline-refresh-${{ inputs.baseline }}
+          title: "bench: refresh the ${{ inputs.baseline }} baseline on ${{ inputs.machine }}"
+          commit-message: |
+            bench: refresh the ${{ inputs.baseline }} baseline
+
+            Re-recorded by the bench-baseline-refresh workflow on
+            ${{ inputs.machine }} with ${{ inputs.samples }} samples per
+            benchmark.
+          body-path: baseline-diff.md
+          labels: benchmark
+          delete-branch: true

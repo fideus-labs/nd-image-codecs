@@ -19,7 +19,7 @@ default = []
 # Registers the codecs into the zarrs plugin registry (native use).
 zarrs = ["dep:zarrs", "dep:inventory", "dep:bytemuck", "ndic-lift/serde", "ndic-zfp/serde"]
 # WASM build for the TypeScript / numcodecs.js binding.
-wasm = ["dep:wasm-bindgen", "dep:js-sys", "ndic-zfp/serde"]
+wasm = ["dep:wasm-bindgen", "dep:js-sys", "ndic-lift/serde", "ndic-zfp/serde"]
 
 [dependencies]
 ndic-core.workspace = true

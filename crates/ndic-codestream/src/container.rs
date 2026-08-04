@@ -200,8 +200,11 @@ impl ChunkHeader {
             return Err(err(5, "unknown htj2k chunk container flags"));
         }
         let xy_levels = bytes[6];
-        if xy_levels > 33 {
-            return Err(err(6, "xy_levels exceeds the 33-level J2K bound"));
+        if xy_levels > 32 {
+            return Err(err(
+                6,
+                "xy_levels exceeds the 32-level J2K bound (T.800 SPcod)",
+            ));
         }
         let ndim = usize::from(bytes[7]);
         if !(2..=MAX_NDIM).contains(&ndim) {
@@ -237,16 +240,22 @@ impl ChunkHeader {
     /// Serializes `[header | index]`.
     ///
     /// # Panics
-    /// When `dims` exceeds [`MAX_NDIM`] dimensions — such a header could
-    /// never [`ChunkHeader::parse`] back. Writers validate the chunk shape
-    /// before constructing the header (`htj2k`'s `encode_chunk` refuses
-    /// over-dimensioned chunks with an error).
+    /// When `dims` exceeds [`MAX_NDIM`] dimensions or `xy_levels` exceeds
+    /// the 32-level J2K bound — such a header could never
+    /// [`ChunkHeader::parse`] back. Writers validate both before
+    /// constructing the header (`htj2k`'s config parsing bounds the levels;
+    /// its `encode_chunk` refuses over-dimensioned chunks with an error).
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         assert!(
             (2..=MAX_NDIM).contains(&self.dims.len()),
             "chunk header ndim {} outside 2..={MAX_NDIM}",
             self.dims.len()
+        );
+        assert!(
+            self.xy_levels <= 32,
+            "chunk header xy_levels {} exceeds the 32-level J2K bound (T.800 SPcod)",
+            self.xy_levels
         );
         let mut out = Vec::with_capacity(self.header_len());
         out.extend_from_slice(&MAGIC);
@@ -392,6 +401,10 @@ mod tests {
         let mut b = good.clone();
         b[5] = 0x80;
         assert!(ChunkHeader::parse(&b).is_err());
+        // Decomposition levels beyond the T.800 SPcod bound.
+        let mut b = good.clone();
+        b[6] = 33;
+        assert!(ChunkHeader::parse(&b).is_err());
         // ndim outside bounds.
         let mut b = good.clone();
         b[7] = 1;
@@ -418,6 +431,18 @@ mod tests {
         for cut in 0..ChunkHeader::fixed_len(3) {
             assert!(ChunkHeader::parse(&good[..cut]).is_err());
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "32-level J2K bound")]
+    fn to_bytes_refuses_over_bound_levels() {
+        // `parse` rejects xy_levels > 32, so `to_bytes` must never emit it:
+        // the same write/parse symmetry the ndim assertion enforces.
+        let h = ChunkHeader {
+            xy_levels: 33,
+            ..sample()
+        };
+        let _ = h.to_bytes();
     }
 
     #[test]

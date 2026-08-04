@@ -24,7 +24,7 @@ dependencies = ["numcodecs>=0.13", "numpy>=1.26"]
 
 [project.optional-dependencies]
 zarr = ["zarr>=3.1"]
-test = ["pytest", "imagecodecs", "zarr>=3.1"]
+test = ["pytest", "imagecodecs", "jsonschema>=4.0.0", "zarr>=3.1", "ngff-zarr[validate]", "ome-zarr>=0.12.0"]
 
 # Zarr v3 codec entry points: let `zarr-python` discover each codec by name
 # without an explicit import. See
@@ -32,6 +32,9 @@ test = ["pytest", "imagecodecs", "zarr>=3.1"]
 [project.entry-points."zarr.codecs"]
 "nd_lift" = "nd_image_codecs.zarr_codec:NdLiftCodec"
 "htj2k" = "nd_image_codecs.zarr_codec:Htj2kCodec"
+"zfp" = "nd_image_codecs.zarr_codec:NdZfpCodec"
+"reshape" = "nd_image_codecs.zarr_codec:ReshapeCodec"
+# The pre-adoption name, kept readable for existing stores.
 "nd_zfp" = "nd_image_codecs.zarr_codec:NdZfpCodec"
 
 [project.urls]

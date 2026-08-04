@@ -7,7 +7,7 @@
 //!
 //! - **nd-delta** — `transpose → numcodecs.delta → bytes → blosc(bitshuffle, zstd|lz4)`
 //! - **nd-lift-ht** — `transpose → nd_lift → htj2k`
-//! - **nd-zfp** — `transpose → nd_zfp`
+//! - **nd-zfp** — `transpose → reshape → zfp`
 //!
 //! Defaults (each overridable):
 //! - The fastest-moving dimensions are transposed into `(z)yx` order.
@@ -51,7 +51,7 @@ pub enum Family {
     NdDelta,
     /// `transpose → nd_lift → htj2k` coefficient planes.
     NdLiftHt,
-    /// `transpose → nd_zfp` blocks with a brick index.
+    /// `transpose → reshape → zfp` blocks with a brick index.
     NdZfp,
 }
 
@@ -168,6 +168,30 @@ fn dtype_info(dtype: &str) -> Option<(&'static str, u32)> {
         .iter()
         .find(|(z, ..)| *z == dtype)
         .map(|&(_, np, size)| (np, size))
+}
+
+/// Contiguous input-dimension groups collapsing singletons for `reshape`:
+/// one group per non-singleton dimension, each absorbing the singleton
+/// dimensions before it; trailing singletons merge into the final group,
+/// and an all-singleton shape becomes one group (a 1-element 1D field).
+/// Mirrored exactly by the Python and TypeScript builders.
+fn reshape_groups(shape: &[u64]) -> Vec<Vec<usize>> {
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    for (i, &extent) in shape.iter().enumerate() {
+        current.push(i);
+        if extent > 1 {
+            groups.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        if let Some(last) = groups.last_mut() {
+            last.append(&mut current);
+        } else {
+            groups.push(current);
+        }
+    }
+    groups
 }
 
 /// Build the codec pipeline for `spec`. Returns Zarr v3 codec metadata
@@ -357,13 +381,23 @@ pub fn codec_series(spec: &SeriesSpec) -> Result<Vec<Value>, SeriesError> {
             if nonsingleton > 4 {
                 return Err(SeriesError::TooManyZfpDims(nonsingleton));
             }
+            // Collapse singleton dimensions with a `reshape` codec so the
+            // chunk reaching `zfp` is a direct 1–4D field, as the registered
+            // codec specifies. Groups are contiguous post-transpose
+            // dimension indices, one per output dimension; trailing
+            // singletons merge into the final group.
+            let transposed: Vec<u64> = order.iter().map(|&d| spec.chunk_shape[d]).collect();
+            if transposed.contains(&1) {
+                codecs.push(json!({
+                    "name": "reshape",
+                    "configuration": { "shape": reshape_groups(&transposed) }
+                }));
+            }
             let mode = spec.zfp_rate.map_or_else(
                 || json!({ "mode": "reversible" }),
                 |rate| json!({ "mode": "fixed_rate", "rate": rate }),
             );
-            let mut cfg = mode;
-            cfg["dims"] = json!(nonsingleton.max(2));
-            codecs.push(json!({ "name": "nd_zfp", "configuration": cfg }));
+            codecs.push(json!({ "name": "zfp", "configuration": mode }));
         }
     }
     Ok(codecs)
@@ -429,9 +463,9 @@ mod tests {
         let spec = SeriesSpec::new(axes, vec![256, 256, 32], "float32", Family::NdZfp);
         let codecs = codec_series(&spec).unwrap();
         assert_eq!(codecs[0]["configuration"]["order"], json!([2, 1, 0]));
-        assert_eq!(codecs[1]["name"], "nd_zfp");
-        assert_eq!(codecs[1]["configuration"]["dims"], json!(3));
-        assert_eq!(codecs[1]["configuration"]["mode"], json!("reversible"));
+        // No singleton chunk dimensions → no reshape stage.
+        assert_eq!(codecs[1]["name"], "zfp");
+        assert_eq!(codecs[1]["configuration"], json!({ "mode": "reversible" }));
     }
 
     #[test]
@@ -508,6 +542,22 @@ mod tests {
             codec_series(&spec),
             Err(SeriesError::InvalidDecorrelation(4, _))
         ));
+    }
+
+    #[test]
+    fn zfp_singletons_collapse_via_reshape() {
+        let spec = SeriesSpec::new(tczyx(), vec![8, 1, 32, 256, 256], "uint16", Family::NdZfp);
+        let codecs = codec_series(&spec).unwrap();
+        assert_eq!(codecs[0]["name"], "transpose");
+        assert_eq!(codecs[1]["name"], "reshape");
+        // Transposed chunk shape is (c=1, t=8, 32, 256, 256): the leading
+        // singleton folds into the first group.
+        assert_eq!(
+            codecs[1]["configuration"]["shape"],
+            json!([[0, 1], [2], [3], [4]])
+        );
+        assert_eq!(codecs[2]["name"], "zfp");
+        assert_eq!(codecs[2]["configuration"], json!({ "mode": "reversible" }));
     }
 
     #[test]

@@ -1,22 +1,24 @@
 ---
 title: Usage
-description: Task-oriented guides for using nd-image-codecs from Zarr, the ndic CLI, Rust, Python, and TypeScript, with code blocks that CI will execute against the current API once Phase 6 lands.
+description: Task-oriented guides for using nd-image-codecs from Zarr, the ndic CLI, Rust, Python, and TypeScript, with every code block executed by CI against the current API.
 ---
 
 # Usage
 
-:::{caution} Status: Skeleton
-Guides fill in as their features land (see the
-[roadmap](../development/roadmap/index.md); usage docs are completed and
-example-verified in
-[Phase 6](../development/roadmap/phase-6-validation-and-docs.md)).
+:::{note} Status
+Every code block on these pages is **checked by CI** against the current
+API — the Rust snippets are compiled and run, the Python and TypeScript ones
+imported and run, the bash ones executed, the codec configurations
+round-tripped through the codecs that own them, and the `$`-prompt
+transcripts' displayed JSON parsed (their commands are exercised by the
+executable bash blocks)
+([`scripts/ci/check-usage-docs.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/ci/check-usage-docs.py)).
+A snippet that cannot run in CI carries a comment saying why, and the check
+reports those exemptions; there are a handful, all of them install commands
+or the browser `fetch` path.
 :::
 
-Task-oriented guides. Code blocks on these pages are **static today** — nothing
-executes them or checks them against the current API. Putting every snippet under
-a docs CI job is
-[Phase 6](../development/roadmap/phase-6-validation-and-docs.md) work; until it
-lands, read a snippet as the intended API rather than as a tested example.
+Task-oriented guides.
 
 | Guide | Audience | You'll learn |
 | --- | --- | --- |

@@ -20,7 +20,7 @@ axis metadata:
 | --- | --- | --- |
 | **nd-delta** | `transpose → numcodecs.delta → bitshuffle → zstd/lz4` | Fast lossless storage from **existing** Zarr codecs only |
 | **nd-lift-ht** | `transpose → nd_lift → htj2k` | Scalable microscopy & volume visualization |
-| **nd-zfp** | `transpose → nd_zfp` | GPU volume rendering, random access, fixed-rate memory |
+| **nd-zfp** | `transpose → reshape → zfp` | GPU volume rendering, random access, fixed-rate memory |
 
 ## Install
 
@@ -43,20 +43,24 @@ The codec classes (`NdLift`, `Htj2k`, `NdZfp`) follow the
 
 ```ts
 import * as zarrita from "zarrita";
-import { Htj2k, NdLift, NdZfp } from "@fideus-labs/nd-image-codecs";
+import { registerZarritaCodecs } from "@fideus-labs/nd-image-codecs";
 
-zarrita.registry.set("htj2k", () => Htj2k);
-zarrita.registry.set("nd_lift", () => NdLift);
-zarrita.registry.set("nd_zfp", () => NdZfp);
+registerZarritaCodecs(zarrita.registry);
 ```
+
+One call registers zarrita-native adapters for `nd_lift`, `htj2k`, `zfp`,
+and `reshape` (plus the deprecated `nd_zfp` read alias), and replaces
+zarrita's `transpose`/`numcodecs.delta`/`blosc` entries, whose stock
+implementations cannot *write* transposed pipelines correctly.
 
 ## Status
 
 **Pre-alpha.** `codecSeries` is fully implemented in pure TypeScript and is
-cross-checked against the Rust and Python implementations in CI. The codec
-encode/decode paths are scaffolds backed by the Rust core compiled to WASM —
-they land across the six
-[roadmap phases](https://github.com/fideus-labs/nd-image-codecs/blob/main/docs/development/roadmap/index.md).
+cross-checked against the Rust and Python implementations in CI. The
+`nd_lift`, `htj2k`, and `zfp` encode/decode paths are backed by the same
+Rust core as the `zarrs` codecs and the Python extension, compiled to WASM,
+so every ecosystem produces byte-identical chunks — CI pins the committed
+micro-fixtures and the `nd_lift` conformance vectors in all three languages.
 
 ## Links
 

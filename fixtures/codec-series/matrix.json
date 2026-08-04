@@ -390,10 +390,29 @@
           }
         },
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 4
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ],
+              [
+                3
+              ],
+              [
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -430,10 +449,29 @@
           }
         },
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 4
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ],
+              [
+                3
+              ],
+              [
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -758,10 +796,27 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "shape": [
+              [
+                0,
+                1,
+                2
+              ],
+              [
+                3
+              ],
+              [
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -786,10 +841,27 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "shape": [
+              [
+                0,
+                1,
+                2
+              ],
+              [
+                3
+              ],
+              [
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -1390,10 +1462,25 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 2
+            "shape": [
+              [
+                0,
+                1,
+                2,
+                3
+              ],
+              [
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -1418,10 +1505,25 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 2
+            "shape": [
+              [
+                0,
+                1,
+                2,
+                3
+              ],
+              [
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -1729,10 +1831,26 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ],
+              [
+                3
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -1755,10 +1873,26 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ],
+              [
+                3
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -2066,10 +2200,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 4
+            "mode": "reversible"
           }
         }
       ]
@@ -2092,10 +2225,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 4
+            "mode": "reversible"
           }
         }
       ]
@@ -2386,10 +2518,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -2410,10 +2541,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -2629,10 +2759,23 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 2
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -2653,10 +2796,23 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 2
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -2947,10 +3103,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -2971,10 +3126,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -3176,10 +3330,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 2
+            "mode": "reversible"
           }
         }
       ]
@@ -3198,10 +3351,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 2
+            "mode": "reversible"
           }
         }
       ]
@@ -3532,10 +3684,9 @@
           }
         },
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -3566,10 +3717,9 @@
           }
         },
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -3900,10 +4050,9 @@
           }
         },
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -3934,10 +4083,9 @@
           }
         },
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -4228,10 +4376,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -4252,10 +4399,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 3
+            "mode": "reversible"
           }
         }
       ]
@@ -4471,10 +4617,23 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 2
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -4495,10 +4654,23 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 2
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -4844,10 +5016,29 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 4
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ],
+              [
+                3
+              ],
+              [
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -4872,10 +5063,29 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "reshape",
           "configuration": {
-            "mode": "reversible",
-            "dims": 4
+            "shape": [
+              [
+                0,
+                1
+              ],
+              [
+                2
+              ],
+              [
+                3
+              ],
+              [
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "name": "zfp",
+          "configuration": {
+            "mode": "reversible"
           }
         }
       ]
@@ -5504,10 +5714,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 4
+            "mode": "reversible"
           }
         }
       ]
@@ -5530,10 +5739,9 @@
       "family": "nd-zfp",
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
-            "mode": "reversible",
-            "dims": 4
+            "mode": "reversible"
           }
         }
       ]
@@ -5969,10 +6177,9 @@
       },
       "expected": [
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
             "mode": "fixed_rate",
-            "dims": 3,
             "rate": 8.0
           }
         }
@@ -6007,10 +6214,9 @@
           }
         },
         {
-          "name": "nd_zfp",
+          "name": "zfp",
           "configuration": {
             "mode": "fixed_rate",
-            "dims": 3,
             "rate": 6.5
           }
         }

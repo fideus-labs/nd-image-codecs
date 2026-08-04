@@ -52,7 +52,7 @@ fn main() {
     let config = ndic_zfp::NdZfpConfig {
         mode: "fixed_rate".into(),
         rate: Some(8.0),
-        dims: 3,
+        dims: Some(3),
         ..Default::default()
     };
     let stream = ndic_zfp::encode_chunk(

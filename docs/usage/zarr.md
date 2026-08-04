@@ -11,7 +11,7 @@ The builder and nd-delta work since
 nd-lift-ht family (`transpose → nd_lift → htj2k`) round-trips across zarrs
 and zarr-python since
 [Phase 4](../development/roadmap/phase-4-nd-lift-ht.md); nd-zfp
-(`transpose → nd_zfp`) since
+(`transpose → reshape → zfp`) since
 [Phase 5](../development/roadmap/phase-5-nd-zfp.md).
 :::
 
@@ -24,7 +24,7 @@ array→array and array→bytes codecs — tuned per use case:
 | --- | --- | --- |
 | **nd-delta** | `transpose → numcodecs.delta → bytes → blosc(bitshuffle, zstd/lz4)` | Fast lossless storage; works today with stock codecs |
 | **nd-lift-ht** | `transpose → nd_lift → htj2k` | Scalable microscopy; streaming thumbnails and progressive resolution |
-| **nd-zfp** | `transpose → nd_zfp` | GPU volume rendering, O(1) random brick access, predictable memory |
+| **nd-zfp** | `transpose → reshape → zfp` | GPU volume rendering, O(1) random brick access, predictable memory |
 
 ## The `codec_series` builder
 
@@ -34,16 +34,27 @@ natively in [Rust](./rust.md), [Python](./python.md), and
 [TypeScript](./typescript.md), with byte-identical output.
 
 ```python
+import numpy as np
+import zarr
 from nd_image_codecs import codec_series
 
 codecs = codec_series(
     axes=list("tczyx"),       # one name per dimension, e.g. ["t","c","z","y","x"]
-    chunk_shape=[8, 1, 32, 256, 256],
+    chunk_shape=[2, 1, 8, 64, 64],
     dtype="uint16",
     family="nd-lift-ht",      # "nd-delta" | "nd-lift-ht" | "nd-zfp"
 )
-arr = zarr.create_array(store, shape=..., chunks=..., dtype="uint16",
-                        codecs=codecs)
+
+# zarr-python wants the flat list split at the array→bytes codec.
+SERIALIZERS = {"bytes", "htj2k", "zfp"}
+at = next(i for i, codec in enumerate(codecs) if codec["name"] in SERIALIZERS)
+
+store: dict = {}
+arr = zarr.create_array(
+    store, shape=(2, 1, 8, 64, 64), chunks=(2, 1, 8, 64, 64), dtype="uint16",
+    filters=codecs[:at], serializer=codecs[at], compressors=codecs[at + 1:],
+    fill_value=0,
+)
 ```
 
 Builder behavior (full spec:
@@ -72,7 +83,7 @@ nd-lift-ht array→bytes stage:
 nd-zfp:
 
 ```json
-{ "name": "nd_zfp",
+{ "name": "zfp",
   "configuration": { "mode": "fixed_rate", "rate": 8.0, "dims": 3 } }
 ```
 
@@ -96,9 +107,18 @@ Cross-validate pipelines with third-party codecs via
 implementations:
 
 ```python
-# Decode an nd-zfp chunk with imagecodecs' ZFP instead of ndic-zfp:
+# Decode an nd-zfp chunk with imagecodecs' ZFP instead of ndic-zfp. A zfp
+# chunk is a standard ZFP stream, header and all, so nothing is unwrapped
+# first — and the stream carries its own shape and dtype.
 import imagecodecs
-plain = imagecodecs.zfp_decode(chunk_bytes, shape=(32, 256, 256), dtype="f4")
+from nd_image_codecs import _nd_image_codecs as native
+
+field = (np.arange(4 * 16 * 16, dtype=np.float32) / 7.0).reshape(4, 16, 16)
+chunk_bytes = native.nd_zfp_encode(
+    field.tobytes(), [4, 16, 16], "float32", mode="reversible"
+)
+plain = imagecodecs.zfp_decode(chunk_bytes)
+np.testing.assert_array_equal(plain, field)
 ```
 
 The [Phase 6 validation matrix](../development/roadmap/phase-6-validation-and-docs.md)
@@ -118,10 +138,24 @@ natural images — tracked continuously in the
 ## Migration
 
 ```python
-# Re-encode an existing blosc dataset (per-chunk, parallel with dask):
-old = zarr.open("blosc.zarr")
-new = zarr.create_array(..., codecs=codec_series(..., family="nd-lift-ht"))
-new[:] = old[:]                 # dask recommended for large volumes
+# Re-encode an existing blosc dataset (per-chunk; use dask for large volumes).
+volume = (np.arange(4 * 64 * 64, dtype=np.uint16) * 13 % 4096).reshape(4, 64, 64)
+old_store: dict = {}
+old = zarr.create_array(old_store, shape=volume.shape, chunks=(4, 32, 32),
+                        dtype="uint16", fill_value=0)
+old[...] = volume
+
+pipeline = codec_series(axes=["z", "y", "x"], chunk_shape=[4, 32, 32],
+                        dtype="uint16", family="nd-lift-ht")
+at = next(i for i, codec in enumerate(pipeline) if codec["name"] in SERIALIZERS)
+new_store: dict = {}
+new = zarr.create_array(
+    new_store, shape=old.shape, chunks=(4, 32, 32), dtype=old.dtype,
+    filters=pipeline[:at], serializer=pipeline[at], compressors=pipeline[at + 1:],
+    fill_value=0,
+)
+new[...] = old[...]
+np.testing.assert_array_equal(new[...], volume)   # reversible: bit-exact
 ```
 
 Bit-exactness on the reversible paths means migration is lossless and verifiable

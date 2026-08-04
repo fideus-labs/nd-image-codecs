@@ -69,7 +69,7 @@ pub fn matrix_cases() -> Vec<(Vec<usize>, &'static str, ndic_zfp::NdZfpConfig)> 
     let mut cases = Vec::new();
     for shape in shapes {
         #[allow(clippy::cast_possible_truncation)] // ranks are 1..=4
-        let dims = shape.len() as u8;
+        let dims = Some(shape.len() as u8);
         for dtype in dtypes {
             let mut modes = vec![
                 ndic_zfp::NdZfpConfig {

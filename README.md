@@ -39,7 +39,7 @@ trade off ratio, speed, and access pattern:
 | --- | --- | --- |
 | **nd-delta** | `transpose → numcodecs.delta → bitshuffle → zstd/lz4` | Fast lossless storage from **existing** Zarr codecs only |
 | **nd-lift-ht** | `transpose → nd_lift → htj2k` | Scalable microscopy & volume visualization (resolution pyramids, thumbnails) |
-| **nd-zfp** | `transpose → nd_zfp` | GPU volume rendering, random access, predictable (fixed-rate) memory |
+| **nd-zfp** | `transpose → reshape → zfp` | GPU volume rendering, random access, predictable (fixed-rate) memory |
 
 Each family is produced by [`codec_series`](docs/architecture/codec-series.md),
 which chooses a transpose order and decorrelation axes from the axis names
@@ -58,7 +58,7 @@ which chooses a transpose order and decorrelation axes from the axis names
   (HTJ2K) codestream, with an outer coefficient-plane byte index for
   range-request thumbnails. The FBCOT block coder (MEL / VLC / MagSgn) decodes
   roughly an order of magnitude faster than classic JPEG 2000.
-- **`nd_zfp`** — an **array-to-bytes** codec: a clean-room Rust port of
+- **`zfp`** — an **array-to-bytes** codec (the zarr-extensions registered name): a clean-room Rust port of
   [LLNL ZFP](https://github.com/LLNL/zfp) for 2D/3D/4D blocks with fixed-rate,
   fixed-accuracy, fixed-precision, and reversible modes, plus a brick index for
   random access. See [`docs/architecture/zfp.md`](docs/architecture/zfp.md).
@@ -71,7 +71,7 @@ which chooses a transpose order and decorrelation axes from the axis names
 | [`crates/ndic-lift`](crates/ndic-lift/) | The `nd_lift` cross-axis lifting transform (`delta` / `haar` / `5/3`) |
 | [`crates/ndic-htj2k`](crates/ndic-htj2k/) | The HT (FBCOT) block coder: cleanup, SigProp, MagRef passes and inverses |
 | [`crates/ndic-codestream`](crates/ndic-codestream/) | Part 1 / Part 15 codestream reader/writer, marker segments (`SIZ`/`COD`/`CAP`/`TLM`/`PLT`), byte-range index |
-| [`crates/ndic-zfp`](crates/ndic-zfp/) | The `nd_zfp` Rust ZFP port (2D/3D/4D), reproducing upstream test vectors |
+| [`crates/ndic-zfp`](crates/ndic-zfp/) | The `zfp` Rust ZFP port (2D/3D/4D), reproducing upstream test vectors |
 | [`crates/ndic-zarr`](crates/ndic-zarr/) | The three Zarr v3 codecs + the `codec_series` builder (also the WASM core for TypeScript) |
 | [`crates/ndic-cli`](crates/ndic-cli/) | `ndic` CLI: `compress` / `expand` / `series` / `inspect` / `index` / `thumbnail` |
 

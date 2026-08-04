@@ -29,7 +29,7 @@ working on. Every phase document in the
 | nd_lift transform | The explicit array-to-array cross-axis transform: lifting math (delta / haar / 5/3), axis roles, boundary handling, versioning | [nd_lift Transform](./nd-transform.md) |
 | HT block coder | FBCOT cleanup/SigProp/MagRef passes, MEL + VLC + MagSgn sub-streams, HT Sets, SIMD strategy | [HT Block Coder](./ht-block-coder.md) |
 | Wavelet transform | Reversible 5/3 and irreversible 9/7 lifting, 2D in-plane geometry, boundary extension, fixed-point choices | [Wavelet Transform](./wavelet-transform.md) |
-| ZFP codec | The clean-room Rust ZFP port: 2D/3D/4D blocks, the four modes, brick index, upstream parity strategy | [nd_zfp Codec](./zfp.md) |
+| ZFP codec | The clean-room Rust ZFP port: 2D/3D/4D blocks, the four modes, brick index, upstream parity strategy | [zfp Codec](./zfp.md) |
 | Codestream | Part 1 / Part 15 marker segments (`SIZ`/`COD`/`CAP`/`QCD`/`TLM`/`PLT`), progression orders, tile/precinct/packet anatomy, `.jph` boxes | [Codestream Syntax](./codestream.md) |
 | Range access | How RPCL + `TLM`/`PLT` and the coefficient-plane index yield a byte-offset index; thumbnail fetch plans over HTTP Range | [Byte-Range Access](./range-access.md) |
 | Zarr codecs | The Zarr v3 codec model, the three registered/composed codecs, `zarrs`/numcodecs/numcodecs.js integration, OME-Zarr fit | [Zarr Codecs](./zarr-codec.md) |
@@ -40,7 +40,7 @@ nd-image-codecs deliberately **avoids JPEG 2000 Part 2 (the Multiple Component
 Transformation, MCT)**. Cross-axis (z, time, channel) decorrelation is instead
 expressed as an explicit, independently specified Zarr array-to-array codec,
 `nd_lift`. The `htj2k` codec emits only JPEG 2000 **Part 1** (T.800) and
-**Part 15 / HTJ2K** (T.814) syntax; the `nd_zfp` codec is a clean-room port of
+**Part 15 / HTJ2K** (T.814) syntax; the `zfp` codec is a clean-room port of
 LLNL ZFP. This keeps the whole system clear of Part 2 MCT patent/IP concerns
 while still capturing the spatial correlation that makes scientific volumes
 compressible.

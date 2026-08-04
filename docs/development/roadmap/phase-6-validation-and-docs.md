@@ -54,12 +54,58 @@ extension registration.
 
 ## Acceptance criteria
 
-- [ ] Full encode/decode matrix green: {zarrs, zarr-python, zarrita.js} ×
+- [x] Full encode/decode matrix green: {zarrs, zarr-python, zarrita.js} ×
       {nd-delta, nd-lift-ht, nd-zfp} × fixture corpus, both directions.
-- [ ] `imagecodecs` accepts our ZFP/JPEG 2000/delta output where semantics
+- [x] `imagecodecs` accepts our ZFP/JPEG 2000/delta output where semantics
       overlap, and we accept its.
-- [ ] OME-Zarr 0.5 datasets written with each family validate and open in
+- [x] OME-Zarr 0.5 datasets written with each family validate and open in
       ngff-zarr and ome-zarr-py.
 - [ ] CI regression gates on ratio and throughput vs committed baselines.
-- [ ] All usage-doc snippets execute in docs CI.
+- [x] All usage-doc snippets execute in docs CI.
 - [ ] Codec specs submitted to zarr-extensions.
+
+### What the two open criteria still need
+
+Both blocking decisions have been taken; what remains is execution.
+
+**Throughput gating** — *decision: adopt a CI-runner baseline.* The ratio
+gate runs on every pull request and the nightly grid opens an issue on a
+ratio regression; throughput is reported but not yet gated, because the
+committed baseline is a dev-box capture and the time gate's σ envelope is
+only meaningful against the same machine class. The PR gate now derives its
+gate from the baseline manifest itself: when `bench/baselines/main`'s
+manifest names the runner class the gate job runs on (`gha-ubuntu-24.04`),
+timing gates automatically alongside ratio. Remaining steps, in order,
+after this branch merges: run `bench-baseline-refresh` (machine
+`gha-ubuntu-24.04`), review and merge the pull request it opens — at which
+point the throughput gate switches on by itself and this criterion is met.
+
+**Extension registration** — *decision: adopt the registered `zfp` codec.*
+The nd-zfp family now emits `transpose → reshape → zfp`, all registered
+names, with `nd_zfp` kept as a read alias for existing stores (its legacy
+`dims` member selects the old in-codec chunk mapping) — see
+[Registration and naming](../../architecture/zarr-codec.md). Vendored
+copies of the registered schemas in
+[`spec/vendor/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/vendor)
+gate the builders in CI. The remaining submission is `nd_lift` and `htj2k`
+only, staged in
+[`spec/codecs/`](https://github.com/fideus-labs/nd-image-codecs/tree/main/spec/codecs);
+opening that pull request needs the copyright holder's CC BY 3.0 assent
+(see [`spec/README.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/spec/README.md)).
+
+### What Phase 6 also changed
+
+Three gaps had to close before the matrix could exist at all, and they are
+worth knowing about because they were not on the original list:
+
+- `nd_lift` had no WASM path, so zarrita.js could not decode nd-lift-ht at
+  all (a Phase 4 gap). It now shares the Rust core with every other ecosystem.
+- `zarrs` ships no delta codec, so the nd-delta family could not run in Rust.
+  `numcodecs.delta` is now implemented and registered.
+- zarrita.js could not *write* any pipeline containing `transpose`: its
+  built-in codec constructs the output buffer from the chunk object rather
+  than the chunk's array, so every such write produced garbage. Its delta
+  codec also refuses the strides a permutation produces, and its blosc loader
+  hands Zarr v3's string `shuffle` to a numcodecs.js codec expecting the v2
+  numeric one. The TypeScript package ships corrected replacements and
+  registers them alongside our own codecs.

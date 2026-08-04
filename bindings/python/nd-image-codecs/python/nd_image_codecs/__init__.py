@@ -8,7 +8,7 @@ Zarr v3 codecs assembled by :func:`codec_series` from an array's axis metadata:
 - **nd-lift-ht** — ``transpose → nd_lift → htj2k``; a cross-axis lifting
   transform feeding HTJ2K coefficient planes for scalable microscopy and
   volume visualization.
-- **nd-zfp** — ``transpose → nd_zfp``; ZFP blocks with a brick index for GPU
+- **nd-zfp** — ``transpose → reshape → zfp``; ZFP blocks with a brick index for GPU
   volume rendering, random access, and predictable memory.
 
 :class:`NdLift` is implemented (roadmap Phase 2): its transform math lives in
@@ -36,6 +36,7 @@ __all__ = [
     "Htj2k",
     "NdLift",
     "NdZfp",
+    "Zfp",
     "__version__",
     "codec_series",
 ]
@@ -156,17 +157,20 @@ class Htj2k:
 
 
 class NdZfp:
-    """Zarr v3 array-to-bytes ZFP codec (``nd_zfp``).
+    """Zarr v3 array-to-bytes ZFP codec (the registered ``zfp`` name).
 
     This config class serializes exactly the configurations the Rust codec
     accepts: ``mode`` (``reversible``/``fixed_rate``/``fixed_accuracy``/
     ``fixed_precision``) with the corresponding parameter
-    (``rate``/``tolerance``/``precision``) and the ZFP field
-    dimensionality ``dims``. For ``zarr-python`` pipelines use
-    :mod:`nd_image_codecs.zarr_codec`, which runs the native core.
+    (``rate``/``tolerance``/``precision``). ``dims`` is the **legacy**
+    ``nd_zfp`` field dimensionality: present only in configurations written
+    before the registered-name adoption, where it selects the old
+    squeeze-and-pad chunk mapping; new configurations never carry it. For
+    ``zarr-python`` pipelines use :mod:`nd_image_codecs.zarr_codec`, which
+    runs the native core.
     """
 
-    name = "nd_zfp"
+    name = "zfp"
 
     def __init__(
         self,
@@ -175,7 +179,7 @@ class NdZfp:
         rate: float | None = None,
         tolerance: float | None = None,
         precision: int | None = None,
-        dims: int = 3,
+        dims: int | None = None,
     ) -> None:
         self.mode = mode
         self.rate = rate
@@ -192,7 +196,8 @@ class NdZfp:
             cfg["tolerance"] = self.tolerance
         if self.precision is not None:
             cfg["precision"] = self.precision
-        cfg["dims"] = self.dims
+        if self.dims is not None:
+            cfg["dims"] = self.dims
         return {"name": self.name, "configuration": cfg}
 
     @classmethod
@@ -203,13 +208,40 @@ class NdZfp:
             rate=config.get("rate"),
             tolerance=config.get("tolerance"),
             precision=config.get("precision"),
-            dims=config.get("dims", 3),
+            dims=config.get("dims"),
         )
+
+
+#: The registered codec name; ``NdZfp`` predates the adoption of ``zfp``.
+Zfp = NdZfp
 
 
 # --------------------------------------------------------------------------
 # codec_series — pure-Python mirror of ndic_zarr::series::codec_series
 # --------------------------------------------------------------------------
+
+
+def _reshape_groups(shape: list[int]) -> list[list[int]]:
+    """Contiguous input-dimension groups collapsing singletons for `reshape`.
+
+    One group per non-singleton dimension, each absorbing the singleton
+    dimensions before it; trailing singletons merge into the final group,
+    and an all-singleton shape becomes one group (a 1-element 1D field).
+    Mirrored exactly by the Rust and TypeScript builders.
+    """
+    groups: list[list[int]] = []
+    current: list[int] = []
+    for i, extent in enumerate(shape):
+        current.append(i)
+        if extent > 1:
+            groups.append(current)
+            current = []
+    if current:
+        if groups:
+            groups[-1].extend(current)
+        else:
+            groups.append(current)
+    return groups
 Family = Literal["nd-delta", "nd-lift-ht", "nd-zfp"]
 
 _DTYPES: dict[str, tuple[str, int]] = {
@@ -364,10 +396,20 @@ def codec_series(
         nonsingleton = sum(1 for c in chunk_shape if c > 1)
         if nonsingleton > 4:
             raise ValueError(f"nd-zfp needs <=4 non-singleton chunk dimensions, got {nonsingleton}")
-        cfg: dict[str, Any] = {"mode": "reversible" if zfp_rate is None else "fixed_rate", "dims": max(nonsingleton, 2)}
+        # Collapse singleton dimensions with a `reshape` codec so the chunk
+        # reaching `zfp` is a direct 1-4D field, as the registered codec
+        # specifies. Groups are contiguous post-transpose dimension indices,
+        # one per output dimension; trailing singletons merge into the final
+        # group.
+        transposed = [chunk_shape[d] for d in order]
+        if any(c == 1 for c in transposed):
+            codecs.append(
+                {"name": "reshape", "configuration": {"shape": _reshape_groups(transposed)}}
+            )
+        cfg: dict[str, Any] = {"mode": "reversible"}
         if zfp_rate is not None:
-            cfg["rate"] = zfp_rate
-        codecs.append({"name": "nd_zfp", "configuration": cfg})
+            cfg = {"mode": "fixed_rate", "rate": zfp_rate}
+        codecs.append({"name": "zfp", "configuration": cfg})
     else:  # pragma: no cover - guarded by typing
         raise ValueError(f"unknown family {family!r}")
 

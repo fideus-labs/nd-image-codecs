@@ -1,7 +1,7 @@
 // The htj2k codec: config validation always; WASM round-trips when the
 // core has been built (`npm run build:wasm`), skipped cleanly otherwise.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -64,5 +64,24 @@ describe.skipIf(!wasmBuilt)("Htj2k WASM core", () => {
   it("reports dtypes without an integer path", async () => {
     const codec = Htj2k.fromConfig({ name: "htj2k" }, { shape: [4, 4], dtype: "float32" });
     await expect(codec.encode(new Uint8Array(64))).rejects.toThrow(/no integer path/);
+  });
+
+  it("encodes the committed micro-fixture byte-for-byte", async () => {
+    // The Rust `zarrs` codec and the Python extension pin the same file
+    // (`fixtures/codestreams/tiny-chunk-4x8x8.ndht`), so this is the
+    // TypeScript corner of the cross-ecosystem byte-identity gate.
+    const shape = [4, 8, 8];
+    const n = shape.reduce((a, b) => a * b, 1);
+    const samples = Uint16Array.from({ length: n }, (_, i) => (i * 7) % 4096);
+    const bytes = new Uint8Array(samples.buffer.slice(0));
+    const codec = Htj2k.fromConfig(
+      { name: "htj2k", configuration: { xy_levels: 2 } },
+      { shape, dtype: "uint16" },
+    );
+    const committed = readFileSync(
+      fileURLToPath(new URL("../../../fixtures/codestreams/tiny-chunk-4x8x8.ndht", import.meta.url)),
+    );
+    expect(await codec.encode(bytes)).toEqual(new Uint8Array(committed));
+    expect(await codec.decode(new Uint8Array(committed))).toEqual(bytes);
   });
 });

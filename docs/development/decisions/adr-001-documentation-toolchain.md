@@ -229,8 +229,10 @@ SHA-256 of the URL, so it lands in `_build/templates/site/<hash>/` instead of
 
 ## Not in scope / follow-on
 
-Two things a reader might reasonably expect from a documentation site are
-deliberately absent. They are follow-on work, not oversights.
+Two things a reader might reasonably expect from a documentation site were
+deliberately absent when this ADR was accepted. One — executable code blocks —
+has since landed, and its entry below records how; generated API reference
+remains follow-on work rather than an oversight.
 
 ### Generated API reference
 
@@ -261,20 +263,39 @@ three times — Rust, Python, TypeScript — and a mechanically generated refere
 would present it as three unrelated APIs rather than one contract with three
 bindings.
 
-### Executable code blocks
+### Executable code blocks — resolved in Phase 6
 
-Code blocks on this site are **static**. Nothing executes them, and nothing
-checks them against the current API.
+This was listed as out of scope when the ADR was written; the
+[Phase 6](../roadmap/phase-6-validation-and-docs.md) usage-docs item closed it,
+and the note stays here because the *mechanism* was left open and is worth
+recording.
 
-[Phase 6](../roadmap/phase-6-validation-and-docs.md) owns making them real: its
-"usage docs completion" item puts every `docs/usage/*.md` snippet under a docs CI
-job, with the `rust,ignore` blocks graduating to tested examples as the APIs
-land. That phase now inherits a working documentation pipeline — a strict build,
-a CI job, and a deploy — rather than having to invent one; the work left is
-executing the snippets, not publishing them.
+Every block under `docs/usage/` is now executed by the `usage-docs` CI job via
+[`scripts/ci/check-usage-docs.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/ci/check-usage-docs.py).
+The mechanism is **extract and run**, not include-from-file: the snippets stay
+verbatim in the markdown, and the checker pulls them out, groups them per page
+and language, and runs each group as one program — so a later snippet can use a
+name an earlier one introduced, which is how a reader works through a page.
 
-Until then, the wording on the site has to match reality. The [usage index](../../usage/index.md)
-previously asserted that "every code block in these pages is executed by CI
-against the current API"; it now states the intent — that the snippets become
-CI-executed when Phase 6 lands — so the published site does not advertise a
-guarantee the project does not yet make.
+Three alternatives were rejected:
+
+- *`rust,ignore`-style fence metadata* (mdbook's model) conflicts with the
+  existing rule that fence languages be exact highlight.js names — the site's
+  highlighter does not resolve aliases and silently renders an unknown info
+  string as plain text.
+- *Include-from-file* (`literalinclude`) keeps the code compiling but empties
+  the page for anyone reading it on GitHub, where the directive does not render.
+- *Doctests* only cover Rust, and the pages are four languages plus shell.
+
+Per-block opt-outs are HTML comments (`<!-- docs-check: skip — reason -->`),
+invisible in both renderings, and the checker prints every exemption it honors,
+so an exemption is reviewable rather than silent. The [usage index](../../usage/index.md)
+now states the guarantee plainly, which it could not while the blocks were
+static.
+
+What is still **not** executed: code blocks under `docs/architecture/` and
+`docs/development/`. Those are illustrative fragments of formats and algorithms
+(marker layouts, JSON shapes, lifting kernels), not API usage, and several
+describe bytes rather than calls. Extending the checker to them would mean
+inventing runnable context around each fragment — the failure mode the
+extract-and-run design was chosen to avoid.

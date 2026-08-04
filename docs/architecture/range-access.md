@@ -111,4 +111,4 @@ viewports.
 The nd-zfp family provides a different, complementary random-access story: in
 fixed-rate mode every `4^d` brick has a constant byte size, so a renderer
 computes any brick's offset arithmetically — no index fetch at all. The variable
-modes carry an explicit brick index. See [the `nd_zfp` codec](./zfp.md).
+modes carry an explicit brick index. See [the `zfp` codec](./zfp.md).
