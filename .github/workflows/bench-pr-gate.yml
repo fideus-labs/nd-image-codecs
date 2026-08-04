@@ -53,13 +53,20 @@ jobs:
         run: cargo run -p ndic-bench-cli --release -- run --quiet
 
       # The committed baseline's σ noise envelope is only valid on the runner
-      # class it was captured on, so the PR gate fails only on the
-      # deterministic compressed-size (ratio) gate; timing is reported.
+      # class it was captured on, so the gate is derived from the baseline
+      # manifest itself: a baseline recorded on this workflow's runner class
+      # (`gha-ubuntu-24.04`, via bench-baseline-refresh) gates both time and
+      # ratio; any other capture machine gates ratio only, with timing
+      # reported. Adopting a CI-runner baseline therefore switches the
+      # throughput gate on without editing this file.
       - name: Compare against the main baseline
         shell: bash
         run: |
+          machine="$(python3 -c 'import json; print(json.load(open("bench/baselines/main/manifest.json"))["machine"])')"
+          if [ "$machine" = "gha-ubuntu-24.04" ]; then gate=both; else gate=ratio; fi
+          echo "baseline machine: $machine → --gate $gate"
           cargo run -p ndic-bench-cli --release -- compare bench/baselines/main \
-            --gate ratio \
+            --gate "$gate" \
             --fail-on-regression \
             --format markdown | tee bench-report.md
 

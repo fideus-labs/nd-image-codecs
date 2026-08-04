@@ -145,6 +145,13 @@ over the baseline (`RATIO_REGRESSION_PCT_THRESHOLD = 0.02`). Normalizing by
 `bytes_in` keeps the gate meaningful when a fixture changes size, and
 compressed sizes are deterministic, so this gate holds across machine classes.
 
+Which kinds gate a pull request is derived from the baseline itself: the PR
+workflow reads `bench/baselines/main/manifest.json` and gates **both** kinds
+when the manifest's machine is the workflow's own runner class
+(`gha-ubuntu-24.04`), ratio only otherwise. Adopting a CI-runner baseline via
+`bench-baseline-refresh` therefore switches the throughput gate on without a
+workflow edit.
+
 The report's status column honors the selected gate: a threshold exceeded on
 an **ungated** kind renders as `ok (time n/a: ungated)` plus a trailing note,
 rather than `TIME-REGRESSED`, so a ratio-only comparison against baselines

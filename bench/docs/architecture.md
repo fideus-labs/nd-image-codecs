@@ -103,7 +103,7 @@ comments; csv feeds ad-hoc analysis; the viewer (static site generated into
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
-| `bench-pr-gate.yml` | PR | Curated subset vs `baselines/main`, `--fail-on-regression`, sticky comment |
+| `bench-pr-gate.yml` | PR | Curated subset vs `baselines/main`, `--fail-on-regression`, sticky comment; gates time+ratio when the baseline manifest names the runner class, ratio only otherwise |
 | `bench-nightly.yml` | cron | Full grid incl. the macro tier on the Tier 3 volumes; uploads records; opens an issue on a ratio regression |
 | `bench-baseline-refresh.yml` | manual | Re-records the baselines, rewrites the manifest with the machine class it ran on, and opens a PR |
 
