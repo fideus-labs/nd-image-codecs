@@ -24,7 +24,7 @@ dependencies = ["numcodecs>=0.13", "numpy>=1.26"]
 
 [project.optional-dependencies]
 zarr = ["zarr>=3.1"]
-test = ["pytest", "imagecodecs", "zarr>=3.1"]
+test = ["pytest", "imagecodecs", "zarr>=3.1", "ngff-zarr[validate]", "ome-zarr"]
 
 # Zarr v3 codec entry points: let `zarr-python` discover each codec by name
 # without an explicit import. See
