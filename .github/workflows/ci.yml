@@ -44,6 +44,21 @@ jobs:
           tar -xzf "$archive" actionlint
           ./actionlint -color
 
+  # The one published version number lives in seven hand-edited files. A
+  # partial bump is silent — cargo will happily publish crates carrying a
+  # stale internal dependency pin, and those are unresolvable on crates.io
+  # forever. python3-only and buildless, so it fails in seconds.
+  package-versions:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 scripts/ci/check-package-versions.py
+
   fmt:
     runs-on: ubuntu-24.04
     steps:

@@ -32,6 +32,7 @@ All commands run from the repository root.
 | `cargo fmt --all --check` | CI-style format check |
 | `cargo clippy --workspace --all-targets` | Clippy `all` + `pedantic` (must be warning-clean) |
 | `cargo doc --workspace --no-deps` | Build API docs; `missing_docs` is a warn lint |
+| `python3 scripts/ci/check-package-versions.py` | Assert the published version agrees across every manifest, lockfile, and `__version__` fallback |
 
 ## Benchmarks
 

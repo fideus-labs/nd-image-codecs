@@ -1,6 +1,6 @@
 ---
 title: Publishing
-description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand, including the 0.0.2 release that completes the crates.io set.
+description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand, including the 0.1.0 release that ships the working codecs.
 ---
 
 # Publishing
@@ -8,20 +8,21 @@ description: How to publish nd-image-codecs to crates.io, PyPI, and npm by hand,
 How to publish nd-image-codecs to crates.io, PyPI, and npm **by hand**. There is
 no release automation yet; every step here is run from a workstation.
 
-The current target is **0.0.2**. The `codec_series` builder is real and works in
-all three languages; the codec encode/decode paths are scaffolds (see the
-[roadmap](./roadmap/index.md)). The release claims the names on every registry
-and gives each one a real README, repository link, and license so the packages
-read as an early-stage project rather than an empty squat.
+The current target is **0.1.0** — the first release with working codecs rather
+than name reservations. `nd_lift`, `nd_lift_ht`, and `nd_zfp` encode and decode
+for real, the `codec_series` builder works in all three languages, and the
+TypeScript package ships a WASM core (see the [roadmap](./roadmap/index.md)).
+The minor bump signals that: 0.0.x was a placeholder series.
 
-> **0.0.1 shipped incomplete (2026-08-01).** PyPI and both npm packages went out
-> fine, and five crates reached crates.io — `ndic-core`, `ndic-htj2k`,
-> `ndic-lift`, `ndic-zfp`, `ndic-codestream`. `ndic-zarr` and `ndic-cli` did
-> **not**: the run stopped on `ndic-zarr`, whose `ndic-lift/serde` feature had
-> been added after `ndic-lift 0.0.1` was uploaded, and a published version
-> cannot be amended. 0.0.2 re-publishes the whole set in lockstep to complete
-> crates.io. Until then, `cargo publish -p ndic-zarr --dry-run` cannot pass on
-> its own — see the `--workspace` dry run below.
+> **The 0.0.x releases were name reservations, and 0.0.2 only landed in part.**
+> 0.0.1 (2026-08-01) reached PyPI and both npm packages, plus five crates —
+> `ndic-core`, `ndic-htj2k`, `ndic-lift`, `ndic-zfp`, `ndic-codestream`. It
+> stopped on `ndic-zarr`, whose `ndic-lift/serde` feature had been added after
+> `ndic-lift 0.0.1` was uploaded, and a published version cannot be amended.
+> 0.0.2 re-published the whole set in lockstep and completed crates.io — all
+> seven crates are there — but PyPI and npm were never bumped past 0.0.1. So
+> 0.1.0 is the first 0.1 upload on every registry, and on PyPI/npm it is the
+> first upload since 0.0.1.
 
 ## Package inventory
 
@@ -86,9 +87,10 @@ npm view nd-image-codecs versions
 | twine | `pipx install twine` |
 | Node 20+ | for `npm publish` |
 
-`wasm-pack` is **not** required for 0.0.2 — `bindings/typescript/src/index.ts` is
-pure TypeScript today, so `tsc` alone produces the published artifact. It becomes
-required once the WASM codec cores land (Phases 2–5).
+`wasm-pack` **is** required as of 0.1.0: the TypeScript package loads a WASM core
+built from `crates/ndic-zarr`, so `npm run build:wasm` has to run before
+`npm run build`. Install it with `cargo install wasm-pack` (CI uses
+`taiki-e/install-action`).
 
 ## 0. Pre-flight
 
@@ -99,25 +101,12 @@ Run from the repository root.
 git status --porcelain          # must be empty
 git switch main && git pull
 
-# 2. Version must read 0.0.2 in every location under "Where the version lives".
-#    Assert per file: a single `rg` across all of them exits 0 on one match and
-#    would pass with the rest stale.
-for f in Cargo.toml \
-         bindings/python/nd-image-codecs/pyproject.toml \
-         bindings/python/nd-image-codecs/python/nd_image_codecs/__init__.py \
-         bindings/typescript/package.json \
-         bindings/typescript/package-lock.json \
-         bindings/javascript/package.json; do
-  rg -q '0\.0\.2' "$f" || printf 'MISSING 0.0.2: %s\n' "$f"
-done
-
-#    ...and nothing may still carry the previous version. This is what catches a
-#    partial bump: one of the two package-lock.json fields, or one internal path
-#    dep in Cargo.toml. Expect no output.
-rg -n '0\.0\.1' Cargo.toml bindings/javascript/package.json \
-  bindings/typescript/package.json bindings/typescript/package-lock.json \
-  bindings/python/nd-image-codecs/pyproject.toml \
-  bindings/python/nd-image-codecs/python/nd_image_codecs/__init__.py
+# 2. Every version location must agree. This parses each file rather than
+#    grepping it — a bare `rg '0\.1\.0'` passes on one match while the rest are
+#    stale, and package-lock.json legitimately pins third-party packages at
+#    old versions (stackback is 0.0.2), which a grep cannot tell from a stale
+#    project field. Also runs in CI (the `package-versions` job).
+python3 scripts/ci/check-package-versions.py
 
 # 3. Everything green.
 cargo fmt --all --check
@@ -144,6 +133,11 @@ Bumping a release means editing exactly these, then running `cargo check
 The internal path deps carry both `path` and `version`. cargo strips `path` when
 packaging and publishes the `version` requirement, so a stale `version = "0.0.0"`
 there makes every downstream crate unresolvable on crates.io. Bump them together.
+
+`scripts/ci/check-package-versions.py` asserts all of the above agree, and CI
+runs it on every push — so a partial bump fails the branch rather than the
+release. It covers `Cargo.lock` too, which is why the `cargo check` above is
+what keeps that file honest.
 
 `ndic-bench-core` is deliberately **not** in `[workspace.dependencies]`. It is
 `publish = false`, and packaging rewrites every `version`-carrying path dep into
@@ -219,10 +213,10 @@ Verify:
 
 ```bash
 cargo search ndic-
-cargo install ndic-cli --version 0.0.2 && ndic --help
+cargo install ndic-cli --version 0.1.0 && ndic --help
 ```
 
-> Published versions are **permanent**. `cargo yank --version 0.0.2 <crate>`
+> Published versions are **permanent**. `cargo yank --version 0.1.0 <crate>`
 > hides a version from new resolution but does not delete it, and the version
 > number can never be reused.
 
@@ -250,7 +244,7 @@ Smoke-test the wheel before uploading:
 ```bash
 uv venv "$SP/venv" --python 3.12
 uv pip install --python "$SP/venv/bin/python" "$SP"/*.whl
-"$SP/venv/bin/python" -c "import nd_image_codecs as m; print(m.__version__)"   # 0.0.2
+"$SP/venv/bin/python" -c "import nd_image_codecs as m; print(m.__version__)"   # 0.1.0
 ```
 
 Upload — TestPyPI first, then the real index:
@@ -267,7 +261,7 @@ run `twine check` and the import smoke-test against exactly the files you ship.
 ### Wheel coverage
 
 `abi3-py311` means **one wheel per platform** covers Python 3.11+ — but each
-platform still needs its own build. For 0.0.2, shipping the sdist plus whatever
+platform still needs its own build. For 0.1.0, shipping the sdist plus whatever
 wheels you can build locally is enough; users on other platforms fall back to
 building from the sdist (which needs a Rust toolchain). A full
 linux/macOS/Windows × x86_64/aarch64 matrix is a job for `maturin-action` in CI
@@ -290,17 +284,19 @@ maps resolve.
 ```bash
 cd bindings/typescript
 npm install
-npm run build            # tsc -p tsconfig.json → dist/
-npm test                 # vitest — see note below
+npm run build:wasm       # wasm-pack → src/wasm/ (required before build)
+npm run build            # tsc → dist/, then copies src/wasm → dist/wasm
+npm test                 # vitest
 npm pack --dry-run       # inspect the file list
 ```
 
-> `npm test` currently exits `1` with `No test files found`: no `*.test.ts`
-> exists yet. That is expected at this stage and is not a publish blocker — the
-> build is what matters. Once the first test lands the command goes green.
+The WASM artifacts ride along in `dist/wasm/`, which the existing
+`files: ["dist", "src"]` already ships — no `files` edit needed. Publishing
+without running `build:wasm` first produces a tarball whose codecs cannot
+initialize, and nothing in `tsc` catches that, so check the file list.
 
 Expected tarball: `README.md`, `package.json`, `dist/index.{js,d.ts,js.map,d.ts.map}`,
-`src/index.ts`.
+`dist/zarrita.{js,d.ts,js.map,d.ts.map}`, `dist/wasm/*`, and the `src/` sources.
 
 ```bash
 npm login
@@ -311,10 +307,6 @@ npm publish --access public
 without it npm defaults the package to restricted and the publish fails on a
 free account. Subsequent publishes inherit the setting. If the account has 2FA
 on publish, append `--otp=123456`.
-
-Once the WASM cores land, `npm run build:wasm` (which needs `wasm-pack`) must run
-before `npm run build`, and the wasm artifacts have to be added to the `files`
-list in `package.json`.
 
 ## 4. JavaScript placeholder → npm
 
@@ -344,37 +336,36 @@ curl -s -H "User-Agent: nd-image-codecs (matt@fideus.io)" \
   https://crates.io/api/v1/crates/ndic-zarr | head -c 200
 
 # PyPI
-pip download --no-deps --no-binary :all: nd-image-codecs==0.0.2 -d /tmp/verify
+pip download --no-deps --no-binary :all: nd-image-codecs==0.1.0 -d /tmp/verify
 
 # npm
-npm view @fideus-labs/nd-image-codecs@0.0.2
-npm view nd-image-codecs@0.0.2
+npm view @fideus-labs/nd-image-codecs@0.1.0
+npm view nd-image-codecs@0.1.0
 ```
 
 Then tag the commit that was published:
 
 ```bash
-git tag -a v0.0.2 -m "Release 0.0.2 — completes the crates.io set"
-git push origin v0.0.2
+git tag -a v0.1.0 -m "Release 0.1.0 — working nd_lift, nd_lift_ht, and nd_zfp codecs"
+git push origin v0.1.0
 ```
 
-Create a GitHub release against the tag noting that 0.0.2 completes the name
-reservation across all three registries and ships only the `codec_series`
-builder.
+Create a GitHub release against the tag noting that 0.1.0 is the first release
+with working codecs, and that it is the first PyPI/npm upload since 0.0.1.
 
 ## Release checklist
 
 - [ ] `main` clean, pulled, and CI green
-- [ ] Version reads `0.0.2` in all seven locations (table above)
+- [ ] `python3 scripts/ci/check-package-versions.py` green (all version locations agree)
 - [ ] `cargo publish --workspace --dry-run` clean
 - [ ] `cargo publish --workspace`
 - [ ] `cargo owner --add` on all seven crates
 - [ ] `maturin sdist` + `maturin build --release`, `twine check`, import smoke-test
 - [ ] `twine upload --repository testpypi`, then `twine upload`
-- [ ] `bindings/typescript`: build; `npm test` may report no test files; `npm publish --access public`
+- [ ] `bindings/typescript`: `npm run build:wasm` then `npm run build`; `npm test` green; `npm publish --access public`
 - [ ] `bindings/javascript`: `npm publish`
 - [ ] Installs verified from all three registries
-- [ ] `v0.0.2` tagged and pushed; GitHub release created
+- [ ] `v0.1.0` tagged and pushed; GitHub release created
 
 ## Notes
 

@@ -1,6 +1,6 @@
 {
   "name": "@fideus-labs/nd-image-codecs",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "Composable Zarr v3 codecs (nd-delta, nd-lift-ht, nd-zfp) for ND scientific images — cross-axis lifting, HTJ2K coefficient planes, and ZFP, with an axis-aware codec-series builder (WebAssembly).",
   "license": "MIT",
   "author": "Fideus Labs LLC",
