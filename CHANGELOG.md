@@ -1,3 +1,20 @@
+## v0.2.1 (2026-08-04)
+
+### ✨ Features
+
+- **ci**: publish releases from a tag push with Trusted Publishing
+
+### 🐛 Bug Fixes
+
+- **ci**: close the moved-tag gaps and stop guessing on registry errors
+
+### 📚 Documentation
+
+- require two reviewers where self-review is prevented
+- fix codec identifiers, a stale page count, and an unlinked test
+- correct the ZFP provenance and unimplemented reference lanes
+- retire the implementation roadmap and gate the myst toc in CI
+
 ## v0.1.0 (2026-08-04)
 
 ### ✨ Features

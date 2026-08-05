@@ -44,7 +44,7 @@ try:
 
     __version__: str = _native_version()
 except ImportError:  # pragma: no cover - native module not built yet
-    __version__ = "0.1.0"
+    __version__ = "0.2.1"
 
 
 # --------------------------------------------------------------------------
