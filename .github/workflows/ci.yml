@@ -132,8 +132,8 @@ jobs:
         os:
           - ubuntu-24.04       # linux   x86_64
           - ubuntu-24.04-arm   # linux   aarch64
-          - macos-15-intel     # macOS   x86_64 — last Intel image, retires ~fall 2027
-          - macos-15           # macOS   aarch64 (Apple silicon)
+          - macos-26-intel     # macOS   x86_64 Intel image
+          - macos-26           # macOS   aarch64 (Apple silicon)
           - windows-2022       # windows x86_64
           - windows-11-arm     # windows aarch64
     runs-on: ${{ matrix.os }}
