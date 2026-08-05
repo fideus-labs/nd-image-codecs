@@ -16,7 +16,8 @@ Open the page that matches the task in front of you.
 | [Development Commands](./commands.md) | Everyday commands: build and check, test, lint and format, benchmarks, bindings, CLI smoke tests, release, and building the documentation site |
 | [Benchmarking](./benchmarking.md) | Running and adding benchmarks — record layout, named baselines, and the PR regression gate |
 | [Test Data](./test-data.md) | Test data and the conformance corpus: what is vendored, what is downloaded, and where it is cached |
-| [Publishing](./publishing.md) | Publishing a release to crates.io, PyPI, and npm — prerequisites, version-bump locations, and verification |
+| [Publishing](./publishing.md) | Cutting a release: the `vX.Y.Z` tag that publishes to crates.io, PyPI, and npm, where the version lives, the changelog, and what to do when a release fails partway |
+| [Trusted Publishing](./trusted-publishing.md) | The one-time registry setup behind that workflow — the `release` environment and ten OpenID Connect publisher registrations, so no API token is stored anywhere |
 | [Read the Docs](./read-the-docs.md) | Deploying the documentation site to Read the Docs — the build recipe in the repository, and the manual project setup that is not |
 
 ## Conventions

@@ -44,10 +44,26 @@ jobs:
           tar -xzf "$archive" actionlint
           ./actionlint -color
 
+      # actionlint checks that a workflow is *valid*; zizmor checks that it is
+      # not exploitable. Scoped to release.yml on purpose: that is the only
+      # workflow here that can publish to a registry or write to the
+      # repository, and so the only one whose security properties are worth a
+      # gate. Pointing zizmor at the whole directory would demand hash-pinning
+      # every action in every workflow — a reasonable thing to want, but a
+      # separate decision from shipping the release pipeline.
+      #
+      # Offline mode (the default) keeps this deterministic and tokenless. Two
+      # findings are waived inline in release.yml, each with its reason.
+      - name: Audit the release workflow
+        run: |
+          pipx install zizmor==1.29.0
+          zizmor --persona=regular .github/workflows/release.yml
+
   # The one published version number lives in seven hand-edited files. A
   # partial bump is silent — cargo will happily publish crates carrying a
   # stale internal dependency pin, and those are unresolvable on crates.io
-  # forever. python3-only and buildless, so it fails in seconds.
+  # forever. This job holds that number, and the release scripts that write it,
+  # to account. Buildless, so it fails in seconds.
   package-versions:
     runs-on: ubuntu-24.04
     steps:
@@ -58,6 +74,30 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 scripts/ci/check-package-versions.py
+
+      # The release workflow stamps the tag's version into those same files
+      # before it builds anything, so the writer has to keep working as the
+      # files move — and the failure mode is a release that publishes a stale
+      # version number to four registries. Write a sentinel everywhere, let the
+      # reader confirm it landed, restore only what changed, and confirm that
+      # too. Buildless, so it costs a second. (The restore is safe because this
+      # is a pristine checkout; do not run it in a working tree you care about.)
+      - name: Self-test the release version stamp
+        run: |
+          python3 scripts/release/set-version.py 9.9.9
+          git diff --name-only | xargs -r git checkout --
+          python3 scripts/ci/check-package-versions.py
+
+      # The rest of the release scripts, against a synthetic repository in a
+      # temporary directory: the tag grammar, the third-party pins in both
+      # lockfiles that must not move, the npm formatting that must survive, and
+      # the exclude list that lets a re-run finish a half-published release.
+      # None of that is reachable from the round trip above, and all of it is
+      # unrecoverable if it ships wrong.
+      - name: Test the release scripts
+        run: |
+          pip install --disable-pip-version-check pytest==9.1.1
+          pytest scripts/tests -q
 
   fmt:
     runs-on: ubuntu-24.04

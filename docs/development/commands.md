@@ -145,16 +145,23 @@ published site, and what a maintainer must set up by hand — see
 
 ## Release
 
+Publishing happens in CI, on a `vX.Y.Z` tag push. These are the commands around
+that — everything a maintainer runs before the tag, and the pieces of the
+workflow that also run standalone.
+
 | Command | Purpose |
 | --- | --- |
-| `cargo publish --workspace --dry-run` | Rehearse the crates.io release (skips `publish = false` members) |
-| `cargo publish --workspace` | Publish all seven crates in dependency order |
-| `maturin sdist -m bindings/python/nd-image-codecs/Cargo.toml -o dist` | Build the PyPI source distribution |
-| `maturin build --release -m bindings/python/nd-image-codecs/Cargo.toml -o dist` | Build the abi3 wheel for this platform |
-| `twine check dist/*` | Validate the PyPI artifacts before upload |
-| `twine upload dist/*` | Upload to PyPI |
-| `cd bindings/typescript && npm publish --access public` | Publish `@fideus-labs/nd-image-codecs` |
-| `cd bindings/javascript && npm publish` | Publish the unscoped `nd-image-codecs` name placeholder |
+| `scripts/release/prepare-release.sh 0.2.0` | The pre-tag commit: version everywhere, changelog entry, and the tagging steps to run next |
+| `python3 scripts/release/set-version.py 0.2.0` | Write one version into all 23 locations, then verify it |
+| `python3 scripts/release/parse-tag.py v0.2.0` | What the release workflow derives from a tag (version, prerelease flag, npm dist-tag) |
+| `python3 scripts/release/publish-crates.py 0.1.0 --dry-run` | Package and verify all seven crates without uploading — the workflow's `verify` job. The version must be the one the manifests already carry (`[workspace.package] version` in `Cargo.toml`); it refuses a mismatch rather than let cargo upload a version other than the one it was asked about |
+| `uvx --from commitizen cz changelog --unreleased-version=v0.2.0 --dry-run` | Preview the changelog section for the next release |
+| `uvx --from commitizen cz commit` | Write a Conventional Commit message interactively |
+| `uvx --with pytest --from pytest pytest scripts/tests -q` | Test the release scripts (what the `package-versions` CI job runs) |
+| `gh run list --workflow=release.yml --limit 1` | Find the run ID of a release in progress |
+| `gh run watch <run-id>` | Follow it — `gh run watch` takes a run ID, and has no `--workflow` flag |
 
-See [publishing](./publishing.md) for the full manual release procedure,
-prerequisites, version-bump locations, and verification steps.
+Publishing by hand is the fallback for when CI cannot run, and it needs
+credentials this project deliberately does not keep. The commands are in
+[publishing](./publishing.md), along with the tag-push procedure, where the
+version lives, and what to do when a release fails partway.

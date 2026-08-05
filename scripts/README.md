@@ -13,6 +13,28 @@ Helper scripts for CI and development.
 | `ci/check-package-versions.py` | Assert the published version agrees across every manifest, lockfile, and `__version__` fallback |
 | `ci/check-docs-links.py` | Check the outbound `http(s)` links cited by `docs/` — manual/pre-release, deliberately not a CI gate (external specification hosts are too flaky) |
 
+## Release
+
+Driven by `.github/workflows/release.yml` on a `vX.Y.Z` tag push; every one of
+them also runs standalone. See
+[docs/development/publishing.md](../docs/development/publishing.md).
+
+| Script | Purpose |
+| --- | --- |
+| `release/prepare-release.sh` | The pre-tag commit: write the version everywhere, add the changelog entry, commit, and print the tagging steps |
+| `release/set-version.py` | Write one version into all 23 locations across seven manifests and lockfiles, then confirm it with `ci/check-package-versions.py` |
+| `release/parse-tag.py` | Validate a `vX.Y.Z` tag and emit the version, prerelease flag, and npm dist-tag — the release workflow's first gate |
+| `release/check-tag-sha.py` | Refuse a re-run whose tag has moved since an earlier run published from it, by comparing against what those runs recorded |
+| `release/publish-crates.py` | Publish the workspace to crates.io in dependency order, excluding crates already at this version so a re-run finishes a half-published release |
+
+`tests/test_release_scripts.py` covers all four Python scripts against a
+synthetic repository in a temporary directory — never this one. The
+`package-versions` CI job runs it:
+
+```bash
+uvx --with pytest --from pytest pytest scripts/tests -q
+```
+
 ## Fixtures and test data
 
 | Script | Purpose |
