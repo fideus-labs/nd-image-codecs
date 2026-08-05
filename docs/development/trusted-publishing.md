@@ -51,7 +51,7 @@ Three protection rules are worth adding while you are there:
 | Rule | Setting | Effect |
 | --- | --- | --- |
 | **Deployment branches and tags** | Selected refs → add a **tag** rule `v*` | The environment cannot be entered from a branch push or a stray tag |
-| **Required reviewers** | One or two maintainers | Every publish pauses for a human approval before any upload |
+| **Required reviewers** | Two or more maintainers | Every publish pauses for a human approval before any upload |
 | **Prevent self-reviews** | Enabled | The person who started the release cannot be the one who approves it |
 
 Required reviewers put a person between "a tag was pushed" and "three
@@ -67,6 +67,13 @@ listed reviewer, so a release always involves a second maintainer. That is a
 real cost on a small team, and worth paying deliberately rather than by
 accident: enable it and releases block until someone else is available, or
 leave it off and record that the approval is a self-check.
+
+It also makes **two** reviewers a hard requirement rather than a preference.
+Only one listed reviewer has to approve, but the initiator is not eligible to
+be that one — so if the single name on the list is also the one who pushed the
+tag, the four publish jobs sit pending with nobody able to approve them, until
+the run is cancelled. Add the second maintainer before enabling this, not after
+a release wedges.
 
 The **deployment tags rule** has a consequence for manual re-runs: the ref a
 run was started against is what the rule tests, so a `workflow_dispatch` run

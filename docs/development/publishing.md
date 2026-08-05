@@ -91,8 +91,8 @@ refuses:
 
 `meta` resolves the tag to a commit exactly once, and every downstream job
 checks out that SHA rather than the tag name. Otherwise the seven jobs would
-each re-read a mutable pointer, and a tag moved between the gate passing and
-`crates-io` starting would publish a commit that was never gated.
+each re-read a mutable pointer: move the tag after the gate passes but before
+`crates-io` starts, and the workflow publishes a commit it never gated.
 
 ## Where the version lives
 
