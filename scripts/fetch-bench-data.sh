@@ -12,7 +12,9 @@
 # the suite — see bench/py/tier3.py and docs/development/test-data.md.
 #
 # Needs Python with zarr>=3.1 + numpy (the same environment the bench lanes
-# use); network access to the pinned hosts.
+# use), plus fsspec[http] — zarr reaches the pinned https URLs through
+# FsspecStore, and neither fsspec nor its aiohttp backend comes with zarr.
+# Needs network access to the pinned hosts. `--check` needs neither.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
