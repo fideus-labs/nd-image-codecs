@@ -40,8 +40,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      # fsspec[http] is what lets zarr open the Tier 3 volumes' https URLs:
+      # zarr routes a remote store through FsspecStore, and its HTTP backend
+      # needs aiohttp. Neither is a hard dependency of zarr itself.
       - name: Install Python bench dependencies
-        run: pip install "zarr>=3.1" numpy numcodecs
+        run: pip install "zarr>=3.1" numpy numcodecs "fsspec[http]"
 
       # The wheel carries the native extension the htj2k and nd_zfp lanes
       # need; the pure-Python source tree has neither codec's core.

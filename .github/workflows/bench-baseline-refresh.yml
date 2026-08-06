@@ -70,8 +70,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      # fsspec[http] backs the Tier 3 fetch below — zarr opens those https
+      # URLs through FsspecStore, whose HTTP backend needs aiohttp, and
+      # neither is a hard dependency of zarr itself.
       - name: Install Python bench dependencies
-        run: pip install "zarr>=3.1" numpy numcodecs
+        run: pip install "zarr>=3.1" numpy numcodecs "fsspec[http]"
 
       - name: Build and install the nd-image-codecs wheel
         run: pip install bindings/python/nd-image-codecs
