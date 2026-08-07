@@ -5,8 +5,9 @@
 # — `.github/workflows/release.yml` stamps the version out of `vX.Y.Z` into
 # every manifest before it builds, so a release published from a tag is correct
 # whether or not this script ever ran. What this adds is that `main` afterwards
-# says what was released: the version in the manifests, and the changelog entry
-# the GitHub release will carry.
+# says what was released: the version in the manifests, the version the usage
+# documentation tells a reader to depend on, and the changelog entry the GitHub
+# release will carry.
 #
 # Run it, open a pull request, merge it, then tag the merge commit. Tagging
 # without it works and only costs you a drift warning in the release run.
@@ -93,7 +94,10 @@ fi
 # version that was never released.
 trap 'printf "\n\033[31mstopped with the working tree modified.\033[0m Undo it with:\n  git checkout -- .\n" >&2' ERR
 
-step "Writing ${VERSION} into every manifest"
+# Manifests and lockfiles, and the dependency pins in `docs/usage/*.md` — the
+# usage-docs CI job runs those pages against this workspace, so a bump that left
+# them behind would fail the release pull request on `docs/usage/rust.md`.
+step "Writing ${VERSION} into every manifest and usage page"
 python3 scripts/release/set-version.py "$VERSION"
 
 step "Adding the ${TAG} changelog entry"
