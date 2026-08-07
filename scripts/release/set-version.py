@@ -7,6 +7,13 @@ across seven files in three ecosystems (see `docs/development/publishing.md`,
 is the independent reader that proves the write landed everywhere, and this
 script runs it before exiting unless `--no-verify` says otherwise.
 
+The usage pages carry the same number once more, in the `[dependencies]` block
+`docs/usage/rust.md` invites a reader to paste. Nothing installs from those, so
+they are outside the reader above — but `scripts/ci/check-usage-docs.py` parses
+every `toml` block on those pages and fails when a documented pin no longer
+matches this workspace, so a bump that skipped them would turn the release
+branch red. They are rewritten here too.
+
 The release workflow (`.github/workflows/release.yml`) runs this with the
 version parsed out of the `vX.Y.Z` tag, so the tag — not the state of the
 committed manifests — is what decides the version in every published artifact.
@@ -42,6 +49,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 PY_PKG = REPO / "bindings" / "python" / "nd-image-codecs"
 TS_PKG = REPO / "bindings" / "typescript"
 JS_PKG = REPO / "bindings" / "javascript"
+USAGE_DOCS = REPO / "docs" / "usage"
 CHECKER = REPO / "scripts" / "ci" / "check-package-versions.py"
 
 # Same grammar the release workflow's tag parser enforces: SemVer 2.0.0 without
@@ -60,6 +68,14 @@ VERSION_ASSIGN = re.compile(r'^(?P<lead>\s*version\s*=\s*")(?P<version>[^"]*)(?P
 SECTION = re.compile(r"^\[\[?(?P<name>[^\]]+)\]\]?\s*(?:#.*)?$")
 # `__version__ = "0.1.0"`, with or without the `: str` annotation.
 PY_FALLBACK = re.compile(r'^(?P<lead>\s*__version__(?:\s*:\s*str)?\s*=\s*")(?P<version>[^"]*)(?P<tail>".*)$')
+# The opening fence of a ```toml block in a usage page, spelled the way
+# `scripts/ci/check-usage-docs.py` spells it — that script is the reader for
+# what this one writes there, and the two have to agree on which blocks exist.
+TOML_FENCE = re.compile(r"^```toml\s*$")
+# A documented requirement: `0.2.1`, or the series `0.2`, either optionally
+# carrying a cargo operator or a prerelease suffix. Anything else — a range, a
+# git or path example — is not a pin this script knows how to move.
+DOC_PIN = re.compile(r"^(?P<op>[\^~=]?)(?P<release>\d+(?:\.\d+)*)(?:-[0-9A-Za-z.-]+)?$")
 
 
 class Edit(Exception):
@@ -235,6 +251,128 @@ def rewrite_package_json(path: pathlib.Path, version: str) -> list[str]:
     return changed
 
 
+def documented_pin(existing: str, version: str) -> str:
+    """The requirement a usage page should now show, in the shape it already used.
+
+    A page pins either the exact release (`"0.2.1"`) or the series a user is
+    meant to depend on (`"0.2"`), and `check-usage-docs.py` accepts any prefix
+    of the workspace version — so which one appears is the author's choice, and
+    a bump must not quietly turn a series pin into an exact one. A cargo
+    operator, if the page carries one, is likewise the author's.
+    """
+    match = DOC_PIN.match(existing.strip())
+    if match is None:
+        raise Edit(
+            f"documented requirement {existing!r} is not a plain version pin; "
+            "this script only knows how to move `0.2.1`- and `0.2`-shaped ones"
+        )
+    depth = len(match["release"].split("."))
+    if depth >= 3:
+        return f"{match['op']}{version}"
+    # A truncated pin names a series, and a prerelease is not part of one.
+    return match["op"] + ".".join(version.split("-", 1)[0].split(".")[:depth])
+
+
+def rewrite_doc_dependency(
+    line: str, section: str, version: str, members: set[str]
+) -> tuple[str, str] | None:
+    """One line of a usage page's `toml` block, repinned, with the crate it pins.
+
+    `None` when the line pins nothing of ours. Three shapes reach here, all of
+    them a reader's own `Cargo.toml` verbatim — the line names the crate:
+
+        ndic-core = "0.2.1"
+        ndic-zarr = { version = "0.2.1", features = ["zarrs"] }
+
+    or the *table* does, and `version` sits on its own line below it:
+
+        [dependencies.ndic-zarr]
+        version = "0.2.1"
+
+    `tomllib` flattens that third shape into the same table `check-usage-docs.py`
+    reads, so it is the same promise in different clothes and cannot be skipped.
+    Third-party requirements are written exactly like the first two, so the
+    crate name is what decides; nothing else on the line can.
+    """
+    if section.endswith("dependencies"):
+        name, sep, rest = line.partition("=")
+        name = name.strip()
+        if not sep or name not in members:
+            return None
+        # An entry with no version literal is a `git` or `path` example, which
+        # has no pin to move.
+        pattern = (
+            r'(version\s*=\s*")([^"]*)(")' if rest.lstrip().startswith("{") else r'(=\s*")([^"]*)(")'
+        )
+        rewritten, count = re.subn(
+            pattern, lambda m: f"{m[1]}{documented_pin(m[2], version)}{m[3]}", line, count=1
+        )
+        return (rewritten, name) if count else None
+
+    table, _, crate = section.rpartition(".")
+    if not table.endswith("dependencies") or crate not in members:
+        return None
+    match = VERSION_ASSIGN.match(line)
+    if match is None:  # `features`, `default-features`, anything but the pin
+        return None
+    return f"{match['lead']}{documented_pin(match['version'], version)}{match['tail']}", crate
+
+
+def rewrite_usage_docs(version: str, members: set[str]) -> list[str]:
+    """Repin this workspace's crates in the `toml` blocks of `docs/usage/*.md`.
+
+    Only inside a fenced `toml` block, and only under a dependency table: the
+    pages are prose around code, and the same text in a sentence or a `rust`
+    block is not an installation instruction. A page carrying no such pin —
+    which is most of them — is left untouched rather than rewritten
+    byte-identically, so `git status` after a bump names the pages that moved.
+    """
+    changed: list[str] = []
+    for page in sorted(USAGE_DOCS.glob("*.md")):
+        out: list[str] = []
+        in_toml = False
+        section = ""
+        touched = 0
+
+        for line in read(page).splitlines(keepends=True):
+            stripped = line.rstrip("\r\n")
+            if not in_toml:
+                in_toml = bool(TOML_FENCE.match(stripped))
+                section = ""
+                out.append(line)
+                continue
+            if stripped.rstrip() == "```":
+                in_toml = False
+                out.append(line)
+                continue
+
+            header = SECTION.match(stripped)
+            if header:
+                section = header.group("name").strip()
+                out.append(line)
+                continue
+
+            # `[dev-dependencies]`, `[target.'cfg(…)'.dependencies]` and
+            # `[dependencies.ndic-zarr]` are the same promise to a reader as
+            # `[dependencies]`, so `rewrite_doc_dependency` is given the table
+            # rather than left to guess from the line.
+            try:
+                repinned = rewrite_doc_dependency(stripped, section, version, members)
+            except Edit as error:
+                raise Edit(f"{page.relative_to(REPO)}: {error}") from None
+            if repinned is not None:
+                rewritten, crate = repinned
+                changed.append(f"{page.relative_to(REPO)} [{section}] {crate}")
+                touched += 1
+                out.append(f"{rewritten}\n")
+                continue
+            out.append(line)
+
+        if touched:
+            write(page, "".join(out))
+    return changed
+
+
 def workspace_members(manifest: dict) -> set[str]:
     """Crate names of every workspace member, read from their own manifests."""
     names = set()
@@ -274,6 +412,7 @@ def main() -> int:
     members = workspace_members(manifest)
 
     changed: list[str] = []
+    documented: list[str] = []
     try:
         changed += rewrite_cargo_manifest(REPO / "Cargo.toml", version)
         for member in manifest["workspace"]["members"]:
@@ -286,18 +425,26 @@ def main() -> int:
         changed += rewrite_package_json(TS_PKG / "package.json", version)
         changed += rewrite_package_json(TS_PKG / "package-lock.json", version)
         changed += rewrite_package_json(JS_PKG / "package.json", version)
+        # Counted apart from the manifests because it is verified apart from
+        # them: the reader below reads 23 locations and none of these, and
+        # `wrote 28 … all 23 read` should not read like something was missed.
+        documented = rewrite_usage_docs(version, members)
     except Edit as error:
         print(f"set-version.py: {error}", file=sys.stderr)
         print(
-            "\nThe layout this script rewrites has moved. Fix it here and in "
-            "scripts/ci/check-package-versions.py together.",
+            "\nThe layout this script rewrites has moved. Fix it here and in the "
+            "reader that checks it together — scripts/ci/check-package-versions.py "
+            "for a manifest, scripts/ci/check-usage-docs.py for a usage page.",
             file=sys.stderr,
         )
         return 1
 
-    for label in changed:
+    for label in changed + documented:
         print(f"set {version:<12} {label}")
-    print(f"\nwrote {version} to {len(changed)} locations")
+    summary = f"\nwrote {version} to {len(changed)} locations"
+    if documented:
+        summary += f", and to {len(documented)} documented pin(s) in docs/usage"
+    print(summary)
 
     if args.no_verify:
         return 0

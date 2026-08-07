@@ -3,7 +3,7 @@
 These three scripts decide what version number reaches crates.io, PyPI, and
 npm, and none of it is reversible — a published version cannot be replaced or
 re-uploaded. That makes their failure modes unusually expensive for how little
-code they are, and unusually hard to notice: `set-version.py` rewrites seven
+code they are, and unusually hard to notice: `set-version.py` rewrites eight
 file formats with text substitution, so the way it breaks is by *quietly*
 matching the wrong line or missing one, and `publish-crates.py` decides which
 crates to skip from a registry query that can fail in four different ways.
@@ -28,10 +28,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
 import textwrap
+import tomllib
 import types
 import urllib.error
 
@@ -127,6 +129,85 @@ except ImportError:
     __version__ = "0.4.2"
 '''
 
+# A usage page in the shape `scripts/ci/check-usage-docs.py` runs: pins inside a
+# fenced `toml` block, with prose and other languages around them. Every trap the
+# rewriter has to walk past is here — a third-party requirement in the same
+# table, a commented-out pin, a section that is not a dependency table, and the
+# same assignment in a `rust` block, where it is code rather than an
+# installation instruction.
+USAGE_RUST_MD = """\
+---
+title: Rust Library
+---
+
+# Rust Library
+
+```toml
+[dependencies]
+alpha = "0.4.2"
+# A series pin rather than an exact one: the shape is the author's choice.
+beta = { version = "0.4", features = ["fast"] }
+# nopub = "0.4.2"
+serde = { version = "1", features = ["derive"] }
+
+[package]
+version = "0.1.0"
+```
+
+Depending on a released `alpha = "0.4.2"` is what the block above says.
+
+```rust
+let alpha = "0.4.2";
+```
+"""
+
+# A second page, for the shapes the one above does not carry: cargo operators,
+# dependency tables that are not `[dependencies]`, a dependency written as its
+# own sub-table, an entry with no version to move, and a second `toml` block
+# further down the page. Both blocks are valid TOML, because the reader this
+# rewriter feeds parses them.
+USAGE_ZARR_MD = """\
+---
+title: Zarr
+---
+
+```toml
+[dependencies]
+alpha = "^0.4.2"
+beta = { version = "~0.4", features = ["fast"] }
+
+[dev-dependencies]
+nopub = "=0.4.2"
+
+[target.'cfg(unix)'.dependencies]
+alpha = "0.4"
+```
+
+Or track the repository instead of a release:
+
+```toml
+[dependencies]
+beta = { git = "https://example.invalid/beta" }
+alpha = "0.4.2"
+
+# `tomllib` flattens this into `dependencies`, so the reader checks it.
+[dependencies.nopub]
+version = "0.4"
+features = ["x"]
+```
+"""
+
+# A page with no `toml` block at all, which the rewriter must leave byte-identical.
+USAGE_PYTHON_MD = """\
+---
+title: Python
+---
+
+```bash
+pip install nd-image-codecs
+```
+"""
+
 
 def _member_manifest(name: str, *, literal_version: bool = False, publish: bool = True) -> str:
     version = f'version = "{FIXTURE_VERSION}"' if literal_version else "version.workspace = true"
@@ -200,6 +281,12 @@ def fake_repo(tmp_path: pathlib.Path) -> pathlib.Path:
     js = root / "bindings" / "javascript"
     js.mkdir(parents=True)
     _write_json(js / "package.json", _package_json("nd-image-codecs"))
+
+    usage = root / "docs" / "usage"
+    usage.mkdir(parents=True)
+    (usage / "rust.md").write_text(USAGE_RUST_MD, encoding="utf-8")
+    (usage / "zarr.md").write_text(USAGE_ZARR_MD, encoding="utf-8")
+    (usage / "python.md").write_text(USAGE_PYTHON_MD, encoding="utf-8")
 
     return root
 
@@ -472,6 +559,133 @@ def test_set_version_no_verify_skips_the_oracle(fake_repo):
     result = run_set_version(fake_repo, "1.5.0", "--no-verify")
     assert result.returncode == 0, result.stderr
     assert 'version = "1.5.0"' in (fake_repo / "Cargo.toml").read_text()
+
+
+def test_set_version_repins_the_usage_docs(fake_repo):
+    """The usage pages are run against the workspace by `check-usage-docs.py`.
+
+    A bump that leaves them behind does not break a release — nothing installs
+    from a documentation page — it fails the release pull request instead, on a
+    job that needs a full toolchain to say so.
+    """
+    result = run_set_version(fake_repo, "1.5.0")
+    assert result.returncode == 0, result.stderr
+
+    page = (fake_repo / "docs" / "usage" / "rust.md").read_text()
+    assert 'alpha = "1.5.0"' in page
+    # The series pin stays a series pin: rewriting it to `1.5.0` would document
+    # a tighter requirement than the author chose.
+    assert 'beta = { version = "1.5", features = ["fast"] }' in page
+    # Everything the crate name says is not ours.
+    assert 'serde = { version = "1", features = ["derive"] }' in page
+    assert '# nopub = "0.4.2"' in page
+    # `[package] version` in a documented manifest is that manifest's own
+    # version, not a dependency on us.
+    assert '[package]\nversion = "0.1.0"' in page
+    # The same assignment outside a `toml` block is code, not a pin.
+    assert 'let alpha = "0.4.2";' in page
+
+    assert "docs/usage/rust.md [dependencies] alpha" in result.stdout
+
+
+def test_set_version_keeps_operators_and_reaches_every_dependency_table(fake_repo):
+    """What a page pins is the author's; which table it sits in is not.
+
+    `check-usage-docs.py` reads `[dependencies]` alone, so a stale
+    `[dev-dependencies]` would never fail CI — it would just tell a reader to
+    depend on a version that is no longer current, which is worse.
+    """
+    assert run_set_version(fake_repo, "1.5.0").returncode == 0
+    page = (fake_repo / "docs" / "usage" / "zarr.md").read_text()
+
+    assert 'alpha = "^1.5.0"' in page
+    assert 'beta = { version = "~1.5", features = ["fast"] }' in page
+    assert 'nopub = "=1.5.0"' in page  # [dev-dependencies]
+    assert 'alpha = "1.5"' in page  # [target.'cfg(unix)'.dependencies]
+    # A second block, reached after the first one closed and prose resumed —
+    # and the git entry above it, which has no version literal to move.
+    assert 'beta = { git = "https://example.invalid/beta" }\nalpha = "1.5.0"' in page
+    # A dependency written as its own sub-table: the crate is named by the
+    # table, the pin sits alone on a line, and the keys beside it stay put.
+    assert '[dependencies.nopub]\nversion = "1.5"\nfeatures = ["x"]' in page
+
+
+def test_usage_fixture_pages_are_what_the_reader_would_parse(fake_repo):
+    """The fixture is only evidence if `check-usage-docs.py` would accept it.
+
+    That script runs `tomllib` over each block and reads `dependencies`; a
+    fixture that is not valid TOML would let the rewriter pass a test against a
+    page shape no real page can have.
+    """
+    assert run_set_version(fake_repo, "1.5.0").returncode == 0
+    for name in ("rust.md", "zarr.md"):
+        text = (fake_repo / "docs" / "usage" / name).read_text()
+        blocks = re.findall(r"^```toml\n(.*?)^```$", text, re.MULTILINE | re.DOTALL)
+        assert blocks, name
+        for block in blocks:
+            parsed = tomllib.loads(block)  # raises on a malformed fixture
+            for crate, spec in parsed.get("dependencies", {}).items():
+                # `run_toml`'s two lines, verbatim, against what we just wrote.
+                documented = spec if isinstance(spec, str) else spec.get("version", "")
+                assert "1.5.0".startswith(documented.lstrip("^~=")), (name, crate, documented)
+
+
+@pytest.mark.parametrize(
+    ("version", "exact", "series"),
+    [
+        ("1.5.0", "1.5.0", "1.5"),
+        ("2.0.0-rc.1", "2.0.0-rc.1", "2.0"),
+        ("0.3.0-alpha.2", "0.3.0-alpha.2", "0.3"),
+    ],
+)
+def test_set_version_documents_a_prerelease_as_the_release_it_is(fake_repo, version, exact, series):
+    """A prerelease is publishable, so a page may have to name one exactly.
+
+    A series pin is the other case: `2.0` is the series `2.0.0-rc.1` belongs
+    to, and appending the prerelease there would document a requirement that
+    resolves to one build.
+    """
+    assert run_set_version(fake_repo, version).returncode == 0
+    page = (fake_repo / "docs" / "usage" / "rust.md").read_text()
+    assert f'alpha = "{exact}"' in page
+    assert f'beta = {{ version = "{series}", features = ["fast"] }}' in page
+
+
+def test_set_version_without_usage_pages(fake_repo):
+    """The manifests are the release; the pages are not, and may not exist."""
+    shutil.rmtree(fake_repo / "docs")
+    result = run_set_version(fake_repo, "1.5.0")
+    assert result.returncode == 0, result.stderr
+    assert "\nwrote 1.5.0 to " in result.stdout
+    # Nothing claimed about pages that are not there.
+    assert "docs/usage" not in result.stdout
+
+
+def test_set_version_leaves_pages_without_pins_untouched(fake_repo):
+    """So `git status` after a bump names exactly the pages that moved."""
+    page = fake_repo / "docs" / "usage" / "python.md"
+    before = page.read_bytes()
+    assert run_set_version(fake_repo, "1.5.0").returncode == 0
+    assert page.read_bytes() == before
+
+
+def test_set_version_reports_a_documented_pin_it_cannot_move(fake_repo):
+    """A range or a git example is a shape this rewriter has no answer for.
+
+    Silently skipping it would leave the page pointing at a released series
+    that no longer exists, which is the failure the rewrite exists to prevent.
+    """
+    page = fake_repo / "docs" / "usage" / "rust.md"
+    page.write_text(
+        page.read_text().replace('alpha = "0.4.2"', 'alpha = ">=0.4, <0.5"'), encoding="utf-8"
+    )
+
+    result = run_set_version(fake_repo, "1.5.0")
+    assert result.returncode == 1
+    assert "not a plain version pin" in result.stderr
+    # Which page, and which reader to fix it against.
+    assert "docs/usage/rust.md" in result.stderr
+    assert "check-usage-docs.py" in result.stderr
 
 
 def test_set_version_is_idempotent(fake_repo):

@@ -22,7 +22,7 @@ them also runs standalone. See
 | Script | Purpose |
 | --- | --- |
 | `release/prepare-release.sh` | The pre-tag commit: write the version everywhere, add the changelog entry, commit, and print the tagging steps |
-| `release/set-version.py` | Write one version into all 23 locations across seven manifests and lockfiles, then confirm it with `ci/check-package-versions.py` |
+| `release/set-version.py` | Write one version into all 23 locations across seven manifests and lockfiles — plus the documented dependency pins in `docs/usage/*.md` — then confirm it with `ci/check-package-versions.py` |
 | `release/parse-tag.py` | Validate a `vX.Y.Z` tag and emit the version, prerelease flag, and npm dist-tag — the release workflow's first gate |
 | `release/check-tag-sha.py` | Refuse a re-run whose tag has moved since an earlier run published from it, by comparing against what those runs recorded |
 | `release/publish-crates.py` | Publish the workspace to crates.io in dependency order, excluding crates already at this version so a re-run finishes a half-published release |
