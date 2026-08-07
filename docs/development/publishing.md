@@ -36,7 +36,7 @@ gh pr create --fill
 
 # 4. Once merged and CI on main is green, tag the merge commit.
 git switch main && git pull
-git tag -a v0.2.0 -m "Release 0.2.0"
+git tag -s -a v0.2.0 -m "nd-image-codecs 0.2.0"
 git push origin v0.2.0
 
 # 5. Watch it publish. `gh run watch` takes a run ID, not a workflow name.
