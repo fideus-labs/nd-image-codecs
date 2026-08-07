@@ -76,6 +76,13 @@ TOML_FENCE = re.compile(r"^```toml\s*$")
 # carrying a cargo operator or a prerelease suffix. Anything else — a range, a
 # git or path example — is not a pin this script knows how to move.
 DOC_PIN = re.compile(r"^(?P<op>[\^~=]?)(?P<release>\d+(?:\.\d+)*)(?:-[0-9A-Za-z.-]+)?$")
+# Where that requirement sits on a line, in *either* TOML string style. A usage
+# page is the reader's file rather than one of ours, and `tomllib` — so
+# `check-usage-docs.py` — reads `ndic-core = '0.2.1'` exactly like the
+# double-quoted form. Matching one style only would skip a pin the reader still
+# checks, which is the silent no-op this whole pass exists to remove.
+DOC_REQUIREMENT = re.compile(r"""(?P<lead>=\s*(?P<quote>["']))(?P<pin>[^"']*)(?P=quote)""")
+DOC_VERSION_KEY = re.compile(r"""(?P<lead>version\s*=\s*(?P<quote>["']))(?P<pin>[^"']*)(?P=quote)""")
 
 
 class Edit(Exception):
@@ -291,31 +298,33 @@ def rewrite_doc_dependency(
 
     `tomllib` flattens that third shape into the same table `check-usage-docs.py`
     reads, so it is the same promise in different clothes and cannot be skipped.
-    Third-party requirements are written exactly like the first two, so the
-    crate name is what decides; nothing else on the line can.
+    Either TOML string style is moved and kept as the page wrote it — see
+    `DOC_REQUIREMENT`. Third-party requirements are written exactly like the
+    first two, so the crate name is what decides; nothing else on the line can.
     """
+
+    def repin(match: re.Match) -> str:
+        return f"{match['lead']}{documented_pin(match['pin'], version)}{match['quote']}"
+
     if section.endswith("dependencies"):
         name, sep, rest = line.partition("=")
         name = name.strip()
         if not sep or name not in members:
             return None
         # An entry with no version literal is a `git` or `path` example, which
-        # has no pin to move.
-        pattern = (
-            r'(version\s*=\s*")([^"]*)(")' if rest.lstrip().startswith("{") else r'(=\s*")([^"]*)(")'
-        )
-        rewritten, count = re.subn(
-            pattern, lambda m: f"{m[1]}{documented_pin(m[2], version)}{m[3]}", line, count=1
-        )
+        # has no pin to move — `subn` reports no substitution and it stays.
+        pattern = DOC_VERSION_KEY if rest.lstrip().startswith("{") else DOC_REQUIREMENT
+        rewritten, count = pattern.subn(repin, line, count=1)
         return (rewritten, name) if count else None
 
     table, _, crate = section.rpartition(".")
     if not table.endswith("dependencies") or crate not in members:
         return None
-    match = VERSION_ASSIGN.match(line)
-    if match is None:  # `features`, `default-features`, anything but the pin
+    key, sep, _ = line.partition("=")
+    if not sep or key.strip() != "version":  # `features`, `default-features`, …
         return None
-    return f"{match['lead']}{documented_pin(match['version'], version)}{match['tail']}", crate
+    rewritten, count = DOC_VERSION_KEY.subn(repin, line, count=1)
+    return (rewritten, crate) if count else None
 
 
 def rewrite_usage_docs(version: str, members: set[str]) -> list[str]:
@@ -336,6 +345,10 @@ def rewrite_usage_docs(version: str, members: set[str]) -> list[str]:
 
         for line in read(page).splitlines(keepends=True):
             stripped = line.rstrip("\r\n")
+            # Taken from the line rather than assumed: `read()` decodes with
+            # universal newlines so this is `\n` today, but a page whose last
+            # line is a pin and ends without one must not silently gain one.
+            terminator = line[len(stripped) :]
             if not in_toml:
                 in_toml = bool(TOML_FENCE.match(stripped))
                 section = ""
@@ -364,7 +377,7 @@ def rewrite_usage_docs(version: str, members: set[str]) -> list[str]:
                 rewritten, crate = repinned
                 changed.append(f"{page.relative_to(REPO)} [{section}] {crate}")
                 touched += 1
-                out.append(f"{rewritten}\n")
+                out.append(f"{rewritten}{terminator}")
                 continue
             out.append(line)
 

@@ -194,6 +194,14 @@ alpha = "0.4.2"
 [dependencies.nopub]
 version = "0.4"
 features = ["x"]
+
+# TOML literal strings, which `tomllib` reads exactly like the basic ones above.
+[dev-dependencies]
+nopub = '0.4.2'
+beta = { version = '0.4', features = ["x"] }
+
+[dev-dependencies.alpha]
+version = '0.4.2'
 ```
 """
 
@@ -608,6 +616,33 @@ def test_set_version_keeps_operators_and_reaches_every_dependency_table(fake_rep
     # A dependency written as its own sub-table: the crate is named by the
     # table, the pin sits alone on a line, and the keys beside it stay put.
     assert '[dependencies.nopub]\nversion = "1.5"\nfeatures = ["x"]' in page
+
+
+def test_set_version_repins_literal_strings_in_their_own_style(fake_repo):
+    """`tomllib` reads `alpha = '0.4.2'` exactly like the double-quoted form.
+
+    So `check-usage-docs.py` checks a single-quoted pin, and a rewriter that
+    matched only one style would skip it silently — a stale pin that fails the
+    release pull request, which is what this whole pass exists to prevent. The
+    style the page used is preserved along with the pin.
+    """
+    assert run_set_version(fake_repo, "1.5.0").returncode == 0
+    page = (fake_repo / "docs" / "usage" / "zarr.md").read_text()
+
+    assert "nopub = '1.5.0'" in page
+    assert "beta = { version = '1.5', features = [\"x\"] }" in page
+    assert "[dev-dependencies.alpha]\nversion = '1.5.0'" in page
+    # Not turned into double quotes on the way through.
+    assert 'nopub = "1.5.0"' not in page
+
+
+def test_set_version_does_not_add_a_newline_a_page_did_not_have(fake_repo):
+    """The rewritten line keeps the page's own terminator, including none."""
+    page = fake_repo / "docs" / "usage" / "rust.md"
+    page.write_text('```toml\n[dependencies]\nalpha = "0.4.2"', encoding="utf-8")
+
+    assert run_set_version(fake_repo, "1.5.0").returncode == 0
+    assert page.read_text() == '```toml\n[dependencies]\nalpha = "1.5.0"'
 
 
 def test_usage_fixture_pages_are_what_the_reader_would_parse(fake_repo):
