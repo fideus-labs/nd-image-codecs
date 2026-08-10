@@ -1,3 +1,14 @@
+## v0.2.2 (2026-08-10)
+
+### 🐛 Bug Fixes
+
+- **ci**: repin documented pins written as TOML literal strings
+- **ci**: stamp the release version into the usage docs too
+
+### 📚 Documentation
+
+- Change tag command for release
+
 ## v0.2.1 (2026-08-04)
 
 ### ✨ Features
