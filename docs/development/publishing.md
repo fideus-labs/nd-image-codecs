@@ -208,7 +208,7 @@ version in `CHANGELOG.md` to a **git tag**. Without that tag it prints
 created once, pointing at the commit `main` held when 0.1.0 shipped:
 
 ```bash
-git tag -a v0.1.0 b63e19d -m "Release 0.1.0"
+git tag -s -a v0.1.0 b63e19d -m "nd-image-codecs 0.1.0"
 git push origin v0.1.0
 ```
 
@@ -404,7 +404,7 @@ repository still records what shipped:
 
 ```bash
 # From the repository root, with $SP still holding the Python distributions.
-git tag -a v0.2.0 -m "Release 0.2.0"
+git tag -s -a v0.2.0 -m "nd-image-codecs 0.2.0"
 git push origin v0.2.0
 uvx --from commitizen cz changelog v0.2.0 --dry-run > /tmp/notes.md
 gh release create v0.2.0 --title 0.2.0 --notes-file /tmp/notes.md --verify-tag "$SP"/*
