@@ -152,7 +152,7 @@ workflow that also run standalone.
 | Command | Purpose |
 | --- | --- |
 | `scripts/release/prepare-release.sh 0.2.0` | The pre-tag commit: version everywhere, changelog entry, and the tagging steps to run next |
-| `python3 scripts/release/set-version.py 0.2.0` | Write one version into all 23 locations, then verify it |
+| `python3 scripts/release/set-version.py 0.2.0` | Write one version into all 23 locations and the usage pages' documented pins, then verify it |
 | `python3 scripts/release/parse-tag.py v0.2.0` | What the release workflow derives from a tag (version, prerelease flag, npm dist-tag) |
 | `python3 scripts/release/publish-crates.py 0.1.0 --dry-run` | Package and verify all seven crates without uploading — the workflow's `verify` job. The version must be the one the manifests already carry (`[workspace.package] version` in `Cargo.toml`); it refuses a mismatch rather than let cargo upload a version other than the one it was asked about |
 | `uvx --from commitizen cz changelog --unreleased-version=v0.2.0 --dry-run` | Preview the changelog section for the next release |

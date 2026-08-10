@@ -174,8 +174,9 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
 
-      # Writes the tag's version into all 23 locations and then proves it with
-      # the independent reader. Every other job runs exactly this first.
+      # Writes the tag's version into all 23 locations — and the documented
+      # pins in docs/usage, which the drift report below then covers too — then
+      # proves it with the independent reader. Every other job runs this first.
       - name: Stamp the version from the tag
         env:
           VERSION: ${{ needs.meta.outputs.version }}
@@ -195,7 +196,7 @@ jobs:
           {
             echo "### ⚠️ Version drift"
             echo
-            echo "The tagged commit does not read \`$VERSION\` in every manifest."
+            echo "The tagged commit does not read \`$VERSION\` in every manifest and usage page."
             echo "The published artifacts are correct — the tag was stamped in — but"
             echo "\`main\` still carries the previous number. Run:"
             echo

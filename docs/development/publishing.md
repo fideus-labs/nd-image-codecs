@@ -127,9 +127,29 @@ sees it, restore, confirm again — and runs
 [`scripts/tests/test_release_scripts.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/tests/test_release_scripts.py),
 which exercises all three release scripts against a synthetic repository in a
 temporary directory: the tag grammar, the third-party pins in both lockfiles
-that must not move, the npm formatting that must survive a rewrite, and the
-crates.io exclude list. So a file that moves breaks a pull request rather than a
-release.
+that must not move, the npm formatting that must survive a rewrite, the
+documented dependency pins, and the crates.io exclude list. So a file that moves
+breaks a pull request rather than a release.
+
+### The documented pins
+
+The same number appears once more outside that table:
+[`docs/usage/rust.md`](../usage/rust.md) opens with the `[dependencies]` block a
+reader is meant to paste. Nothing installs from a documentation page, so it is
+not publish-critical and `check-package-versions.py` does not read it — but
+[`scripts/ci/check-usage-docs.py`](https://github.com/fideus-labs/nd-image-codecs/blob/main/scripts/ci/check-usage-docs.py)
+parses every `toml` block on the usage pages and fails when a documented pin no
+longer matches this workspace. A bump that skipped it would turn the release
+pull request red on the `usage-docs` job.
+
+`set-version.py` therefore repins those blocks in the same pass, and only those:
+inside a fenced `toml` block, under a dependency table, on a key that names a
+crate in this workspace — including a dependency written as its own
+`[dependencies.ndic-zarr]` sub-table, which `tomllib` flattens into the very
+table the reader checks. A third-party requirement alongside it stays put, and
+so does the shape the page chose: a series pin (`"0.2"`) is rewritten to the new
+series and a `^`/`~`/`=` operator is kept, rather than either being tightened
+into an exact version.
 
 > The internal path deps carry both `path` and `version`. cargo strips `path`
 > when packaging and publishes the `version` requirement, so a stale
