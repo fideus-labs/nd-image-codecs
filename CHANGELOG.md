@@ -1,3 +1,13 @@
+## v0.2.3 (2026-08-11)
+
+### 🐛 Bug Fixes
+
+- **python**: drop the numcodecs dependency to restore three wheel platforms
+
+### 📚 Documentation
+
+- sign and use nd-image-codecs message prefix for tags
+
 ## v0.2.2 (2026-08-10)
 
 ### 🐛 Bug Fixes
