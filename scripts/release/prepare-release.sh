@@ -130,10 +130,14 @@ Next:
   3. Tag the merge commit and push the tag. That is what publishes:
 
        git switch main && git pull
-       git tag -a ${TAG} -m "Release ${VERSION}"
+       git tag -s -a ${TAG} -m "nd-image-codecs ${VERSION}"
        git push origin ${TAG}
 
-  4. Watch it: gh run watch --workflow=release.yml
+  4. Watch it:
+
+       gh run list --workflow=release.yml --limit=1
+       # Find the run ID
+       gh run watch --exit-status <id>
 
 Nothing is reversible once step 3 lands. docs/development/publishing.md has the
 runbook, including how to finish a release that failed partway.
