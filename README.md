@@ -83,7 +83,7 @@ which chooses a transpose order and decorrelation axes from the axis names
 
 | Binding | Path | Ecosystem |
 | --- | --- | --- |
-| Python | [`bindings/python/nd-image-codecs`](bindings/python/nd-image-codecs/) | `zarr-python` v3 + `numcodecs` (PyO3 / maturin, abi3) |
+| Python | [`bindings/python/nd-image-codecs`](bindings/python/nd-image-codecs/) | `zarr-python` v3 (PyO3 / maturin, abi3; NumPy is the only required dependency) |
 | TypeScript | [`bindings/typescript`](bindings/typescript/) | `numcodecs.js` / zarrita.js (wasm-bindgen, WASM SIMD128) |
 
 The `codec_series` builder is implemented three times — Rust, pure Python, and

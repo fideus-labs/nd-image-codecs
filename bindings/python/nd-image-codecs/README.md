@@ -25,8 +25,14 @@ axis metadata:
 ## Install
 
 ```sh
-pip install nd-image-codecs
+pip install nd-image-codecs           # NumPy only
+pip install "nd-image-codecs[zarr]"   # + zarr-python v3, for the codec pipeline
 ```
+
+Wheels cover manylinux, musllinux, macOS, and Windows on x86-64 and arm64.
+The base install requires only NumPy, so `codec_series` and the `htj2k`,
+`zfp`, and `nd_lift` codecs are usable anywhere that wheel lands; the `zarr`
+extra adds `zarr-python` (and, through it, `numcodecs`) to run pipelines.
 
 ## Usage
 

@@ -12,7 +12,8 @@ is executed by CI against the installed package.
 
 <!-- docs-check: skip — installs the package the checker already has installed -->
 ```bash
-pip install nd-image-codecs          # wheels: manylinux, macOS, Windows
+pip install nd-image-codecs          # wheels: manylinux, musllinux, macOS, Windows (x86-64 + arm64)
+pip install "nd-image-codecs[zarr]"  # + zarr-python v3 (adds the codec pipeline)
 # from source:
 cd bindings/python/nd-image-codecs && maturin develop --release
 ```

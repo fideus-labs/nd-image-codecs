@@ -20,9 +20,16 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
-dependencies = ["numcodecs>=0.13", "numpy>=1.26"]
+# Deliberately just NumPy. Nothing here imports `numcodecs`: the nd-delta
+# family only *names* `numcodecs.delta` in its Zarr v3 metadata, and it is
+# `zarr-python` that resolves that name through numcodecs' own entry points.
+# Depending on it directly would have cost the wheels their musllinux and
+# Windows/arm64 platforms, which numcodecs does not publish.
+dependencies = ["numpy>=1.26"]
 
 [project.optional-dependencies]
+# `zarr` pulls `numcodecs>=0.14` itself, which is what makes the nd-delta
+# pipeline runnable; it is not restated here.
 zarr = ["zarr>=3.1"]
 test = ["pytest", "imagecodecs", "jsonschema>=4.0.0", "zarr>=3.1", "ngff-zarr[validate]", "ome-zarr>=0.12.0"]
 
