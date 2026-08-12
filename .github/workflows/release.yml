@@ -518,23 +518,12 @@ jobs:
       # installs cleanly and then fails to initialize any codec at run time,
       # which is exactly the failure worth catching before an irreversible
       # publish — so assert against the packed file list, not the working tree.
+      # The check itself lives in scripts/tarball.mjs, covered by the test
+      # suite above: inline in YAML it could not be tested, and a crash in it
+      # read as a failed release rather than as a broken check.
       - name: Check the WASM core is in the tarball
         working-directory: bindings/typescript
-        run: |
-          test -f dist/wasm/ndic_zarr_bg.wasm
-          npm pack --dry-run --json > pack.json
-          node -e "
-          const packed = JSON.parse(require('node:fs').readFileSync('pack.json', 'utf8'));
-          const files = packed[0].files.map((f) => f.path);
-          const wasm = files.filter((p) => p.endsWith('.wasm'));
-          if (!wasm.includes('dist/wasm/ndic_zarr_bg.wasm')) {
-            console.error('dist/wasm/ndic_zarr_bg.wasm is not in the tarball. Packed:');
-            console.error(files.join('\n'));
-            process.exit(1);
-          }
-          console.log('tarball carries ' + files.length + ' files, including ' + wasm.join(', '));
-          "
-          rm pack.json
+        run: npm run check:tarball
 
       # `--tag next` keeps a prerelease from becoming what `npm install`
       # resolves to. `--access public` is only required on a scoped package's
