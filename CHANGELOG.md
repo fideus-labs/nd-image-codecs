@@ -1,3 +1,9 @@
+## v0.2.4 (2026-08-18)
+
+### 🐛 Bug Fixes
+
+- **ci**: ship the WASM core in the npm tarball, and fix the check that missed it
+
 ## v0.2.3 (2026-08-11)
 
 ### 🐛 Bug Fixes
