@@ -24,7 +24,8 @@
   ],
   "scripts": {
     "build:wasm": "wasm-pack build ../../crates/ndic-zarr --target web --out-dir ../../bindings/typescript/src/wasm -- --features wasm",
-    "build": "tsc -p tsconfig.json && node -e \"const fs=require('node:fs');if(fs.existsSync('src/wasm'))fs.cpSync('src/wasm','dist/wasm',{recursive:true})\"",
+    "build": "tsc -p tsconfig.json && node scripts/copy-wasm.mjs",
+    "check:tarball": "node scripts/tarball.mjs",
     "test": "vitest run"
   },
   "keywords": [
