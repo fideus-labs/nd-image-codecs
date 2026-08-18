@@ -12,15 +12,15 @@ API (`scripts/ci/check-usage-docs.py`).
 
 ```toml
 [dependencies]
-ndic-core = "0.2.3"
-ndic-codestream = "0.2.3"
-ndic-lift = "0.2.3"
-ndic-zfp = "0.2.3"
+ndic-core = "0.2.4"
+ndic-codestream = "0.2.4"
+ndic-lift = "0.2.4"
+ndic-zfp = "0.2.4"
 # ndic-zarr has no default features. `zarrs` is the one that registers
 # nd_lift/htj2k/zfp into the zarrs plugin registry, so leaving it off gives
 # you a crate that cannot open an array using them. The codec_series builder
 # below needs no features; see "Feature flags" for the rest.
-ndic-zarr = { version = "0.2.3", features = ["zarrs"] }
+ndic-zarr = { version = "0.2.4", features = ["zarrs"] }
 ```
 
 ## Build a codec series

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "nd-image-codecs"
-version = "0.2.3"
+version = "0.2.4"
 description = "Composable Zarr v3 codecs (nd-delta, nd-lift-ht, nd-zfp) for ND scientific images — cross-axis lifting, HTJ2K coefficient planes, and ZFP, with an axis-aware codec-series builder."
 readme = "README.md"
 requires-python = ">=3.11"
