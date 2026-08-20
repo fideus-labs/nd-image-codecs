@@ -59,6 +59,7 @@ EXPECTED_PUBLISHERS = {"crates-io", "pypi", "npm", "npm-placeholder"}
 
 @pytest.fixture(scope="module")
 def jobs() -> dict:
+    """The real workflow's `jobs:` mapping, parsed once for the module."""
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]
 
 
@@ -82,6 +83,13 @@ def upstream_of(name: str, jobs: dict) -> set[str]:
 
 
 def publishers(jobs: dict) -> set[str]:
+    """The jobs that upload, identified by the environment they enter.
+
+    Derived rather than listed, so a publisher added later is covered without
+    this module being touched — and one that loses `environment:` is caught by
+    `test_the_publishing_jobs_are_the_ones_we_think` rather than quietly
+    dropping out of every check here.
+    """
     return {name for name, job in jobs.items() if job.get("environment")}
 
 
@@ -95,6 +103,7 @@ def waves(jobs: dict) -> dict[str, int]:
     depth: dict[str, int] = {}
 
     def resolve(name: str) -> int:
+        """Memoized depth; a job with no dependencies starts at wave 0."""
         if name not in depth:
             depth[name] = 1 + max((resolve(n) for n in needs_of(jobs[name])), default=-1)
         return depth[name]
@@ -158,6 +167,9 @@ def test_every_publisher_uses_the_release_environment(jobs):
 
 
 def test_every_publisher_waits_on_the_gate(jobs):
+    """The necessary half of the single-approval property: a publisher that
+    does not wait on the gate is unblocked by something else, and asks for its
+    own approval when it gets there."""
     for name in publishers(jobs):
         assert GATE in needs_of(jobs[name]), (
             f"{name} enters the {ENVIRONMENT} environment without waiting on {GATE}, "

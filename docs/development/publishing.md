@@ -50,17 +50,24 @@ version without it — but skipping it leaves `main` claiming the previous
 version, and the release run says so in its job summary. Run it.
 
 Step 5 is where a release stops and waits for a person. Everything up to that
-point is reversible; the approval is the point of no return. crates.io and PyPI
-both refuse to reuse a version number, ever, and npm allows an unpublish only
-within 72 hours and only if nothing depends on the package.
+point is reversible; the approval is the point of no return. None of the three
+registries will let a version number be reused — crates.io and PyPI refuse
+outright, and npm burns `name@version` even when the package is later
+unpublished: "once `package@version` has been used, you can never use it
+again." Unpublishing is narrower than it sounds, and it only removes the
+artifact: within 72 hours it requires that nothing depends on the package, and
+after that it additionally requires under 300 downloads in the last week and a
+single maintainer.
 
 ### Approving the release
 
-The run gates itself once, on the `ready` job, and there is nothing to decide
-before that: every gate has to pass, every crate has to package, and all nine
-Python distributions have to build first. When they have, the four publishing
-jobs go pending together and the run shows **Review pending deployments** →
-`release`. One approval releases all four.
+A release asks for a reviewer exactly once, and there is nothing to decide
+before it: every gate has to pass, every crate has to package, and all nine
+Python distributions have to build first. `ready` is the job that waits for all
+of that — and then finishes, like any other. The pause comes just after it: the
+four publishing jobs become eligible at the same instant, each hits the
+`release` environment's reviewer rule as it tries to start, and the run shows
+**Review pending deployments** → `release`. One approval releases all four.
 
 Read `ready`'s job summary before approving. It restates the version, the
 commit, and the npm dist-tag the run resolved from the tag — which is what the
