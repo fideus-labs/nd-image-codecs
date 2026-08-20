@@ -39,8 +39,8 @@ configured for an environment rejects a token that does not carry that claim.
 GitHub → **Settings** → **Environments** → **New environment** → name it
 `release`.
 
-That name is the whole security boundary. The release workflow has ten jobs, and
-only the four that upload run `environment: release`. A token minted by any
+That name is the whole security boundary. The release workflow has eleven jobs,
+and only the four that upload run `environment: release`. A token minted by any
 other job in the workflow — the build jobs, the changelog job, anything a
 compromised dependency could reach — carries no `release` claim and is refused
 by every registry. Without the environment, any job in the workflow could
@@ -75,6 +75,29 @@ tag, the four publish jobs sit pending with nobody able to approve them, until
 the run is cancelled. Add the second maintainer before enabling this, not after
 a release wedges.
 
+### One approval per release
+
+The reviewer requirement applies to each job that enters the environment, and
+GitHub asks once per set of jobs pending at the same moment. Four jobs enter it,
+so the number of prompts is decided by the workflow's shape rather than by this
+setting — and the workflow is shaped to make it exactly one.
+
+`release.yml` has a job called `ready` that does nothing except wait for every
+gate, every crate package check, the changelog, and all nine Python
+distributions. The four publishing jobs declare `needs: [meta, ready]` — and
+nothing else. `meta` is there for its outputs and cannot delay them, because
+`ready` waits for `meta` as well and so always finishes later. `ready` is
+therefore what unblocks all four, at the same instant: they appear as a single
+**Review pending deployments** → `release` prompt, and one approval releases
+all four.
+
+That is a property of the `needs:` graph, and it is worth keeping. Before this,
+`crates-io`, `npm`, and `npm-placeholder` started as soon as `verify` finished
+while `pypi` waited another twenty minutes for the wheels, so a release stopped
+twice — the second prompt arriving long after the first had already authorized
+the release, which is how an approval becomes something people click through.
+Giving a publishing job its own `needs:` list splits it back apart.
+
 The **deployment tags rule** has a consequence for manual re-runs: the ref a
 run was started against is what the rule tests, so a `workflow_dispatch` run
 launched from `main` cannot enter the environment no matter what its `tag`
@@ -104,12 +127,6 @@ the rest come from another.
 `meta` detects that case by comparing against what earlier tag-push runs
 recorded (`scripts/release/check-tag-sha.py`) and refuses. This ruleset means
 it can never happen in the first place.
-
-Four jobs enter the environment, so a release with required reviewers pauses
-twice: once when `crates-io`, `npm`, and `npm-placeholder` start together, and
-again when `pypi` is ready after the wheels build. Both appear under **Review
-pending deployments** on the run, and the jobs pending at the same moment are
-approved in one click.
 
 ## Step 2: crates.io — seven times
 

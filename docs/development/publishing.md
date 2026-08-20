@@ -39,7 +39,8 @@ git switch main && git pull
 git tag -s -a v0.2.0 -m "nd-image-codecs 0.2.0"
 git push origin v0.2.0
 
-# 5. Watch it publish. `gh run watch` takes a run ID, not a workflow name.
+# 5. Watch it build, then approve it. `gh run watch` takes a run ID, not a
+#    workflow name.
 gh run list --workflow=release.yml --limit 1
 gh run watch <run-id>
 ```
@@ -48,9 +49,24 @@ Step 2 is optional in the sense that the release still publishes the right
 version without it — but skipping it leaves `main` claiming the previous
 version, and the release run says so in its job summary. Run it.
 
-Step 4 is the point of no return. crates.io and PyPI both refuse to reuse a
-version number, ever, and npm allows an unpublish only within 72 hours and only
-if nothing depends on the package.
+Step 5 is where a release stops and waits for a person. Everything up to that
+point is reversible; the approval is the point of no return. crates.io and PyPI
+both refuse to reuse a version number, ever, and npm allows an unpublish only
+within 72 hours and only if nothing depends on the package.
+
+### Approving the release
+
+The run gates itself once, on the `ready` job, and there is nothing to decide
+before that: every gate has to pass, every crate has to package, and all nine
+Python distributions have to build first. When they have, the four publishing
+jobs go pending together and the run shows **Review pending deployments** →
+`release`. One approval releases all four.
+
+Read `ready`'s job summary before approving. It restates the version, the
+commit, and the npm dist-tag the run resolved from the tag — which is what the
+approval actually authorizes, rather than the tag name you typed.
+
+A run that stops anywhere earlier stopped on a failure, not on you.
 
 ### What the workflow does
 
@@ -59,13 +75,21 @@ if nothing depends on the package.
 | `meta` | Parses the tag, resolves it to one commit, and stops the release here if it is not `v<SemVer>`, if the commit is not an ancestor of `main`, if CI never went green for it, or if the tag has moved since an earlier run |
 | `verify` | Stamps the version, then packages all seven crates and builds each from its own tarball — `cargo publish --workspace --dry-run` |
 | `changelog` | `cz changelog <tag>` → the release notes, uploaded as an artifact |
-| `crates-io` | Publishes the workspace, skipping crates already at this version |
 | `build-python` | Eight wheels: linux/musl/macOS/Windows × x86_64/aarch64 |
 | `build-sdist` | The source distribution, plus `twine check` |
+| `ready` | Does nothing, and waits for all of the above. It is what unblocks all four publishing jobs, so they reach the `release` environment together and a release stops for a human exactly once |
+| `crates-io` | Publishes the workspace, skipping crates already at this version |
 | `pypi` | Uploads every wheel and the sdist, with PEP 740 attestations |
 | `npm` | Builds the WASM core and TypeScript, tests it, publishes `@fideus-labs/nd-image-codecs` |
 | `npm-placeholder` | Publishes the unscoped `nd-image-codecs` name holder |
 | `github-release` | Attests the Python distributions, then creates the release with the changelog and attaches them |
+
+The line through that table is `ready`. Above it nothing has left the machine
+and any job can be fixed and re-run for free; below it, four jobs change three
+registries in ways nobody can take back. Keeping `crates-io` above that line —
+it used to need only `verify` — meant a wheel that failed to build stopped PyPI
+*after* the crates had already published, which is the half-release the rest of
+the workflow is written to avoid.
 
 `meta` is four gates rather than a step, and it is worth knowing what each
 refuses:
