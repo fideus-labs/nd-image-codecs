@@ -219,42 +219,84 @@ Downstream, the SIMD lane is not optional — `ndic-codestream`'s `writer.rs:151
 `corpus_conformance` all run through this code, and all three are byte-exact suites. They
 pass with identical counts.
 
-### Cost
+(splitter-cost)=
 
-The splitter is called once per lifted row per level, so what changed is per-row borrow
-setup — two `split_at_mut` calls and four bounds-checked range indexes in place of six
-pointer offsets — measured against per-row kernel work. Interleaved single-process A/B of
-five vertical-pass levels, AVX2 kernels on both arms (deliberately: AVX2 is the cheapest
-per row, which makes the splitter's share as large as it can be), 11 rounds of 12
-iterations, arms alternating order each round:
+### Cost: it is a ~10–17 % *gain*, and this section originally said the opposite
+
+**Corrected in Phase 07.** This section first reported the rewrite as a ~1 % cost, measured
+on a scratch harness. The harness number is reproducible and the conclusion drawn from it
+was wrong: measured on the shipped binary, replacing the raw-pointer `split_three` with
+the `split_at_mut` form makes the SIMD 5/3 transform **10 to 17 % faster**. The original
+table is kept below, because what makes this worth reading is *why* a careful A/B pointed
+the wrong way.
+
+**The shipped measurement.** Two `ndic-bench` binaries built from the same tree, differing
+only in the body of `split_three`, run alternately in one sitting on
+`transform/dwt53_fwd_2048`, five rounds, min-of-five:
+
+| Config | raw pointer | `split_at_mut` | Delta |
+| --- | --- | --- | --- |
+| `simd-53-ht` | 5.68 ms | 5.09 ms | **−10.4 %** |
+| `simd-53-lift-z2` | 5.86 ms | 5.12 ms | **−12.6 %** |
+| `simd-97-ht` | 5.63 ms | 5.05 ms | **−10.3 %** |
+| `zfp-rate8` | 5.68 ms | 5.09 ms | **−10.4 %** |
+| `zfp-reversible` | 5.62 ms | 5.03 ms | **−10.5 %** |
+| the six scalar lanes | ~62 ms | ~61 ms | −3.9 % to +2.0 %, no consistent sign |
+
+The scalar lanes do not touch this code — the workload selects the lane on
+`BenchConfig::simd` — so their scatter is the measurement's noise floor at 62 ms, and the
+five SIMD lanes clear it by an order of magnitude with no overlap between the two arms'
+per-round minima. Phase 07's independent three-arm attribution against `cc0cd12` reads the
+same effect at −14.7 % to −17.1 %; both are large, both are the same sign, and the range to
+quote is **10–17 %**.
+
+**Why the harness said +1 %.** The harness times five levels of the vertical forward pass
+driving AVX2 kernels directly, with the splitter passed in as a `fn` pointer. Re-run in
+Phase 07 it still reads **+0.13 / +0.84 / +1.20 / +1.36 %**, reproducing the table below.
+Three call shapes were then tried in one process to find which indirection was hiding the
+effect:
+
+| Harness arm | 256² | 512² | 1024² | 2048² |
+| --- | --- | --- | --- | --- |
+| splitter behind a `fn` pointer, kernels direct (the original) | +0.13 % | +0.84 % | +1.20 % | +1.36 % |
+| splitter monomorphised, kernels direct | −0.61 % | −0.60 % | −1.11 % | +1.17 % |
+| splitter monomorphised, kernels behind a `RowKernel` table (the shipped shape) | −0.74 % | +0.32 % | −0.30 % | −0.04 % |
+
+**None of them.** Every shape reads within about ±1 %, so the call structure is not the
+explanation and the harness simply does not contain the effect. It models the vertical
+forward pass with two of the four kernels and no horizontal pass, no `interleave_rows`, and
+no `forward_53` driver — and whatever `split_at_mut` unlocks in the real transform lives in
+what the harness left out. Confirming the mechanism needs the assembly, not another timing;
+the plausible-sounding candidate is that three slices conjured from one `*mut i32` have
+provenance LLVM cannot relate, while `split_at_mut` yields provably disjoint borrows, but
+that is a hypothesis and is recorded as one.
+
+**The lesson, which is the reason this correction is written out rather than edited over:**
+a scratch harness that isolates a function is measuring the harness until something ties it
+to the shipped path. This one was pinned, interleaved, order-alternating, bit-exactness
+checked, and consistent across four sizes — every quality check a microbenchmark can pass —
+and it was still answering a different question than the one asked. The cheap tie-back was
+available the whole time: build the real binary twice, changing only the function under
+test.
+
+The original table, kept as the record of what was measured:
 
 | Plane | raw pointer (ns) | `split_at_mut` (ns) | Delta | Splitter calls |
 | --- | --- | --- | --- | --- |
-| 256² | 14 860 | 14 970 | **+0.74 %** | ~496 |
-| 512² | 63 770 | 64 390 | **+0.97 %** | ~992 |
-| 1024² | 263 388 | 266 247 | **+1.09 %** | ~1984 |
-| 2048² | 1 773 034 | 1 789 634 | **+0.94 %** | ~3968 |
+| 256² | 14 860 | 14 970 | +0.74 % | ~496 |
+| 512² | 63 770 | 64 390 | +0.97 % | ~992 |
+| 1024² | 263 388 | 266 247 | +1.09 % | ~1984 |
+| 2048² | 1 773 034 | 1 789 634 | +0.94 % | ~3968 |
 
-**Approximately 1 %, flat across four sizes** — which is the shape a fixed per-row cost
-should have, and the consistency is what makes the number believable. An earlier
-unpinned run of the same harness read +0.81 / +0.65 / +0.92 / **−3.29 %**; the negative
-cell is the tell that the host was saturated by an unrelated build, and it is recorded
-here rather than quietly dropped. The table above is the pinned re-run
-(`taskset -c 0-3`), and the +1 % is real.
+An earlier unpinned run of that harness read +0.81 / +0.65 / +0.92 / **−3.29 %**; the
+negative cell was read at the time as a saturated host, and the pinned re-run above is
+what replaced it.
 
-Two things put that 1 % in proportion:
-
-- It is the **vertical pass in isolation**. Five levels of vertical lifting on a 2048²
-  plane measure ~1.77 ms here; the full `transform/dwt53_fwd_2048` benchmark measures the
-  SIMD lane at **5.76 ms median** on the same pinned cores. The splitter's pass is roughly
-  a third of the transform, so ~1 % there is **~0.3 % end to end** — well inside the
-  benchmark's own 5.09–7.60 ms spread.
-- It is measured against the **cheapest** kernel. AVX2 is deliberate: it does the least
-  work per row, so it maximises the splitter's share. The portable and NEON lanes spend
-  more per row and would show less.
-
-Harness (scratch, not in the repository):
-`.maestro/playbooks/2026-08-21-Rust-198-Adoption/Working/phase05/split_three_ab.rs`.
+Harnesses (scratch, not in the repository):
+`.maestro/playbooks/2026-08-21-Rust-198-Adoption/Working/phase05/split_three_ab.rs` and the
+Phase 07 reconciliation in `Working/final-1.98/conformance/` —
+`split_three_reconcile.rs` (the three harness shapes),
+`split-three-single-function-ab.txt` (the shipped-binary A/B).
 
 (what-is-kept)=
 
@@ -377,7 +419,7 @@ Every gate, on the tightened configuration:
 **No golden vector moved and no tolerance was edited**, which is the correct outcome: this
 phase changed how three row borrows are constructed, not what they contain.
 
-### One pre-existing failure, unchanged and out of scope
+### Pre-existing failures, unchanged and out of scope
 
 `cargo clippy --workspace --all-targets --target wasm32-unknown-unknown` does not build,
 and never has. It fails in `getrandom v0.2.17` (reached through `ndic-cli` → `ureq` →
@@ -387,6 +429,24 @@ neither of which has meaning on `wasm32-unknown-unknown`. This is
 reproduces on a clean tree, and it is why CI scopes its `wasm` job to
 `-p ndic-zarr -p ndic-core`. The scoped commands in the table above are the right reading
 of "the crates the project ships for wasm", and they are clean.
+
+Phase 07 widened the same commands to `--all-targets` on both wasm targets, and found one
+more boundary worth naming — the two targets fail at *different* scopes, for unrelated
+reasons:
+
+| Command | `wasm32-unknown-unknown` | `wasm32-wasip2` |
+| --- | --- | --- |
+| `-p ndic-zarr -p ndic-core` (lib) | clean | clean |
+| `-p ndic-zarr -p ndic-core --all-targets` | clean | **fails** |
+| `--workspace --all-targets` | fails (`getrandom`, `wait-timeout`) | fails (`wait-timeout`) |
+
+The wasip2 `--all-targets` failure is not first-party either: `--all-targets` pulls in
+`ndic-zarr`'s dev-dependency on `zarrs`, and `zarrs` → `blusc` → `zstd` → `zstd-sys`, whose
+C build needs a wasi sysroot that the host `clang` does not have
+(`fatal error: 'bits/libc-header-start.h' file not found`). It is a missing cross-compiler
+sysroot on the machine, not a defect in the tree, and it is invisible to CI because no job
+builds test targets for wasip2. The lib-scoped form — the one that corresponds to what is
+actually shipped for wasip2 — is clean on both targets.
 
 ## Carried forward
 

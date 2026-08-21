@@ -123,6 +123,8 @@ from input.
 `sop_prefix_counts_towards_the_header_length` was added to cover both the block-carrying
 and the empty-packet exit paths through the new accounting.
 
+(format-into-in-the-bench-reporter)=
+
 ## `format_into` in the bench reporter
 
 [`report.rs`](https://github.com/fideus-labs/nd-image-codecs/blob/main/bench/rs/ndic-bench-cli/src/report.rs)
@@ -179,7 +181,7 @@ across the change.
 **The named suites.**
 
 ```bash
-cargo test -p ndic-codestream --release              # 36 unit + 20 integration, 0 failures
+cargo test -p ndic-codestream --release              # 36 unit + 19 integration, 0 failures
 cargo test -p ndic-codestream --test range_plans --release
 cargo test -p ndic-cli --test plans_cli --release
 cargo test --workspace --release                     # 0 failures
@@ -200,7 +202,7 @@ and `thumbnails-and-streaming.md` are green. (`python.md` and `zarr.md` fail in 
 environment on `ModuleNotFoundError: No module named 'zarr'` — an absent Python
 dependency, on pages this phase does not touch.)
 
-**Three tests added**, all for behaviour that had no coverage before:
+**Four tests added**, all for behaviour that had no coverage before:
 
 - `reader::tests::segment_payload_and_cursor_match_the_declared_length` — the helper
   against the arithmetic it replaced, at every boundary the old `len < 2` guard implied.
@@ -208,6 +210,14 @@ dependency, on pages this phase does not touch.)
   parent-relative `terminate()`, and the reported error offset.
 - `packet::tests::sop_prefix_counts_towards_the_header_length` — the previously untested
   `Scod` bit 1 path, on both exits.
+- `report::tests::ns_rendering_is_unchanged_across_the_unit_boundaries` — the
+  `format_into` rendering against the `format!` it replaced, at every unit boundary.
+
+(The count read "three" until Phase 07 tallied the workspace suite: 207 → 211 across this
+phase, which is `ndic_codestream`'s unit tests 33 → 36 plus this bench-layer one. The
+`format_into` test was described in
+[the bench-reporter section](#format-into-in-the-bench-reporter) and simply missing from
+this list.)
 
 ## What this phase is evidence for
 
