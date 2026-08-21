@@ -202,3 +202,9 @@ Guidelines:
   [test data](./test-data.md) — never generate randomness inside the timed region.
 - Any PR touching a hot path (block coder, transforms, packet assembly) must include or
   update a benchmark; reviewers hold the line.
+- **A newly registered benchmark is ungated until the next baseline refresh.** No
+  committed record matches it, so `compare` renders it `new` with status `ok` and it
+  cannot trip either kind — it is reported, not held. That is the right default (a gate
+  needs a baseline to be a gate), but it means "registered" and "protected" are not the
+  same state, and only a refresh closes the gap. `transform/dwt97_fwd_2048` has been in
+  exactly that state since it was added.
