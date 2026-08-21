@@ -131,6 +131,32 @@ before concluding anything from a green test run: it documents, among other thin
 the one reachable float loop in the workspace is covered by a test whose fixture is
 exactly representable, so a reassociated sum keeps it green.
 
+## Sites ruled out
+
+Named as `algebraic_*` targets somewhere in the migration plan, then read and found to
+contain no float arithmetic at all. They are listed here so a later sweep does not spend
+a second afternoon rediscovering it. "No float to convert" is a stronger ruling than "too
+risky to convert": there is no operator to substitute, so the question does not arise.
+
+| Site | Why it is ruled out | Verified by |
+| --- | --- | --- |
+| `crates/ndic-lift/src/kernel.rs`, `crates/ndic-lift/src/sample.rs` | **Integer-only.** Zero `f32`/`f64` tokens in either file. Every kernel is generic over `PlaneSample`, which `sample.rs` seals over exactly `i32` and `i64`; the arithmetic is `+`, `-`, arithmetic `>>`, and `wrapping_add`/`wrapping_sub`. | Phase 03 |
+| The reversible 5/3 path in `crates/ndic-htj2k/src/dwt/mod.rs` (`ana_53`, `syn_53`, `forward_53`, `inverse_53`, `Scratch`) | **Integer lifting.** Operates on `&[i32]` throughout, with `Vec<i32>` scratch. Not at risk from float reassociation, which is what makes the three bit-exact conformance suites valid canaries for the 9/7 work rather than subjects of it. | Phase 03 |
+| `crates/ndic-htj2k/src/dwt/simd.rs` | **Zero float tokens in 507 lines.** The SIMD lane is the integer 5/3 transform, bit-identical to the scalar oracle by design. | Phase 02 |
+| `crates/ndic-zfp/src/` | Does no float arithmetic on sample data. `f32`/`f64` appear only as sample types handed to `zfp-rs` and as `rate`/`tolerance` configuration; the brick-index byte math is `u64`/`usize`. | Phase 02 |
+
+The `nd_lift` sealing is load-bearing rather than incidental — its doc comment states it
+carries the invariant that the forward budget check makes plain arithmetic exact. So
+`crates/ndic-lift/tests/vectors.rs` is untouched by this migration and stays a canary for
+integer regressions only.
+
+Separately, and for a different reason: `delta_float!` in `crates/ndic-zarr/src/delta_codec.rs`
+and the `sigma`/`ratio` statistics in `bench/rs/ndic-bench-core/src/lib.rs` **do** contain
+convertible float loops and are nonetheless off limits — the first must reproduce
+`numcodecs.delta` element-order byte-for-byte, the second is the measuring instrument. Those
+are ruled out on consequence, not on absence; see the
+[Float Drift Inventory](./float-drift-inventory.md).
+
 ## Phase log
 
 ### Phase 01 — toolchain bump and capability probe (2026-08-21)
@@ -179,3 +205,39 @@ later delta is attributable to a specific change rather than to the compiler upg
   papered over: `cargo test --workspace --release` does not link (a `panic = "abort"` +
   `cdylib` filename collision, reproducible on 1.91), and two golden-vector suites report
   `ok. 0 passed` when run per-crate without `--features serde`.
+
+### Phase 03 — algebraic float in the 9/7 DWT (2026-08-21)
+
+**The conversion was made, measured, and reverted.** Full evidence is in
+[Algebraic Float in the 9/7 DWT](./algebraic-97-dwt.md); the short version:
+
+- Both `lift_97` multiply-accumulate lines were converted to `algebraic_add` /
+  `algebraic_mul` and then reverted under the phase's own rule — no vectorization change
+  and no measurable speedup. `crates/ndic-htj2k/src/dwt/mod.rs` now differs from `cc0cd12`
+  in **documentation only**.
+- **The conversion is inert on the target this workspace builds.** `.cargo/config.toml`
+  sets no `target-cpu`, so the baseline `x86-64` target applies and there is no FMA. The
+  strict and algebraic forms compiled to *identical* instructions and produced
+  *bit-identical* output over 1 M samples.
+- `algebraic_*` never vectorized the loop, and could not have: `lift_97` is **elementwise
+  with no carried reduction**, so there is nothing to reassociate, and what actually blocks
+  vectorization is the symmetric-extension index clamps (`(i + 1).min(nl - 1)` and
+  `i.saturating_sub(1).min(nh - 1)`), which arithmetic permission does not touch. Every
+  instruction stays scalar (`addss` / `mulss`) in every configuration tested.
+- Under `-C target-cpu=native` the FMA contraction does fire — 6 scalar float ops become 4,
+  results shift by 5.5e-7 of peak coefficient magnitude, and accuracy slightly *improves*
+  (an FMA rounds once, not twice) — but throughput does not move: the loop is bound by
+  index clamps and bounds checks. The deviation reaches one irreversible quantization step
+  only at ε ≈ 21, one to three orders of magnitude beyond any configuration that would
+  select the 9/7 path.
+- **The one change kept is a benchmark**, not a float change:
+  `transform/dwt97_fwd_2048` now measures `forward_97` directly. Before it, no registered
+  workload reached the 9/7 kernel at all, and the `simd-97-ht` config was reporting an
+  integer 5/3 measurement under a 9/7 label — exactly as
+  [the inventory](./float-drift-inventory.md) predicted. It records ~70 ms against 8.70 ms
+  for the SIMD 5/3 lane on the same plane size.
+- All five exactness suites passed with counts identical to the Phase 02 capture. No golden
+  vector was regenerated and no tolerance assertion was changed.
+- The generalizable lesson for Phase 04: **check the loop shape and the target features
+  before predicting a win.** Only carried reductions are `algebraic_*` candidates, and every
+  FMA-dependent argument is void while the workspace builds for baseline `x86-64`.
