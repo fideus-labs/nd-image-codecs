@@ -13,6 +13,7 @@ tags:
 related:
   - '[[Float-Drift-Inventory]]'
   - '[[Rust-198-Adoption-Notes]]'
+  - '[[Algebraic-Codec-Sweep]]'
 ---
 
 # Algebraic Float in the 9/7 DWT
