@@ -111,10 +111,14 @@ compressed byte.
   `--config profile.release.panic="unwind"`, which collapses the two graphs into one.
   Panic strategy cannot move a golden value. The real fix belongs in the consolidation
   phase.
-- `crates/ndic-lift/tests/vectors.rs` and `crates/ndic-zfp/tests/checksums.rs` are both
-  `#![cfg(feature = "serde")]`. Run per-crate without `--features serde` and they report
-  `ok. 0 passed` — green, and testing nothing. The script passes the feature and prints
-  each suite's test count, flagging a zero rather than letting it read as a pass.
+- **Six test files are green and empty without their feature.**
+  `crates/ndic-lift/tests/vectors.rs` and `crates/ndic-zfp/tests/checksums.rs` are
+  `#![cfg(feature = "serde")]`; `crates/ndic-zarr/tests/{delta,htj2k,lift,zfp}_zarrs.rs`
+  are `#![cfg(feature = "zarrs")]`. Run per-crate without the feature and each reports
+  `ok. 0 passed` — green, and testing nothing. For `ndic-zarr` that is **34 of the crate's
+  53 tests** silently absent, measured in Phase 07. The script passes both features and
+  prints each suite's test count, flagging a zero rather than letting it read as a pass.
+  Only the per-crate form is at risk: `--workspace` with the feature set unifies them.
 
 Some suites need fetched data or a local build, and skip cleanly (green, having verified
 nothing) without it. Run these once before trusting an exactness result:
@@ -304,11 +308,18 @@ later delta is attributable to a specific change rather than to the compiler upg
   away and lands wholly on one side. `a` and `b` may still be the same mirrored row; two
   shared borrows of one piece are unremarkable. Not a 1.98 API: `split_at_mut` has been
   stable since 1.0, and the block survived only because nobody looked again.
-- **Cost measured, not assumed: ~1 % on the vertical pass, ~0.3 % end to end.** Pinned
-  interleaved A/B over four plane sizes reads +0.74 / +0.97 / +1.09 / +0.94 % against
-  AVX2 kernels — the cheapest per row, so the splitter's worst case. An earlier unpinned
-  run read −3.29 % at 2048²; that cell is recorded as the noise it was rather than
-  dropped.
+- **The rewrite is a 10–17 % speedup, and this entry originally said it was a ~1 % cost.**
+  Corrected in Phase 07. The Phase 05 number came from a scratch harness that times the
+  vertical pass in isolation; it is reproducible (+0.13 / +0.84 / +1.20 / +1.36 % on
+  re-run) and it does not describe the shipped code. Building the real `ndic-bench` binary
+  twice, changing only the body of `split_three`, moves `transform/dwt53_fwd_2048` by
+  **−10.3 % to −12.6 %** on the five SIMD lanes and by nothing outside the noise floor on
+  the six scalar ones; Phase 07's independent attribution against `cc0cd12` reads −14.7 %
+  to −17.1 %. Three harness call shapes were tried and none of them contains the effect, so
+  the harness under-models the transform rather than mis-calling into it. See
+  [Cost](./unsafe-audit.md#splitter-cost) for the full reconciliation — including the
+  lesson, which is that a microbenchmark can pass every quality check and still answer a
+  different question than the one asked.
 - **The `allow` went from 507 lines to 81.** The file-scoped `#![allow(unsafe_code)]` is
   replaced by two module-scoped ones on `mod neon` and `mod avx2`, which are mutually
   exclusive by `#[cfg]` — so exactly one is live per target, and none on wasm. Everything
@@ -375,5 +386,5 @@ short version:
   pixel budgets in both output formats, and SHA-256 of every encoded stream and decoded
   image — are byte-identical across the change, and the live `scripts/range-server.py`
   path (plan, `curl -r` prefix, `expand --partial`, 3D preview) matches its local
-  counterpart exactly. Three tests were added for behaviour that had no coverage,
+  counterpart exactly. Four tests were added for behaviour that had no coverage,
   including the `Scod` bit 1 `SOP` path the writer never emits.

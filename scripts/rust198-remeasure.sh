@@ -36,11 +36,14 @@
 #     --config profile.release.panic="unwind", which collapses the two graphs
 #     into one. Panic strategy cannot move a golden value.
 #
-#   * ndic-lift/tests/vectors.rs and ndic-zfp/tests/checksums.rs are both
-#     #![cfg(feature = "serde")]. Run per-crate WITHOUT --features serde and
-#     they report `ok. 0 passed` -- green, and testing nothing. This script
-#     passes the features and records the per-suite test counts so a silent
-#     zero is visible in the output.
+#   * Six test files are #![cfg(feature = ...)] and report `ok. 0 passed`
+#     without it -- green, and testing nothing. ndic-lift/tests/vectors.rs and
+#     ndic-zfp/tests/checksums.rs need --features serde; ndic-zarr's four
+#     {delta,htj2k,lift,zfp}_zarrs.rs need --features zarrs (34 of that
+#     crate's 53 tests, measured in Phase 07). This script passes both
+#     features and records the per-suite test counts so a silent zero is
+#     visible in the output. Only the per-crate form is at risk: under
+#     --workspace with FEATURES set, cargo's feature unification covers them.
 #
 # Timings are only comparable against a run from this same machine. The
 # committed bench/baselines/main/ was captured on a different machine class
