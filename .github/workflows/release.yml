@@ -20,6 +20,11 @@ name: Release
 #    the realistic failure mode, so every upload step skips what is already on
 #    its registry. `workflow_dispatch` re-runs the whole thing against an
 #    existing tag to finish a release that died partway.
+# 4. **One approval, at the last moment it can still be free.** Four jobs enter
+#    the `release` environment and its reviewer requirement applies to each, so
+#    they are deliberately converged onto a single `ready` job. Everything that
+#    can fail harmlessly runs before it; everything after it changes a registry
+#    forever. See the `ready` job.
 #
 # **The filename is load-bearing.** crates.io and npm bind their trusted
 # publishers to `release.yml` specifically. Renaming this file silently breaks
@@ -271,6 +276,62 @@ jobs:
           path: release-notes.md
           if-no-files-found: error
 
+  # ----------------------------------------------------------------- approval
+  # A reviewer is required on the `release` environment, and GitHub asks once
+  # per set of jobs that are pending at the same moment. Four jobs enter that
+  # environment, and on their natural dependencies they arrive in two waves —
+  # crates.io and both npm packages as soon as `verify` finishes, PyPI twenty
+  # minutes later when the last wheel lands — so a release used to stop for a
+  # human twice, the second time long after the first had already authorized
+  # it. Two prompts for one decision is a prompt people learn to click through.
+  #
+  # This job converges the graph to a single point: every publisher waits on it
+  # and on nothing it does not already wait on itself, so they all go pending
+  # the moment it finishes and one approval releases all four. (They also name
+  # `meta`, for its outputs. That cannot delay them — `ready` waits for `meta`
+  # too, so it always finishes later.) It is also the only place the
+  # prerequisites are written down. Four `needs:` lists kept identical by hand
+  # would split back into two prompts the first time a build job was added to
+  # three of them.
+  #
+  # The split had a second cost this closes. `crates-io` needed only `verify`,
+  # so a wheel that failed to build stopped PyPI *after* the crates were
+  # already on crates.io — the exact half-release the rest of this file is
+  # written to avoid. Nothing publishes now until every artifact exists.
+  #
+  # `changelog` is in the list for the same reason. It fails harmlessly on its
+  # own, but failing after the uploads would force a re-run — and a second
+  # approval — with the registries already changed.
+  ready:
+    name: Ready to publish
+    needs: [meta, verify, changelog, build-python, build-sdist]
+    runs-on: ubuntu-24.04
+    # No permissions block: this job reads no repository and mints no token.
+    # It exists to be a single edge in the graph.
+    steps:
+      # What the reviewer is being asked to approve. GitHub's approval prompt
+      # carries nothing but the environment name, so the run has to say it.
+      - name: State what is about to be published
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          SHA: ${{ needs.meta.outputs.sha }}
+          NPM_TAG: ${{ needs.meta.outputs.npm-tag }}
+          PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          {
+            echo "### ⏸️ Waiting for approval to publish $VERSION"
+            echo
+            echo "- **Tag** \`$TAG\`"
+            echo "- **Commit** \`$SHA\`"
+            echo "- **npm dist-tag** \`$NPM_TAG\`"
+            echo "- **Prerelease** \`$PRERELEASE\`"
+            echo
+            echo "Every gate has passed and every artifact is built. Approving the"
+            echo "\`release\` environment on this run uploads to crates.io, PyPI, and"
+            echo "npm — and none of those can be taken back."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ---------------------------------------------------------------- crates.io
   # `cargo publish` has to build to verify, so unlike the PyPI and npm lanes
   # this one cannot separate building from publishing. The `release`
@@ -279,7 +340,7 @@ jobs:
   # minted by any other job in this workflow is useless to crates.io.
   crates-io:
     name: Publish to crates.io
-    needs: [meta, verify]
+    needs: [meta, ready]
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -431,10 +492,13 @@ jobs:
   # No checkout, no toolchain, no repository access: this job downloads the
   # artifacts the build jobs produced and uploads them. `id-token: write` is
   # the only permission it has, and the `release` environment is what makes
-  # that token acceptable to PyPI.
+  # that token acceptable to PyPI. The build jobs are not named in `needs`
+  # because `ready` already waits for them — and taking `ready` as the only
+  # thing that can unblock this job is what keeps its approval the same one the
+  # other three publishers get.
   pypi:
     name: Publish to PyPI
-    needs: [meta, build-python, build-sdist]
+    needs: [meta, ready]
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -465,7 +529,7 @@ jobs:
   # that cannot be undone. The `release` environment is again the containment.
   npm:
     name: Publish to npm
-    needs: [meta, verify]
+    needs: [meta, ready]
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -570,7 +634,7 @@ jobs:
   # only — no code, no build, no dependency on the scoped package.
   npm-placeholder:
     name: Publish the npm name placeholder
-    needs: [meta, verify]
+    needs: [meta, ready]
     runs-on: ubuntu-24.04
     environment: release
     permissions:

@@ -28,11 +28,15 @@ them also runs standalone. See
 | `release/publish-crates.py` | Publish the workspace to crates.io in dependency order, excluding crates already at this version so a re-run finishes a half-published release |
 
 `tests/test_release_scripts.py` covers all four Python scripts against a
-synthetic repository in a temporary directory — never this one. The
-`package-versions` CI job runs it:
+synthetic repository in a temporary directory — never this one.
+`tests/test_release_workflow.py` covers what no script can hold: the `needs:`
+graph in `.github/workflows/release.yml`, which is what decides that a release
+stops for a human exactly once and that nothing publishes until every artifact
+exists. It reads the real workflow, because there the file *is* the artifact.
+The `package-versions` CI job runs both:
 
 ```bash
-uvx --with pytest --from pytest pytest scripts/tests -q
+uvx --with pytest --with pyyaml --from pytest pytest scripts/tests -q
 ```
 
 ## Fixtures and test data

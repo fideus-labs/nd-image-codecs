@@ -94,9 +94,14 @@ jobs:
       # the exclude list that lets a re-run finish a half-published release.
       # None of that is reachable from the round trip above, and all of it is
       # unrecoverable if it ships wrong.
+      #
+      # Plus the shape of release.yml itself — the `needs:` graph that decides
+      # how many times a release stops for a human and what has been proven
+      # before any of it becomes irreversible. PyYAML is for that suite; it
+      # reads the real workflow, because the file under test *is* the artifact.
       - name: Test the release scripts
         run: |
-          pip install --disable-pip-version-check pytest==9.1.1
+          pip install --disable-pip-version-check pytest==9.1.1 pyyaml==6.0.3
           pytest scripts/tests -q
 
   fmt:
@@ -216,7 +221,20 @@ jobs:
       # imagecodecs powers the third-party interop lanes (JPEG 2000, delta,
       # ZFP); ngff-zarr + ome-zarr power the OME-Zarr 0.5 integration lane —
       # without them those tests silently skip.
-      - run: pip install pytest "zarr>=3.1" numpy numcodecs imagecodecs "ngff-zarr[validate]" ome-zarr
+      #
+      # `wasmtime<48` is not ours to want: ngff-zarr pulls itkwasm, whose
+      # pipeline.py imports `DirPerms` and `FilePerms`, and wasmtime 48.0.0
+      # (2026-08-20) removed both. itkwasm asks for `wasmtime>=28.0.0` with no
+      # upper bound, so pip takes the newest and `import ngff_zarr` dies.
+      #
+      # It dies loudly, which is worth knowing: the OME-Zarr tests guard with
+      # `pytest.importorskip`, and that skips on ModuleNotFoundError but
+      # re-raises a plain ImportError. `from wasmtime import DirPerms` is the
+      # second kind — wasmtime is installed, only the name is gone — so the
+      # lane fails collection instead of quietly skipping the coverage this
+      # install line exists to provide. Drop the pin once itkwasm > 1.0b200
+      # adapts to the 48 API.
+      - run: pip install pytest "zarr>=3.1" numpy numcodecs imagecodecs "ngff-zarr[validate]" ome-zarr "wasmtime<48"
       # Install the built wheel so the suite exercises the native extension
       # (the htj2k codec has no pure-Python fallback and skips without it).
       - run: pip install --no-index --find-links target/wheels nd-image-codecs
@@ -289,7 +307,10 @@ jobs:
         with:
           node-version: "22"
       - uses: Swatinem/rust-cache@v2
-      - run: pip install "zarr>=3.1" numpy numcodecs imagecodecs "ngff-zarr[validate]"
+      # `wasmtime<48` for the same reason as the `python` job above — itkwasm
+      # 1.0b200 cannot import against wasmtime 48. Here it takes down a usage
+      # page rather than a test: the OME-Zarr snippets import ngff_zarr.
+      - run: pip install "zarr>=3.1" numpy numcodecs imagecodecs "ngff-zarr[validate]" "wasmtime<48"
       - run: pip install bindings/python/nd-image-codecs
       - run: npm ci
         working-directory: bindings/typescript

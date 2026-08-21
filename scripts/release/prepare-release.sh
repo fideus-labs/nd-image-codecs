@@ -127,7 +127,7 @@ Next:
   2. Merge it, and wait for CI on main to go green — the release workflow
      refuses to publish a commit without a successful CI run.
 
-  3. Tag the merge commit and push the tag. That is what publishes:
+  3. Tag the merge commit and push the tag. That is what starts the release:
 
        git switch main && git pull
        git tag -s -a ${TAG} -m "nd-image-codecs ${VERSION}"
@@ -139,6 +139,13 @@ Next:
        # Find the run ID
        gh run watch --exit-status <id>
 
-Nothing is reversible once step 3 lands. docs/development/publishing.md has the
-runbook, including how to finish a release that failed partway.
+  5. Approve it. Once every gate has passed and every artifact is built, the
+     run stops on "Review pending deployments" for the release environment.
+     Read the "Ready to publish" job summary, then approve — once, for all
+     four publishing jobs.
+
+Everything up to step 5 can be thrown away; approving is what releases the
+publishing jobs, and their uploads cannot be withdrawn.
+docs/development/publishing.md has the runbook, including how to finish a
+release that failed partway.
 EOF
