@@ -14,6 +14,7 @@ related:
   - '[[Float-Drift-Inventory]]'
   - '[[Rust-198-Adoption-Notes]]'
   - '[[Algebraic-Float-in-the-97-DWT]]'
+  - '[[Unsafe-Audit]]'
 ---
 
 # Algebraic Float Across the SIMD Path, Quantization, and Codec Glue
@@ -298,7 +299,10 @@ changes, so it is structural rather than a regression.
 4. **The unsafe worth auditing is narrower than it looks.** Of the SIMD module's ~10× win,
    the ISA-specific intrinsics account for 1–3 %; the rest is the row restructuring, which
    needs no `unsafe` in its kernels. The unsafe-audit phase has real numbers to work from
-   — and needs an aarch64 machine before it can act on the NEON half.
+   — and needs an aarch64 machine before it can act on the NEON half. It did:
+   [Unsafe Audit](./unsafe-audit.md) (`[[Unsafe-Audit]]`) kept both lanes on these
+   numbers, removed the one `unsafe` block that was *not* an intrinsic, and took the
+   workspace lint to `deny`.
 5. **Interleave inside one process.** Two separately compiled binaries produced a
    confident, reproducible, and entirely false 10 % result. Code layout is a confounder at
    the same magnitude as the effects being measured.
