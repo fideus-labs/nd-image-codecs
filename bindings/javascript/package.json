@@ -1,6 +1,6 @@
 {
   "name": "nd-image-codecs",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Name placeholder for nd-image-codecs — composable Zarr v3 codecs for ND scientific images. The published package is @fideus-labs/nd-image-codecs.",
   "license": "MIT",
   "author": "Fideus Labs LLC",

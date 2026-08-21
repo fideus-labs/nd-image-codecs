@@ -1,3 +1,14 @@
+## v0.2.5 (2026-08-21)
+
+### 🐛 Bug Fixes
+
+- **ci**: pin wasmtime below 48 so ngff-zarr can still be imported
+- **ci**: stop a release once for approval instead of twice
+
+### 📚 Documentation
+
+- **release**: correct the npm unpublish rules and where the run pauses
+
 ## v0.2.4 (2026-08-18)
 
 ### 🐛 Bug Fixes
