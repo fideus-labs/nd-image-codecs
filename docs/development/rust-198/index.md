@@ -217,6 +217,71 @@ measurement artifacts in this migration point the same way — a "13 % slower" r
 two uncontrolled runs (Phase 03) and a "portable lane is 10 % faster than AVX2" reading
 that flipped sign when an unrelated `std::env::var` call was added (Phase 04).
 
+(the-committed-baseline)=
+
+## The committed benchmark baseline
+
+A 10–17 % improvement on a hot lane is exactly the situation in which
+`bench/baselines/main/` goes stale and future pull requests start gating against the wrong
+numbers. It did not happen here, and the reason is worth stating precisely rather than
+asserting: **the baseline's timings were never what the gate holds.**
+
+`.github/workflows/bench-pr-gate.yml` derives its gate kind from the baseline itself — it
+reads `machine` out of `bench/baselines/main/manifest.json` and gates **both** kinds only
+when that field is its own runner class, ratio only otherwise. The manifest says
+`wsl2-aarch64-12core-dev`, so every PR runs `--gate ratio` and the time column is
+informational. Ratio is deterministic, and ratio did not move.
+
+That was verified by executing the gate rather than reasoning about it: all three Python
+lanes plus the full Rust suite into one `target/benchmarks/<hash>/` tree, then the
+workflow's compare step line for line.
+
+```text
+baseline machine: wsl2-aarch64-12core-dev → --gate ratio
+77 rows, 0 RATIO-REGRESSED
+GATE-EXIT=0
+```
+
+**47 ratio-carrying pairs, 47 bit-identical as `f64` bit patterns, 0 moved** — six more
+than the 41 reported [above](#the-toolchain-effect), because the `nd_zfp` lane needs the
+compiled extension and the final-measurement task had not run it. It is part of the PR
+gate, so it is checked here. The record sets differ in one direction only: **0
+baseline-only** records (nothing renamed or orphaned) and 11 candidate-only, all of them
+Phase 03's `transform/dwt97_fwd_2048`, which carries no ratio and renders as `new` / `ok`.
+
+### The decision: not refreshed, and why refreshing is not neutral
+
+The refresh workflow re-records on `gha-ubuntu-24.04`. Adopting its output therefore *moves
+the baseline's machine class*, which — by the rule above — **switches the throughput gate
+on without anyone editing a workflow.** That is a CI policy change, and it lands a time
+gate whose σ envelope is shared-runner noise. The two rows that already read
+`ok (time n/a: ungated)` — `lift/forward_zyx_32x64x64` at +44.9 % and
+`lift_codec/encode_u16_zyx_32x64x64` at +105.4 %, both µs-scale — are precisely the lanes
+that would then produce false alarms. It deserves its own reviewed decision, not a side
+effect of a migration whose headline invariant is that no encoded byte moved.
+
+So: **no refresh on this branch, and none needed for correctness.** The refresh is a
+follow-up with a trigger, not an open question — dispatch
+[`bench-baseline-refresh.yml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/.github/workflows/bench-baseline-refresh.yml)
+from `main` *after* this branch merges, with `machine: gha-ubuntu-24.04`, `baseline: main`,
+`samples: 30`, `include_macro: false`. Three preconditions were checked so that dispatch is
+a decision and not an experiment:
+
+- `include_macro: false` is safe — `bench/baselines/main/` holds **0** `macro__*.json`
+  records, so the workflow's guard against silently deleting committed macro baselines does
+  not trip.
+- The runner will record `rustc 1.98.0`, not whatever stable is that week.
+  `dtolnay/rust-toolchain@stable` only runs `rustup default`; it sets no `RUSTUP_TOOLCHAIN`
+  and does not touch `rust-toolchain.toml`, so the in-repo pin wins inside the checkout,
+  including for the `rustc --version` the manifest writer shells out to.
+- The refresh closes the `transform/dwt97_fwd_2048` gap on its own — the whole directory is
+  replaced, so the new baseline is 77 records rather than 66. Until then that lane is
+  registered but unbaselined, which is [a general trap](../benchmarking.md#adding-a-benchmark),
+  not something this migration introduced.
+
+Read the resulting PR body's **ratio** columns, not its time columns: that diff is runner
+numbers against an aarch64 capture, so the time deltas in it mean nothing.
+
 (golden-values)=
 
 ## Golden values: none moved
