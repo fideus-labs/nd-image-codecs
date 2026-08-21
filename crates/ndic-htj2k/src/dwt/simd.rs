@@ -9,7 +9,11 @@
 //!
 //! Mirrors `OpenJPH`'s per-ISA `ojph_transform_*` translation units; lane
 //! selection happens once per transform call, never in inner loops.
-#![allow(unsafe_code)] // core::arch intrinsics; each block carries a SAFETY note
+//!
+//! `unsafe` lives only in the two `core::arch` lanes below, each of which
+//! carries its own narrowly scoped `allow(unsafe_code)`. Everything else in
+//! this file — the row splitter, the vertical passes, the de/interleave, both
+//! public entry points — is covered by the workspace `deny`.
 
 extern crate alloc;
 
@@ -67,7 +71,12 @@ mod portable {
 }
 
 /// NEON kernels (aarch64 baseline — always available).
+///
+/// `unsafe` is unavoidable here: `vld1q_s32` / `vst1q_s32` take raw pointers,
+/// and `core::simd` — the only safe alternative — is still unstable in 1.98.
+/// The scope is this module and nothing else.
 #[cfg(target_arch = "aarch64")]
+#[allow(unsafe_code)]
 mod neon {
     use core::arch::aarch64::{
         int32x4_t, vaddq_s32, vdupq_n_s32, vld1q_s32, vshrq_n_s32, vst1q_s32, vsubq_s32,
@@ -167,7 +176,12 @@ mod neon {
 }
 
 /// AVX2 kernels (x86-64, runtime detected).
+///
+/// `unsafe` is unavoidable here for the same reason as [`neon`], plus the
+/// `#[target_feature(enable = "avx2")]` contract that callers must satisfy by
+/// runtime detection. The scope is this module and nothing else.
 #[cfg(target_arch = "x86_64")]
+#[allow(unsafe_code)]
 mod avx2 {
     use core::arch::x86_64::{
         __m256i, _mm256_add_epi32, _mm256_loadu_si256, _mm256_set1_epi32, _mm256_srai_epi32,
@@ -348,19 +362,27 @@ fn split_three(
 ) -> (&[i32], &mut [i32], &[i32]) {
     debug_assert!(a_off != d_off && b_off != d_off);
     debug_assert!(a_off.abs_diff(d_off) >= width && b_off.abs_diff(d_off) >= width);
-    let ptr = plane.as_mut_ptr();
     let len = plane.len();
     assert!(a_off + w <= len && d_off + w <= len && b_off + w <= len);
-    // SAFETY: the three row ranges are in-bounds (asserted above) and the
-    // mutable row is disjoint from both source rows (distinct row offsets,
-    // debug-asserted to differ by at least one full stride).
-    unsafe {
-        (
-            core::slice::from_raw_parts(ptr.add(a_off), w),
-            core::slice::from_raw_parts_mut(ptr.add(d_off), w),
-            core::slice::from_raw_parts(ptr.add(b_off), w),
-        )
-    }
+    // Cut the mutable row out of the plane first. Every source row starts at
+    // least one full stride away from it, so each lands wholly in `before` or
+    // wholly in `after` — which is what makes the split expressible safely.
+    // `a` and `b` may still be the same row (the mirror cases); they only have
+    // to be disjoint from `dst`, and two shared borrows of one piece are fine.
+    let (before, rest) = plane.split_at_mut(d_off);
+    let (dst, after) = rest.split_at_mut(w);
+    let (before, after): (&[i32], &[i32]) = (before, after);
+    let a = if a_off < d_off {
+        &before[a_off..a_off + w]
+    } else {
+        &after[a_off - d_off - w..a_off - d_off]
+    };
+    let b = if b_off < d_off {
+        &before[b_off..b_off + w]
+    } else {
+        &after[b_off - d_off - w..b_off - d_off]
+    };
+    (a, dst, b)
 }
 
 /// Moves even rows to the top half and odd rows to the bottom half.

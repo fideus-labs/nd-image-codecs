@@ -284,3 +284,53 @@ later delta is attributable to a specific change rather than to the compiler upg
 - The generalizable lesson: **a license is not free just because it is currently unused.**
   `algebraic_div` changed nothing measurable on the ZFP fixture generator, yet the
   reciprocal transform it permits would change 32 668 of 100 000 values.
+
+### Phase 05 — unsafe audit and safe atomics (2026-08-21)
+
+**`unsafe_code` is now `deny` at the workspace level.** Full evidence is in the
+[Unsafe Audit](./unsafe-audit.md) (`[[Unsafe-Audit]]`); the short version:
+
+- **The atomics half of the phase had nothing to convert.** `AtomicU32::from_mut_slice`
+  exists to rescue raw-pointer aliasing between concurrent workers, and this workspace has
+  no concurrency inside any codec: zero `rayon` uses, zero `thread::scope`, zero
+  `UnsafeCell`, zero `transmute`, and one `thread::spawn` that is a test HTTP server.
+  Parallelism is the caller's business — `zarrs` over chunks, the browser's worker pool
+  over the WASM module. Zero sites converted, and the API is recorded as the right tool
+  *if* block-level parallelism is ever added to the HT coder.
+- **One `unsafe` block removed, and it was the right one.** `split_three` in
+  `dwt/simd.rs` built three row slices out of one `*mut i32`, with disjointness argued in
+  a comment. Splitting on the *destination* row instead of the sources — `split_at_mut`
+  twice — expresses the same borrow safely, because every source row is a full stride
+  away and lands wholly on one side. `a` and `b` may still be the same mirrored row; two
+  shared borrows of one piece are unremarkable. Not a 1.98 API: `split_at_mut` has been
+  stable since 1.0, and the block survived only because nobody looked again.
+- **Cost measured, not assumed: ~1 % on the vertical pass, ~0.3 % end to end.** Pinned
+  interleaved A/B over four plane sizes reads +0.74 / +0.97 / +1.09 / +0.94 % against
+  AVX2 kernels — the cheapest per row, so the splitter's worst case. An earlier unpinned
+  run read −3.29 % at 2048²; that cell is recorded as the noise it was rather than
+  dropped.
+- **The `allow` went from 507 lines to 81.** The file-scoped `#![allow(unsafe_code)]` is
+  replaced by two module-scoped ones on `mod neon` and `mod avx2`, which are mutually
+  exclusive by `#[cfg]` — so exactly one is live per target, and none on wasm. Everything
+  else in the file, including both public entry points, is back under the deny.
+- **The intrinsic lanes are kept, on Phase 04's numbers and with a stated revisit.** They
+  cannot be made safe in 1.98 (`core::simd` is still unstable) and they carry the shipped
+  DWT. The narrower question — whether the *intrinsics* are worth their `unsafe`, given
+  the portable lane autovectorizes to within 1–3 % — needs an aarch64 host to answer for
+  NEON, and is carried forward with that condition attached.
+- **`deny(unsafe_code)` does not see macro-generated `unsafe`.** Verified with
+  `#![forbid(unsafe_code)]` — which cannot be overridden — on the PyO3 and `wasm-bindgen`
+  modules: both compile clean, even though `pyo3-macros-backend` demonstrably emits
+  `unsafe` in its `quote!` templates. So the workspace `deny` costs the binding crates
+  nothing, *and* it is a statement about diffs rather than about artifacts.
+- `unsafe_op_in_unsafe_fn = "deny"` was turned on in the same change. It cost nothing —
+  both `rows` functions already used explicit inner `unsafe {}` blocks — which is exactly
+  why it was worth doing before anything came to depend on the laxer edition default.
+- Everything stayed green with no output change: 207 workspace tests, all five byte-exact
+  suites, 285 Python, 203 TypeScript, the 148-case cross-language matrix, and clippy
+  `-D warnings` clean on host, `wasm32-unknown-unknown` (including the `wasm` feature),
+  and `wasm32-wasip2`.
+- The generalizable lesson: **an `allow` at file scope is a permanent blind spot, not a
+  local exception.** The one hand-written aliasing argument in the workspace sat under a
+  507-line `allow` for as long as it existed; narrowing the scope is what turns the next
+  one into something a reviewer has to see.

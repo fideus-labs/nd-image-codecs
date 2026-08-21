@@ -96,6 +96,7 @@ project:
         - file: development/rust-198/float-drift-inventory.md
         - file: development/rust-198/algebraic-97-dwt.md
         - file: development/rust-198/algebraic-codec-sweep.md
+        - file: development/rust-198/unsafe-audit.md
         - file: development/decisions/adr-001-documentation-toolchain.md
 
 site:

@@ -10,10 +10,9 @@
 
 - **build**: raise the minimum supported Rust version from 1.91 to 1.98
 
-  The workspace now uses Rust 1.98 standard-library APIs directly (algebraic
-  float arithmetic, `AtomicU32::from_mut_slice`, `NonZero::from_str_radix`),
-  so the MSRV is set by this project rather than tracked from the `zarrs`
-  dependency. This is consumer-visible across all three distributions:
+  The workspace targets the Rust 1.98 standard library, so the MSRV is set by
+  this project rather than tracked from the `zarrs` dependency. This is
+  consumer-visible across all three distributions:
 
   - **crates.io** — depending on `ndic-core`, `ndic-htj2k`, `ndic-codestream`,
     `ndic-lift`, `ndic-zfp`, `ndic-zarr`, or `ndic-cli` now requires a 1.98 or
@@ -24,6 +23,27 @@
 
   `rust-toolchain.toml` pins 1.98.0, so contributors are moved automatically.
   See [Rust 1.98 Adoption Notes](docs/development/rust-198/adoption-notes.md).
+
+### ♻️ Refactoring
+
+- **htj2k**: make the DWT row splitter safe and deny `unsafe_code` workspace-wide
+
+  `ndic-htj2k` is the only published crate with an `unsafe` surface, and it is
+  now smaller. `dwt::simd::split_three` built three row slices out of one raw
+  pointer, with disjointness argued in a comment; it uses `split_at_mut` on the
+  destination row instead, and the block is gone. Output is bit-identical — the
+  differential test against the scalar oracle covers 9 geometries × 6 level
+  counts, and the byte-exact conformance suites are unchanged.
+
+  What remains is the NEON and AVX2 kernel code, which cannot be written without
+  `unsafe` while `core::simd` is unstable. Its `allow(unsafe_code)` moved from
+  the whole file (507 lines) to the two `#[cfg]`-selected kernel modules, so
+  exactly one is live per target and **none on either wasm target** — the
+  published WASM bundle is built from `unsafe`-free first-party code.
+
+  For contributors: `[workspace.lints.rust]` now sets `unsafe_code = "deny"` and
+  `unsafe_op_in_unsafe_fn = "deny"`. Full inventory and the reasoning behind every
+  kept block: [Unsafe Audit](docs/development/rust-198/unsafe-audit.md).
 
 ## v0.2.5 (2026-08-21)
 
