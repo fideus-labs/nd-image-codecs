@@ -241,3 +241,46 @@ later delta is attributable to a specific change rather than to the compiler upg
 - The generalizable lesson for Phase 04: **check the loop shape and the target features
   before predicting a win.** Only carried reductions are `algebraic_*` candidates, and every
   FMA-dependent argument is void while the workspace builds for baseline `x86-64`.
+
+### Phase 04 — algebraic float across the SIMD path, quantization, and codec glue (2026-08-21)
+
+**Zero sites converted, and `dwt/simd.rs` is kept.** Full evidence is in
+[Algebraic Float Across the SIMD Path, Quantization, and Codec Glue](./algebraic-codec-sweep.md)
+(`[[Algebraic-Codec-Sweep]]`); the short version:
+
+- **The SIMD module stays, decisively.** Single-process interleaved A/B measures it at
+  **4.53× / 7.51× / 11.81× / 9.64×** the scalar oracle at 256², 512², 1024², and 2048².
+  The delete branch needed the two within noise; they are an order of magnitude apart.
+- **The phase's premise did not survive contact with the file.** `simd.rs` is the
+  **integer 5/3** transform — no float arithmetic in 507 lines — so "scalar-algebraic vs
+  SIMD-intrinsics" is not a comparison that exists. `dwt/mod.rs` does not choose between
+  the two either; the shipped codec path is hardcoded to the SIMD entry point in
+  `writer.rs` and `reader.rs`, so deleting the module would not fall back to scalar, it
+  would break the build.
+- **Within the module, the intrinsics are worth only 1–3 %** over the safe portable lane,
+  which autovectorizes to 128-bit SSE2 on its own. The ~10× win is the row restructuring,
+  not the ISA-specific code — the loop is memory-bound. Not acted on: 1–3 % is a real
+  loss, and 5 of the 8 `unsafe` blocks are NEON, unmeasurable on x86-64. Handed to the
+  unsafe-audit phase with numbers.
+- **`Quant::irrev_delta` is exact, not merely safe.** Strict and algebraic agree on every
+  bit over the *entire* input domain (262 144 cases): every multiplier and divisor is a
+  power of two and the numerator is an integer inside f32's exact 2²⁴. There is nothing to
+  license. There is also no per-coefficient float dequantization in the read path —
+  `ndic-codestream/src/` has no float token outside `quant.rs`.
+- **`delta_float!` is a prefix scan, not a carried reduction** — which corrects the
+  [Float Drift Inventory](./float-drift-inventory.md). A reduction may reassociate because
+  only its final value is observable; a scan stores every partial sum and may not. The
+  algebraic form is bit-identical on 4 fixtures of 4.2 M elements, shows no speedup, and
+  does not vectorize (10 `addss`, zero packed ops). The off-limits ruling stands on the
+  cross-language byte-parity contract, now with nothing on the other side of the scale.
+- **The `ndic-zfp` boundary is confirmed by tracing, not by its module header.** Every
+  coded byte is written by `zfp-rs`; first-party code contributes shape validation,
+  `bytemuck` reinterpretation, integer dtype promotion, and `u64` brick arithmetic.
+  `tests/checksums.rs` cannot drift from this work and its checksums are untouched.
+- **No golden vector moved and no tolerance assertion changed**, because no shipped line
+  changed. All suites reproduce the Phase 02 counts, including the corpus skip list; the
+  Python binding (285 passed, 0 skipped), the TypeScript binding (203 passed), the 148-case
+  cross-language series matrix, and both wasm targets are all green.
+- The generalizable lesson: **a license is not free just because it is currently unused.**
+  `algebraic_div` changed nothing measurable on the ZFP fixture generator, yet the
+  reciprocal transform it permits would change 32 668 of 100 000 values.
