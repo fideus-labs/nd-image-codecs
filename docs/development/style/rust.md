@@ -6,8 +6,9 @@ description: 'The Rust conventions every change is held to: pinned toolchain, wo
 
 ## Toolchain
 
-Rust 1.91+ (pinned in [`rust-toolchain.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/rust-toolchain.toml); MSRV is set
-by the `zarrs` dependency), edition 2024. Standard `rustfmt` defaults (no `rustfmt.toml`).
+Rust 1.98+ (pinned in [`rust-toolchain.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/rust-toolchain.toml); the MSRV is
+set by this workspace, not by a dependency — the codecs adopt 1.98 standard-library
+APIs directly), edition 2024. Standard `rustfmt` defaults (no `rustfmt.toml`).
 
 ## Clippy
 

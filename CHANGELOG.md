@@ -1,3 +1,30 @@
+<!-- Hand-written ahead of the generator. CHANGELOG.md is produced by
+     `uvx --from commitizen cz changelog --incremental` (see .cz.toml), which
+     inserts the next `## vX.Y.Z` section below this point from the Conventional
+     Commits themselves. Delete this Unreleased block when that runs at release
+     time — the commit it describes is already shaped to regenerate it. -->
+
+## Unreleased
+
+### 💥 Breaking Changes
+
+- **build**: raise the minimum supported Rust version from 1.91 to 1.98
+
+  The workspace now uses Rust 1.98 standard-library APIs directly (algebraic
+  float arithmetic, `AtomicU32::from_mut_slice`, `NonZero::from_str_radix`),
+  so the MSRV is set by this project rather than tracked from the `zarrs`
+  dependency. This is consumer-visible across all three distributions:
+
+  - **crates.io** — depending on `ndic-core`, `ndic-htj2k`, `ndic-codestream`,
+    `ndic-lift`, `ndic-zfp`, `ndic-zarr`, or `ndic-cli` now requires a 1.98 or
+    newer toolchain; `cargo` will refuse the version rather than fail to build.
+  - **PyPI** and **npm** — the published wheels and the prebuilt WASM bundle are
+    unaffected, since they ship compiled. Building either binding from source
+    requires 1.98.
+
+  `rust-toolchain.toml` pins 1.98.0, so contributors are moved automatically.
+  See [Rust 1.98 Adoption Notes](docs/development/rust-198/adoption-notes.md).
+
 ## v0.2.5 (2026-08-21)
 
 ### 🐛 Bug Fixes

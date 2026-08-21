@@ -310,8 +310,10 @@ impl ChunkHeader {
                 let offset = u64::from_le_bytes(e[..8].try_into().expect("8 bytes"));
                 let len = u32::from_le_bytes(e[8..12].try_into().expect("4 bytes"));
                 let prefix: Vec<u32> = e[12..]
-                    .chunks_exact(4)
-                    .map(|c| u32::from_le_bytes(c.try_into().expect("4 bytes")))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|&c| u32::from_le_bytes(c))
                     .collect();
                 if offset < min_offset {
                     return Err(err(at, "plane offsets overlap or precede the index"));

@@ -284,6 +284,12 @@ where
                 ),
             });
         }
+        // 1.98's `chunks_exact_to_as_chunks` fires here and suggests
+        // `as_chunks::<size_of::<P>()>()`, which does not compile: a const
+        // generic argument may not depend on a generic type parameter without
+        // `generic_const_exprs`, still unstable. The lint does not model that,
+        // so this one call site opts out.
+        #[allow(clippy::chunks_exact_to_as_chunks)]
         let mut plane: Vec<P> = bytes
             .chunks_exact(size_of::<P>())
             .map(|c| P::from_le_slice(c))

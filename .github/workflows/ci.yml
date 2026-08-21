@@ -155,6 +155,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # `@stable` is deliberate here and in every other job: `rust-toolchain.toml`
+      # pins the compiler (1.98.0), and rustup honours that pin over whatever the
+      # action made default, auto-installing it on the first cargo invocation —
+      # along with the `targets` the toml lists, which is where wasm32-unknown-unknown
+      # and wasm32-wasip2 really come from. The `targets:` input below is what makes
+      # the target available *before* that, so the action's own install is complete;
+      # keep both in sync with rust-toolchain.toml. No job pins a Rust version.
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

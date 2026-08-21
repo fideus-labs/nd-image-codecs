@@ -120,7 +120,7 @@ codecs = codec_series(["t", "c", "z", "y", "x"], [8, 1, 32, 256, 256],
 
 ### Prerequisites
 
-- Rust 1.91+ (see [`rust-toolchain.toml`](rust-toolchain.toml); wasm targets included)
+- Rust 1.98+ (see [`rust-toolchain.toml`](rust-toolchain.toml); wasm targets included)
 - Python 3.11+ and [maturin](https://www.maturin.rs/) for the Python binding
 - Node 20+ and [wasm-pack](https://rustwasm.github.io/wasm-pack/) for the TypeScript binding
 

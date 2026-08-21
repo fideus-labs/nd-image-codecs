@@ -27,6 +27,13 @@ Open the page that matches the task in front of you.
 | [Commit Convention](./commits.md) | Commit message format: Conventional Commits with crate scopes (`feat(lift): …`, `fix(codestream): …`) |
 | [Rust Style](./style/rust.md) | Rust style rules — clippy `all` + `pedantic`, the `ndic_core::Result<T>` error contract, and layout conventions |
 
+## Rust 1.98 migration
+
+| Document | What it covers |
+| --- | --- |
+| [Adoption Notes](./rust-198/adoption-notes.md) | Why the MSRV moved to 1.98 in one step, what downstream consumers on crates.io, PyPI, and npm see, and what each migration phase changed |
+| [Capability Probe](./rust-198/capability-probe.md) | What 1.98 actually offers this project, measured by a runnable probe — the exact confirmed signature of every API the migration depends on |
+
 ## Decisions
 
 | Document | What it covers |
