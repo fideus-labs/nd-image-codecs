@@ -25,6 +25,22 @@ fn err(offset: usize, message: &str) -> Error {
     }
 }
 
+/// The payload of the marker segment at `pos` whose `Lmar` is `len`, paired
+/// with the offset of the byte just past the segment.
+///
+/// Both come out of one slicing operation. The payload is taken from `data`
+/// once, and the position the caller resumes at is read back off *that
+/// slice* with [`slice::subslice_range`] instead of being recomputed as
+/// `pos + 2 + len`: a cursor derived from the bytes that were actually
+/// parsed cannot drift from them the way a second, independent expression
+/// can. `None` covers exactly the two malformed shapes the callers reject —
+/// an `Lmar` smaller than the two length bytes it counts itself (an
+/// inverted range) and a segment running past the end of `data`.
+fn segment(data: &[u8], pos: usize, len: usize) -> Option<(&[u8], usize)> {
+    let payload = data.get(pos + 4..pos + 2 + len)?;
+    Some((payload, data.subslice_range(payload)?.end))
+}
+
 /// One tile-part located during parsing.
 #[derive(Debug, Clone)]
 pub struct TilePart {
@@ -144,10 +160,9 @@ impl<'a> Codestream<'a> {
                 return Err(err(pos, "expected a marker in the main header"));
             }
             let len = usize::from(rd16(pos + 2)?);
-            if len < 2 || pos + 2 + len > data.len() {
+            let Some((payload, next)) = segment(data, pos, len) else {
                 return Err(err(pos, "marker segment length out of bounds"));
-            }
-            let payload = &data[pos + 4..pos + 2 + len];
+            };
             match marker {
                 markers::SIZ => siz = Some(Siz::parse(payload, pos)?),
                 markers::COD => cod = Some(Cod::parse(payload, pos)?),
@@ -166,7 +181,7 @@ impl<'a> Codestream<'a> {
                 }
                 _ => {} // skip unknown segments (PPM, CRG, ...)
             }
-            pos += 2 + len;
+            pos = next;
         }
 
         let siz = siz.ok_or_else(|| err(pos, "missing SIZ"))?;
@@ -237,10 +252,9 @@ impl<'a> Codestream<'a> {
                     break;
                 }
                 let len = usize::from(rd16(pos + 2)?);
-                if len < 2 || pos + 2 + len > data.len() {
+                let Some((payload, next)) = segment(data, pos, len) else {
                     return Err(err(pos, "tile-part marker length out of bounds"));
-                }
-                let payload = &data[pos + 4..pos + 2 + len];
+                };
                 match marker {
                     markers::PLT => plt.extend(parse_plt(payload, pos)?),
                     markers::COD | markers::QCD | markers::COC | markers::QCC => {
@@ -250,7 +264,7 @@ impl<'a> Codestream<'a> {
                     }
                     _ => {}
                 }
-                pos += 2 + len;
+                pos = next;
             }
 
             let body_end = if sot.psot == 0 {
@@ -677,4 +691,29 @@ fn precinct_block_range(
     let bx0 = x0 / cbw;
     let by0 = y0 / cbh;
     (bx0, by0, x1.div_ceil(cbw) - bx0, y1.div_ceil(cbh) - by0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `segment` must answer exactly what the `pos + 2 + len` arithmetic it
+    /// replaced answered — including on the shapes that arithmetic rejected
+    /// with an explicit `len < 2` guard.
+    #[test]
+    fn segment_payload_and_cursor_match_the_declared_length() {
+        let data: Vec<u8> = (0u8..32).collect();
+        // `Lmar` counts its own two bytes: the payload spans
+        // `[pos + 4, pos + 2 + len)` and the next marker sits at its end.
+        assert_eq!(segment(&data, 4, 10), Some((&data[8..16], 16)));
+        // `Lmar == 2` is an empty but well-formed payload (bare `COM`s).
+        assert_eq!(segment(&data, 4, 2), Some((&data[8..8], 8)));
+        // A segment ending exactly at the last byte still parses.
+        assert_eq!(segment(&data, 4, 26), Some((&data[8..32], 32)));
+        // One byte past the end does not.
+        assert_eq!(segment(&data, 4, 27), None);
+        // `Lmar` below the two bytes it counts itself.
+        assert_eq!(segment(&data, 4, 1), None);
+        assert_eq!(segment(&data, 4, 0), None);
+    }
 }

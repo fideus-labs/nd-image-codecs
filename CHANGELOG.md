@@ -24,7 +24,28 @@
   `rust-toolchain.toml` pins 1.98.0, so contributors are moved automatically.
   See [Rust 1.98 Adoption Notes](docs/development/rust-198/adoption-notes.md).
 
+- **codestream**: replace `bitio::HeaderBitReader::new_at` with `new_in`
+
+  `new_at(sub, base)` took a sub-slice and a byte offset the caller had already
+  added `sub`'s own start into. `new_in(parent, sub, base)` takes the two slices
+  and derives that start with `subslice_range`, so the pair can no longer
+  disagree; `terminate()` correspondingly returns the header length measured in
+  `parent` rather than in `sub`. Migration: `new_at(&buf[n..], base + n)` becomes
+  `new_in(&buf, &buf[n..], base)`, and callers drop the matching `n +` from what
+  `terminate()` returns. `HeaderBitReader::new` is unchanged.
+
 ### ♻️ Refactoring
+
+- **codestream**: derive marker and packet offsets from the slices themselves
+
+  The main-header and tile-part marker loops recomputed `pos + 2 + len` in a
+  bounds check and again in the cursor advance, with the payload slice built
+  between them; the packet-header reader threaded a `SOP` skip through four
+  expressions. Both now take the offset from the slice with `subslice_range`.
+  Byte-identical output and input handling — 65 captured plan, packet-dump, and
+  decoded-image artifacts are unchanged across the conversion, and three tests
+  were added, including for the previously uncovered `Scod` bit 1 `SOP` path.
+  See [Ergonomic Sweep](docs/development/rust-198/ergonomic-sweep.md).
 
 - **htj2k**: make the DWT row splitter safe and deny `unsafe_code` workspace-wide
 

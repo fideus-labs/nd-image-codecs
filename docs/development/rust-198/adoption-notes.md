@@ -334,3 +334,46 @@ later delta is attributable to a specific change rather than to the compiler upg
   local exception.** The one hand-written aliasing argument in the workspace sat under a
   507-line `allow` for as long as it existed; narrowing the scope is what turns the next
   one into something a reviewer has to see.
+
+### Phase 06 — ergonomic API sweep (2026-08-21)
+
+Full record in the [Ergonomic Sweep](./ergonomic-sweep.md) (`[[Ergonomic-Sweep]]`); the
+short version:
+
+- **Four sites converted, all the same shape.** Each was a slice travelling next to a
+  separately computed offset *for* that slice, free to disagree with it:
+  `(&data[pos + 4..pos + 2 + len], pos + 2 + len)` in both of `reader.rs`'s marker loops,
+  and `(&data[start..], offset + start)` at the packet-header reader.
+  `<[T]>::subslice_range` collapses each pair into one derivation. `subslice_range` is a
+  narrow API and that pair is the whole of what it is for — grep for the pair, not for
+  the name.
+- **`HeaderBitReader::new_at` became `new_in(parent, sub, base)`**, which asks
+  `subslice_range` where `sub` sits inside `parent` instead of being told. The redundant
+  offset parameter is gone rather than kept alongside the slice, `terminate()` now
+  reports in the parent's coordinates, and both call sites lost a `start +`. This is the
+  one consumer-visible API change of the phase.
+- **The `len < 2` guard on every marker segment was redundant and always was.** `Lmar`
+  counts its own two length bytes, so `len < 2` builds an inverted range and
+  `<[T]>::get` already answers `None` for it. One `get` replaces the two-clause guard
+  with the same error at the same offset.
+- **Three of the five APIs had no site at all.** `strip_circumfix`,
+  `NonZero::from_str_radix`, and `substr_range` were each named against `ndic-cli`, and
+  the CLI strips exactly one prefix (`@file`, with no suffix), parses no radix, and never
+  asks where a substring sits. Zero sites, recorded with what was searched.
+- **`range.rs` was named for `subslice_range` and has nothing either**, for a reason
+  worth keeping: the plan builder computes byte offsets, but from an *index of integers*
+  (`PlaneEntry`, `TilePart`), never from a slice of the chunk. "Computes offsets" and
+  "holds a subslice whose offset it needs" read the same from outside and are not the
+  same thing.
+- **`format_into` landed in one place**, the integer branch of the bench reporter's
+  `fmt_ns`: 23.4 → 8.9 ns/call, −62 %, byte-identical output. Recorded at its true size —
+  three cells per record against records that take milliseconds to produce, so nobody
+  will see it in a run. The `println!` loops in `ndic inspect` were left alone because
+  `println!("{}", n)` does not allocate for an integer in the first place.
+- **Nothing about the bytes changed, and that was established rather than assumed.** 65
+  captured artifacts — full packet dumps, every `index` target at every level and eight
+  pixel budgets in both output formats, and SHA-256 of every encoded stream and decoded
+  image — are byte-identical across the change, and the live `scripts/range-server.py`
+  path (plan, `curl -r` prefix, `expand --partial`, 3D preview) matches its local
+  counterpart exactly. Three tests were added for behaviour that had no coverage,
+  including the `Scod` bit 1 `SOP` path the writer never emits.

@@ -80,9 +80,13 @@ impl HeaderBitWriter {
 #[derive(Debug)]
 pub struct HeaderBitReader<'a> {
     data: &'a [u8],
-    /// Next read position within `data`.
+    /// Next read position within `data` (the sub-slice being read, not the
+    /// parent it was taken from).
     pub pos: usize,
-    /// Offset added to `pos` in reported errors.
+    /// Offset of `data` within the parent slice, from `subslice_range`.
+    start: usize,
+    /// Offset added to `pos` in reported errors (`base + start` of the
+    /// constructing call).
     base: usize,
     tmp: u32,
     avail: u32,
@@ -93,17 +97,33 @@ impl<'a> HeaderBitReader<'a> {
     /// Creates a reader over `data`.
     #[must_use]
     pub fn new(data: &'a [u8]) -> Self {
-        Self::new_at(data, 0)
+        Self::new_in(data, data, 0)
     }
 
-    /// Creates a reader whose errors report `base + position`, so callers
-    /// can surface offsets in their own coordinate space.
+    /// Creates a reader over `sub`, a sub-slice of `parent` whose own first
+    /// byte sits at `base` in the caller's coordinate space.
+    ///
+    /// Where `sub` begins inside `parent` is recovered from the two slices
+    /// with [`slice::subslice_range`] rather than passed alongside them, so
+    /// the offsets this reader reports — and the header length
+    /// [`HeaderBitReader::terminate`] returns, which is measured in
+    /// `parent` — are anchored to the bytes actually being read. A caller
+    /// can no longer hand over a slice and an offset that disagree about it.
+    ///
+    /// `sub` not being part of `parent` is a caller bug, not malformed
+    /// input, so it degrades to an offset of zero (reported error positions
+    /// only) rather than panicking: this parser runs on hostile bytes and
+    /// never panics on them.
     #[must_use]
-    pub fn new_at(data: &'a [u8], base: usize) -> Self {
+    pub fn new_in(parent: &'a [u8], sub: &'a [u8], base: usize) -> Self {
+        let range = parent.subslice_range(sub);
+        debug_assert!(range.is_some(), "sub must be a sub-slice of parent");
+        let start = range.map_or(0, |r| r.start);
         Self {
-            data,
+            data: sub,
             pos: 0,
-            base,
+            start,
+            base: base + start,
             tmp: 0,
             avail: 0,
             unstuff: false,
@@ -150,13 +170,15 @@ impl<'a> HeaderBitReader<'a> {
     }
 
     /// Finishes the header: aligns to a byte boundary, consuming the stuffed
-    /// byte after a trailing `0xFF`, and returns the total header length.
+    /// byte after a trailing `0xFF`, and returns the total header length
+    /// **measured in the parent slice** — for a reader built by
+    /// [`HeaderBitReader::new`] the two coincide.
     pub fn terminate(mut self) -> usize {
         if self.unstuff {
             // The next byte is the stuffed one; it belongs to the header.
             self.pos += usize::from(self.pos < self.data.len());
         }
-        self.pos
+        self.start + self.pos
     }
 }
 
@@ -194,5 +216,32 @@ mod tests {
     fn truncated_header_errors() {
         let mut r = HeaderBitReader::new(&[]);
         assert!(r.read_bit().is_err());
+    }
+
+    #[test]
+    fn new_in_recovers_the_sub_slice_offset() {
+        // A header sitting behind a six-byte SOP segment. The reader is
+        // handed the parent and the sub-slice; nobody adds 6 by hand.
+        let mut w = HeaderBitWriter::new();
+        w.put_bits(0b1011, 4);
+        let header = w.terminate();
+        let mut data = alloc::vec![0xFF, 0x91, 0x00, 0x04, 0x00, 0x00];
+        data.extend_from_slice(&header);
+
+        let mut r = HeaderBitReader::new_in(&data, &data[6..], 1000);
+        assert_eq!(r.read_bits(4).unwrap(), 0b1011);
+        // terminate() measures in the parent, so it spans the SOP bytes too.
+        assert_eq!(r.terminate(), 6 + header.len());
+
+        // Reported offsets are the caller's base plus the position in the
+        // parent — the sub-slice's own start included.
+        let mut r = HeaderBitReader::new_in(&data, &data[data.len()..], 1000);
+        let Err(Error::Codestream { offset, .. }) = r.read_bit() else {
+            panic!("a truncated header must error");
+        };
+        assert_eq!(offset, 1000 + data.len());
+
+        // `new` is the degenerate case: the parent is the sub-slice.
+        assert_eq!(HeaderBitReader::new(&data).terminate(), 0);
     }
 }
