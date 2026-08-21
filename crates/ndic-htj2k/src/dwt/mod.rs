@@ -18,6 +18,37 @@
 //! Layout is the standard in-place Mallat arrangement: level `l` transforms
 //! the current LL region (top-left `w_l x h_l`), leaving `[LL | HL]` over
 //! `[LH | HH]`.
+//!
+//! # Float evaluation order in the 9/7 path
+//!
+//! [`lift_97`] uses IEEE-strict `+` and `*`. Rust 1.98's `algebraic_add` /
+//! `algebraic_mul` — which license the backend to reassociate and contract —
+//! were tried here and **reverted after measurement**. Recorded so the
+//! experiment is not repeated:
+//!
+//! - The lifting loops are **elementwise, with no carried reduction**, so
+//!   there is no accumulator chain to reassociate. The only transformation the
+//!   permission enables is contracting `x + coeff * y` into an FMA.
+//! - That contraction needs FMA in the target feature set, and this workspace
+//!   builds for the **baseline `x86-64`** target, which has none. On the
+//!   shipped profile the algebraic and strict forms compiled to *identical*
+//!   instructions and produced *bit-identical* output over 1 M samples.
+//! - Under `-C target-cpu=native` the contraction does happen (6 scalar float
+//!   ops become 4) and shifts results by ~5.5e-7 of peak coefficient
+//!   magnitude — comfortably inside the irreversible quantization step, and in
+//!   fact slightly *more* accurate, since an FMA rounds once instead of twice.
+//!   It still produced **no measurable speedup**: the loop is bound by the
+//!   symmetric-extension index clamps and bounds checks, not by float
+//!   throughput.
+//! - Neither form vectorizes. The `.min()` / `.saturating_sub()` boundary
+//!   clamps on the load indices are what prevent it, and no amount of
+//!   arithmetic permission addresses that. Peeling the first and last
+//!   iterations so the interior is unconditionally stride-1 is the change that
+//!   would actually vectorize this loop.
+//!
+//! The **reversible 5/3 kernel above is integer lifting** and is out of scope
+//! for any of this: its bit-exactness is a correctness requirement, not a
+//! tolerance.
 
 pub mod simd;
 
@@ -107,6 +138,10 @@ const GAMMA: f32 = 0.882_911_1;
 const DELTA: f32 = 0.443_506_85;
 
 /// One irreversible 9/7 lifting step over de-interleaved buffers.
+///
+/// The multiply-accumulate stays on IEEE-strict `+` / `*`. Rust 1.98's
+/// `f32::algebraic_mul` / `algebraic_add` were measured here and reverted —
+/// see the module header for the numbers and the reason.
 fn lift_97(low: &mut [f32], high: &mut [f32], n: usize, coeff: f32, high_from_low: bool) {
     let nl = n.div_ceil(2);
     let nh = n / 2;
