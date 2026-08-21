@@ -29,10 +29,18 @@ Open the page that matches the task in front of you.
 
 ## Rust 1.98 migration
 
+Start with the summary; the rest are the phase records it draws on.
+
 | Document | What it covers |
 | --- | --- |
+| [Rust 1.98 Adoption](./rust-198/index.md) | **The summary.** The MSRV decision and its cost on three registries, the measured performance delta with the toolchain effect separated from the code effect, and the evidence that no encoded byte moved |
 | [Adoption Notes](./rust-198/adoption-notes.md) | Why the MSRV moved to 1.98 in one step, what downstream consumers on crates.io, PyPI, and npm see, and what each migration phase changed |
 | [Capability Probe](./rust-198/capability-probe.md) | What 1.98 actually offers this project, measured by a runnable probe — the exact confirmed signature of every API the migration depends on |
+| [Float Drift Inventory](./rust-198/float-drift-inventory.md) | Which exactness tests can observe a float reassociation, and every float arithmetic site in the workspace classified as a candidate |
+| [Algebraic Float in the 9/7 DWT](./rust-198/algebraic-97-dwt.md) | What happened when the irreversible CDF 9/7 lifting kernel was converted to algebraic float operations, and why it was reverted |
+| [Algebraic Codec Sweep](./rust-198/algebraic-codec-sweep.md) | The sweep of every remaining float site — why the hand-written SIMD module is kept, and where the `ndic-zfp` exactness boundary actually sits |
+| [Unsafe Audit](./rust-198/unsafe-audit.md) | Every `unsafe` block in the workspace: what was removed, what is kept and why, and the lint configuration that now makes the next one an argument |
+| [Ergonomic Sweep](./rust-198/ergonomic-sweep.md) | The smaller 1.98 APIs applied — `subslice_range` in the codestream reader, `format_into` in the bench reporter, and the three APIs with no site here |
 
 ## Decisions
 

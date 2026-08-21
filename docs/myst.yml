@@ -91,6 +91,7 @@ project:
         - file: development/read-the-docs.md
         - file: development/commits.md
         - file: development/style/rust.md
+        - file: development/rust-198/index.md
         - file: development/rust-198/adoption-notes.md
         - file: development/rust-198/capability-probe.md
         - file: development/rust-198/float-drift-inventory.md
