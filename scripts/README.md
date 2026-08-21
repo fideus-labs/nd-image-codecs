@@ -56,6 +56,7 @@ uvx --with pytest --with pyyaml --from pytest pytest scripts/tests -q
 | --- | --- |
 | `range-server.py` | Static file server honoring HTTP `Range:` (`python3 -m http.server` does not) — what the usage docs' byte-range examples run against, in CI and by hand |
 | `profile.sh` | `perf record`/flamegraph wrapper for one bench workload (workspace `profiling` profile) |
+| `rust198-remeasure.sh` | The Rust 1.98 migration's like-for-like re-measurement: bench suite + baseline diff + release tests + the five exactness suites into one timestamped folder. Works around the `panic = "abort"` link failure and the `serde`-gated suites that otherwise pass with zero tests — see [docs/development/rust-198/adoption-notes.md](../docs/development/rust-198/adoption-notes.md) |
 
 See [docs/development/test-data.md](../docs/development/test-data.md) and
 [docs/development/commands.md](../docs/development/commands.md).
