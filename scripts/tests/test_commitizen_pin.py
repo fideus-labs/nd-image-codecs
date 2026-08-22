@@ -37,6 +37,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import typing
 
 import pytest
 
@@ -58,10 +59,15 @@ CZ_VERSION_ASSIGNMENT = re.compile(r'^CZ_VERSION="(?P<version>[^"]+)"', re.MULTI
 # file would be scanned like any other and would have to be maintained in step
 # with CZ_VERSION, which is the exact chore this suite exists to remove.
 #
-# The optional flags between `install` and the package are why that arm is not
-# a plain `install commitizen` — the release workflow passes one.
+# The optional flags between the form and the package are why the `install` arm
+# is not a plain `install commitizen` — the release workflow passes one.
+#
+# `form` is captured rather than discarded so a test can require that each arm
+# still matches something; a count of matches cannot tell three of one form from
+# one of each.
 COMMITIZEN_SPEC = re.compile(
-    r"(?:--from|--spec|install(?:\s+--[\w-]+)*)\s+commitizen(?:==(?P<version>[^\s\"'`)]+))?"
+    r"(?P<form>--from|--spec|install)"
+    r"(?:\s+--[\w-]+)*\s+commitizen(?:==(?P<version>[^\s\"'`)]+))?"
 )
 
 # Files a reader or a runner could take a command from. Excludes lockfiles and
@@ -80,9 +86,9 @@ MINIMUM_EXPECTED_SPECS = 8
 # `prepare-release.sh` resolves commitizen three ways — uv, pipx run, and a
 # pipx install hint — which is one instance of each form COMMITIZEN_SPEC knows.
 # A single count over the whole tree cannot tell "one arm of the alternation
-# broke" from "a documented command was deleted"; requiring all three from this
-# one file can.
-EXPECTED_FORMS_IN_PREPARE = 3
+# broke" from "a documented command was deleted"; requiring each form by name
+# from this one file can.
+EXPECTED_FORMS_IN_PREPARE = frozenset({"--from", "--spec", "install"})
 
 
 @pytest.fixture(scope="module")
@@ -92,13 +98,24 @@ def cz_version() -> str:
     return match["version"]
 
 
-@pytest.fixture(scope="module")
-def specs() -> list[tuple[pathlib.Path, int, str, str | None]]:
-    """Every Commitizen package spec in the tracked tree.
+class Spec(typing.NamedTuple):
+    """One Commitizen package specification found in the tree."""
 
-    Each entry is (path, line number, the whole line, the pinned version or
-    `None` when the spec carries no `==`).
-    """
+    path: pathlib.Path
+    number: int
+    line: str
+    #: The pinned version, or `None` when the spec carries no `==`.
+    version: str | None
+    #: Which arm of `COMMITIZEN_SPEC` matched — `--from`, `--spec`, `install`.
+    form: str
+
+    def where(self) -> str:
+        return f"{self.path.relative_to(REPO)}:{self.number}"
+
+
+@pytest.fixture(scope="module")
+def specs() -> list[Spec]:
+    """Every Commitizen package spec in the tracked tree."""
     # Resolved rather than spelled `"git"`, so the process starts from an
     # absolute path and a missing git says so plainly instead of surfacing as a
     # bare FileNotFoundError from inside the fixture. (This also satisfies
@@ -127,7 +144,9 @@ def specs() -> list[tuple[pathlib.Path, int, str, str | None]]:
             path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
         ):
             for match in COMMITIZEN_SPEC.finditer(line):
-                found.append((path, number, line.strip(), match["version"]))
+                found.append(
+                    Spec(path, number, line.strip(), match["version"], match["form"])
+                )
     return found
 
 
@@ -141,23 +160,23 @@ def test_the_scan_finds_the_specs(specs):
 def test_the_release_script_exercises_every_form(specs):
     """Each arm of the alternation still matches something.
 
-    Without this, one arm could stop matching and the tree-wide floor above
-    would absorb the loss — every command that arm covers would then go
-    unchecked while the suite stayed green.
+    By form and not by count: three matches of one arm would satisfy a total
+    while the other two silently matched nothing, and every command those arms
+    cover would then go unchecked with the suite still green.
     """
-    in_prepare = [spec for spec in specs if spec[0] == PREPARE]
-    assert len(in_prepare) >= EXPECTED_FORMS_IN_PREPARE, (
-        f"{PREPARE.relative_to(REPO)} resolves commitizen "
-        f"{EXPECTED_FORMS_IN_PREPARE} ways, but the scan found "
-        f"{len(in_prepare)}; an arm of COMMITIZEN_SPEC has stopped matching"
+    seen = {spec.form for spec in specs if spec.path == PREPARE}
+    missing = EXPECTED_FORMS_IN_PREPARE - seen
+    assert not missing, (
+        f"{PREPARE.relative_to(REPO)} resolves commitizen with "
+        f"{sorted(EXPECTED_FORMS_IN_PREPARE)}, but the scan matched only "
+        f"{sorted(seen)}; the {sorted(missing)} arm(s) of COMMITIZEN_SPEC have "
+        "stopped matching"
     )
 
 
 def test_every_commitizen_spec_is_pinned(specs):
     unpinned = [
-        f"{path.relative_to(REPO)}:{number}: {line}"
-        for path, number, line, version in specs
-        if version is None
+        f"{spec.where()}: {spec.line}" for spec in specs if spec.version is None
     ]
     assert not unpinned, (
         "these install Commitizen at whatever version resolves today, so the "
@@ -169,9 +188,9 @@ def test_every_commitizen_spec_is_pinned(specs):
 def test_every_pin_is_the_release_version(specs, cz_version):
     accepted = {cz_version, "${CZ_VERSION}", "$CZ_VERSION"}
     mismatched = [
-        f"{path.relative_to(REPO)}:{number}: pins {version}, expected {cz_version}"
-        for path, number, line, version in specs
-        if version is not None and version not in accepted
+        f"{spec.where()}: pins {spec.version}, expected {cz_version}"
+        for spec in specs
+        if spec.version is not None and spec.version not in accepted
     ]
     assert not mismatched, (
         f"CZ_VERSION is {cz_version} in {PREPARE.relative_to(REPO)}:\n  "
