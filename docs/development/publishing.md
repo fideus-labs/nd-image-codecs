@@ -242,10 +242,17 @@ so the two cannot disagree on configuration.
 Sharing that file is not enough on its own: the generator reading it also has to
 be the same one, because commitizen's output has moved between releases. So
 `prepare-release.sh` pins `CZ_VERSION`, the workflow installs that version, and
-every command below names it too — hence the `==` in commands you would
-otherwise write bare. `scripts/tests/test_commitizen_pin.py` fails the build if
-any of them drifts, so bumping commitizen means changing one line and letting
-the test list the rest.
+every command in this documentation that *installs* commitizen names it too —
+hence the `==` in the commands below, where the package name would otherwise
+stand bare and resolve to whatever is current that day.
+`scripts/tests/test_commitizen_pin.py` fails the build if any of them drifts, so
+bumping commitizen means changing one line and letting the test list the rest.
+
+A bare `cz …` elsewhere on this page names the subcommand, not an install: it
+runs whichever commitizen the surrounding context already established, which is
+the pinned one everywhere it matters. `prepare-release.sh` is explicit about
+that — it accepts an already-installed `cz` only when `cz version` equals
+`CZ_VERSION`, and otherwise resolves a pinned one through uv or pipx.
 
 ```bash
 # Preview the section the next release would carry.

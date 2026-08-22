@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import shutil
 import subprocess
 
 import pytest
@@ -68,10 +69,20 @@ COMMITIZEN_SPEC = re.compile(
 TEXT_SUFFIXES = {".md", ".toml", ".yml", ".yaml", ".sh", ".py", ".rs", ".txt"}
 
 # A regex that matches nothing passes every assertion below, so the scan is
-# itself checked. This is a floor, not a count to maintain: it is well under
-# the sites that exist, and only trips if the pattern stops matching whole
-# classes of them.
+# itself checked. This is a floor, not a census: it is deliberately well under
+# the sites that exist, because raising it to the exact count would make every
+# added or deleted documented command edit this line, and *removing* a command
+# is not the defect this file exists to catch — naming a version other than
+# CZ_VERSION is. `test_the_release_script_exercises_every_form` is the sharper
+# half of the same guard: it pins the three shapes rather than the total.
 MINIMUM_EXPECTED_SPECS = 8
+
+# `prepare-release.sh` resolves commitizen three ways — uv, pipx run, and a
+# pipx install hint — which is one instance of each form COMMITIZEN_SPEC knows.
+# A single count over the whole tree cannot tell "one arm of the alternation
+# broke" from "a documented command was deleted"; requiring all three from this
+# one file can.
+EXPECTED_FORMS_IN_PREPARE = 3
 
 
 @pytest.fixture(scope="module")
@@ -88,8 +99,15 @@ def specs() -> list[tuple[pathlib.Path, int, str, str | None]]:
     Each entry is (path, line number, the whole line, the pinned version or
     `None` when the spec carries no `==`).
     """
+    # Resolved rather than spelled `"git"`, so the process starts from an
+    # absolute path and a missing git says so plainly instead of surfacing as a
+    # bare FileNotFoundError from inside the fixture. (This also satisfies
+    # Ruff's S607, which flags a partial executable path.)
+    git = shutil.which("git")
+    assert git, "git is not on PATH, so the tracked file list cannot be read"
+
     tracked = subprocess.run(
-        ["git", "ls-files", "-z"],
+        [git, "ls-files", "-z"],
         cwd=REPO,
         capture_output=True,
         check=True,
@@ -117,6 +135,21 @@ def test_the_scan_finds_the_specs(specs):
     assert len(specs) >= MINIMUM_EXPECTED_SPECS, (
         f"only {len(specs)} Commitizen spec(s) found; the pattern has probably "
         "stopped matching a form the repository uses"
+    )
+
+
+def test_the_release_script_exercises_every_form(specs):
+    """Each arm of the alternation still matches something.
+
+    Without this, one arm could stop matching and the tree-wide floor above
+    would absorb the loss — every command that arm covers would then go
+    unchecked while the suite stayed green.
+    """
+    in_prepare = [spec for spec in specs if spec[0] == PREPARE]
+    assert len(in_prepare) >= EXPECTED_FORMS_IN_PREPARE, (
+        f"{PREPARE.relative_to(REPO)} resolves commitizen "
+        f"{EXPECTED_FORMS_IN_PREPARE} ways, but the scan found "
+        f"{len(in_prepare)}; an arm of COMMITIZEN_SPEC has stopped matching"
     )
 
 
