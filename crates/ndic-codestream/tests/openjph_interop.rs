@@ -64,8 +64,10 @@ fn read_pgm(path: &Path) -> (usize, usize, Vec<i32>) {
     let maxval: u32 = fields[3].parse().unwrap();
     let body = &bytes[pos..];
     let samples = if maxval > 255 {
-        body.chunks_exact(2)
-            .map(|c| i32::from(u16::from_be_bytes([c[0], c[1]])))
+        body.as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&c| i32::from(u16::from_be_bytes(c)))
             .collect()
     } else {
         body.iter().map(|&b| i32::from(b)).collect()

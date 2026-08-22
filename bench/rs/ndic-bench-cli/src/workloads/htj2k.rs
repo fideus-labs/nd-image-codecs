@@ -54,6 +54,32 @@ fn dwt53_fwd(config: &BenchConfig) -> BenchOutput {
     raw_ns.into()
 }
 
+/// The irreversible 9/7 analysis lane.
+///
+/// Registered so the 9/7 kernel has a measurement of its own. Until Phase 03
+/// there was none: `plane_encode_1024` / `plane_decode_1024` return an empty
+/// [`BenchOutput`] under `config.irreversible` because 9/7 encode is not
+/// wired up, and the only other `transform` entry is the **integer 5/3**
+/// lane — so the `simd-97-ht` config's single record measured 5/3 despite its
+/// name. This entry calls [`ndic_htj2k::dwt::forward_97`] directly, which is
+/// the only honest way to attribute a number to the 9/7 code while the codec
+/// path that would reach it does not exist yet.
+///
+/// Unconditional, like `dwt53_fwd`: the kernel's cost does not depend on
+/// `config`, and gating it on `config.irreversible` would leave every other
+/// lane with no 9/7 record to compare against.
+fn dwt97_fwd(_config: &BenchConfig) -> BenchOutput {
+    let (w, h) = (2048usize, 2048usize);
+    #[allow(clippy::cast_precision_loss)] // 16-bit samples are exact in f32
+    let plane: Vec<f32> = synthetic_plane(w, h).iter().map(|&s| s as f32).collect();
+    let mut buf = plane.clone();
+    let raw_ns = time_samples(12, || {
+        buf.copy_from_slice(&plane);
+        ndic_htj2k::dwt::forward_97(&mut buf, w, h, 5).expect("dwt97");
+    });
+    raw_ns.into()
+}
+
 fn ht_encode(config: &BenchConfig) -> BenchOutput {
     if config.irreversible {
         return BenchOutput::default(); // 9/7 encode is not implemented yet
@@ -100,5 +126,6 @@ fn ht_decode(config: &BenchConfig) -> BenchOutput {
 }
 
 inventory::submit! { BenchEntry::new("transform", "dwt53_fwd_2048", dwt53_fwd) }
+inventory::submit! { BenchEntry::new("transform", "dwt97_fwd_2048", dwt97_fwd) }
 inventory::submit! { BenchEntry::new("htj2k", "plane_encode_1024", ht_encode) }
 inventory::submit! { BenchEntry::new("htj2k", "plane_decode_1024", ht_decode) }

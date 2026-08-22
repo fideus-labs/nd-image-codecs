@@ -16,7 +16,7 @@ members = [
 [workspace.package]
 version = "0.2.5"
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.98"
 license = "MIT"
 authors = ["Fideus Labs LLC"]
 repository = "https://github.com/fideus-labs/nd-image-codecs"
@@ -81,7 +81,17 @@ proptest = "1"
 approx = "0.5"
 
 [workspace.lints.rust]
-unsafe_code = "warn"
+# `deny`, not `warn`: the audit in docs/development/rust-198/unsafe-audit.md
+# accounts for every `unsafe` in the tree, and the only two that survive are
+# the NEON and AVX2 lanes in crates/ndic-htj2k/src/dwt/simd.rs, each carrying
+# its own module-scoped `#[allow(unsafe_code)]` with a written justification.
+# A new `unsafe` block anywhere else now has to be argued for in a diff rather
+# than merely tolerated by a warning nobody reads. Override narrowly at the
+# module that needs it — never by weakening this line.
+unsafe_code = "deny"
+# Edition 2024 makes this warn-by-default; `deny` closes the gap so a surviving
+# `unsafe fn` cannot silently treat its whole body as an unsafe block.
+unsafe_op_in_unsafe_fn = "deny"
 missing_docs = "warn"
 
 [workspace.lints.clippy]

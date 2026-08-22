@@ -203,7 +203,7 @@ pub struct BaselineManifest {
     /// Runner class the records were captured on; the σ noise envelope is
     /// only meaningful against records from the same class.
     pub machine: String,
-    /// Toolchain string, e.g. `rustc 1.91.0`.
+    /// Toolchain string, e.g. `rustc 1.98.0`.
     pub toolchain: String,
     /// Capture date, `YYYY-MM-DD`.
     pub captured: String,

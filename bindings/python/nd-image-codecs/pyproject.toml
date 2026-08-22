@@ -52,3 +52,10 @@ Documentation = "https://github.com/fideus-labs/nd-image-codecs/tree/main/docs"
 module-name = "nd_image_codecs._nd_image_codecs"
 python-source = "python"
 features = ["pyo3/abi3-py311", "pyo3/extension-module"]
+# maturin copies `python-source` verbatim, so a wheel built from a tree that has
+# ever run the test suite carries that tree's `__pycache__` — including bytecode
+# for interpreter versions this wheel was not built against. CI never sees it
+# (every release job builds from a fresh checkout), but the hand-publish path in
+# docs/development/publishing.md builds from a working tree, where it is the
+# normal state.
+exclude = ["**/__pycache__/**"]

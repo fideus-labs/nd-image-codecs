@@ -64,6 +64,14 @@ implementing anything.
   `docs: …` — see [./docs/development/commits.md](./docs/development/commits.md).
 - Clippy `all` + `pedantic` at warn, workspace-inherited; keep `cargo clippy
   --workspace --all-targets` clean before committing (CI runs `-D warnings`).
+- `unsafe_code` and `unsafe_op_in_unsafe_fn` are **`deny`** at the workspace
+  level. The only exceptions are the two `#[cfg]`-selected `core::arch` kernel
+  modules in `crates/ndic-htj2k/src/dwt/simd.rs`, each with its own
+  module-scoped `#[allow(unsafe_code)]` and a written justification. A new
+  `unsafe` block needs the same: narrow scope, stated reason, and a note in
+  [./docs/development/rust-198/unsafe-audit.md](./docs/development/rust-198/unsafe-audit.md),
+  which accounts for every `unsafe` in the tree. Never widen the workspace
+  default to make a block compile.
 - Every fallible public API returns `ndic_core::Result<T>`; do not add new
   error enums — extend `ndic_core::Error` message context instead. (The
   `codec_series` builder is the one exception: it has its own `SeriesError`
@@ -124,8 +132,8 @@ implementing anything.
 | --- | --- | --- |
 | `thiserror` | 2 | Error derive for `ndic_core::Error` and `SeriesError` |
 | `serde` / `serde_json` | 1 | Codec-series JSON metadata |
-| `rayon` | 1 | Code-block-level encode/decode parallelism |
-| `wide` | 0.7 | Portable SIMD fallback lanes (native paths use `core::arch`) |
+| `rayon` | 1 | Declared in `[workspace.dependencies]`, **used by no crate** — every codec is single-threaded and parallelism is the caller's business (see the [unsafe audit](./docs/development/rust-198/unsafe-audit.md)) |
+| `wide` | 0.7 | Also declared and unused; the portable SIMD fallback lanes are hand-written autovectorizable loops |
 | `zarrs` | 0.23 | Zarr v3 codec traits + plugin registry (feature-gated) |
 | `inventory` | 0.3 | Link-time registration: zarrs codec + bench entries |
 | `zfp-rs` | 0.1 | Pure-Rust ZFP core, bit-identical to the C reference on little-endian targets (the `zfp` codec) |

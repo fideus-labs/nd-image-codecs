@@ -1,6 +1,8 @@
 //! Report rendering for `ndic-bench`: records (a plain run) and diff rows
 //! (a run or compare against a baseline) in ascii / markdown / json / csv.
 
+use core::fmt::NumBuffer;
+
 use ndic_bench_core::{BenchRecord, DiffRow};
 
 /// Render nanoseconds human-readably.
@@ -14,7 +16,17 @@ fn fmt_ns(ns: u64) -> String {
     } else if ns >= 1_000 {
         format!("{:.2} µs", ns_f / 1e3)
     } else {
-        format!("{ns} ns")
+        // The one integer branch of the table's busiest cell — every record
+        // renders three of these (median, min, max), and the sub-microsecond
+        // rows are the block-coder and wavelet lanes, i.e. most of a run.
+        // `format_into` writes the digits into a stack `NumBuffer`, so the
+        // only allocation left is the returned `String`, sized exactly.
+        let mut buf = NumBuffer::new();
+        let digits = ns.format_into(&mut buf);
+        let mut out = String::with_capacity(digits.len() + 3);
+        out.push_str(digits);
+        out.push_str(" ns");
+        out
     }
 }
 
@@ -220,6 +232,19 @@ mod tests {
             time_regressed,
             ratio_regressed,
         }
+    }
+
+    #[test]
+    fn ns_rendering_is_unchanged_across_the_unit_boundaries() {
+        // `format_into` replaced `format!("{ns} ns")`; the rendered column
+        // must be byte-identical, boundaries included.
+        assert_eq!(fmt_ns(0), "0 ns");
+        assert_eq!(fmt_ns(1), "1 ns");
+        assert_eq!(fmt_ns(999), "999 ns");
+        assert_eq!(fmt_ns(1_000), "1.00 µs");
+        assert_eq!(fmt_ns(999_999), "1000.00 µs");
+        assert_eq!(fmt_ns(1_000_000), "1.00 ms");
+        assert_eq!(fmt_ns(1_000_000_000), "1.00 s");
     }
 
     #[test]
