@@ -142,7 +142,8 @@ anyone building against the crates.
   What remains is the NEON and AVX2 kernel code, which cannot be written without
   `unsafe` while `core::simd` is unstable. Its `allow(unsafe_code)` moved from
   the whole file (507 lines) to the two `#[cfg]`-selected kernel modules (81
-  lines), so exactly one is live per target and **none on either wasm target** —
+  lines for AVX2, 97 for NEON), so exactly one is live per target and **none on
+  either wasm target** —
   the published WASM bundle is built from `unsafe`-free first-party code. Across
   the crate that is 10 `unsafe` keywords down to 9, and the one block resting on
   a hand-written aliasing argument down to none.
