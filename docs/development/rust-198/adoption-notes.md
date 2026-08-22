@@ -310,8 +310,10 @@ later delta is attributable to a specific change rather than to the compiler upg
   stable since 1.0, and the block survived only because nobody looked again.
 - **The rewrite is a 10–17 % speedup, and this entry originally said it was a ~1 % cost.**
   Corrected in Phase 07. The Phase 05 number came from a scratch harness that times the
-  vertical pass in isolation; it is reproducible (+0.13 / +0.84 / +1.20 / +1.36 % on
-  re-run) and it does not describe the shipped code. Building the real `ndic-bench` binary
+  vertical pass in isolation, and it does not describe the shipped code. (Whether that
+  harness *reproduces* is a separate question this migration cannot answer — its re-run was
+  never captured to a file, and a later re-run scattered widely.) Building the real
+  `ndic-bench` binary
   twice, changing only the body of `split_three`, moves `transform/dwt53_fwd_2048` by
   **−10.3 % to −12.6 %** on the five SIMD lanes and by nothing outside the noise floor on
   the six scalar ones; Phase 07's independent attribution against `cc0cd12` reads −14.7 %

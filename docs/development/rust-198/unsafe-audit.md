@@ -80,10 +80,13 @@ under a single file-scoped `#![allow(unsafe_code)]` on line 12. Line numbers are
 | 357 | `unsafe {}` in `split_three` | Builds `(&[i32], &mut [i32], &[i32])` for three rows of one plane out of a single `*mut i32` | Aliasing: three slices conjured from one pointer, disjointness argued in a comment | **Yes** — removed, see [What was removed](#what-was-removed) |
 
 Only one lane is ever compiled: `mod neon` is `#[cfg(target_arch = "aarch64")]`, `mod avx2`
-is `#[cfg(target_arch = "x86_64")]`. So of the ten source occurrences, an x86-64 build
-sees five (lines 179, 190, and 209 expanded four times), an aarch64 build sees six, and
-every other target — including both wasm targets — sees **one**, the `split_three` block,
-which is the one this phase removed. On wasm the workspace is now `unsafe`-free.
+is `#[cfg(target_arch = "x86_64")]`. The ten source occurrences split **6 / 3 / 1** — six in
+`mod neon`, three in `mod avx2` (lines 179, 190, and 209, the last of which the `kernel!`
+macro expands four times, so the x86-64 lane holds six `unsafe` tokens *after* expansion),
+and one, `split_three`, at file scope and therefore arch-independent. So an x86-64 build
+saw **four** of the ten and an aarch64 build **seven**, while every other target — including
+both wasm targets — saw exactly **one**: the `split_three` block, which is the one this
+phase removed. On wasm the workspace is now `unsafe`-free.
 
 ### The bindings: `unsafe` the lint cannot see
 
@@ -251,22 +254,32 @@ same effect at −14.7 % to −17.1 %; both are large, both are the same sign, a
 quote is **10–17 %**.
 
 **Why the harness said +1 %.** The harness times five levels of the vertical forward pass
-driving AVX2 kernels directly, with the splitter passed in as a `fn` pointer. Re-run in
-Phase 07 it still reads **+0.13 / +0.84 / +1.20 / +1.36 %**, reproducing the table below.
-Three call shapes were then tried in one process to find which indirection was hiding the
-effect:
+driving AVX2 kernels directly, with the splitter passed in as a `fn` pointer. Three call
+shapes were reimplemented in one process to find which indirection was hiding the effect —
+these are the captured numbers, from Phase 07's `split-three-reconcile.txt`:
 
 | Harness arm | 256² | 512² | 1024² | 2048² |
 | --- | --- | --- | --- | --- |
-| splitter behind a `fn` pointer, kernels direct (the original) | +0.13 % | +0.84 % | +1.20 % | +1.36 % |
-| splitter monomorphised, kernels direct | −0.61 % | −0.60 % | −1.11 % | +1.17 % |
+| splitter behind a `fn` pointer, kernels direct (the original's shape) | −0.07 % | +0.47 % | +0.35 % | −0.72 % |
+| splitter monomorphised, kernels direct | −1.02 % | −0.40 % | −1.01 % | +0.17 % |
 | splitter monomorphised, kernels behind a `RowKernel` table (the shipped shape) | −0.74 % | +0.32 % | −0.30 % | −0.04 % |
 
-**None of them.** Every shape reads within about ±1 %, so the call structure is not the
+**None of them.** Every shape reads inside ±1.02 %, so the call structure is not the
 explanation and the harness simply does not contain the effect. It models the vertical
 forward pass with two of the four kernels and no horizontal pass, no `interleave_rows`, and
 no `forward_53` driver — and whatever `split_at_mut` unlocks in the real transform lives in
-what the harness left out. Confirming the mechanism needs the assembly, not another timing;
+what the harness left out.
+
+Two things this does *not* establish, flagged during final verification rather than left
+implicit. The Phase 05 harness binary was also re-run at the time and reported as
+reproducing its original **+0.13 / +0.84 / +1.20 / +1.36 %**, but that output was never
+written to a file; re-running the same binary later scattered from −6 % to +11 % across
+five runs on a loaded box. And the three arms above *reimplement* the harness's shape
+rather than being the harness, so they refute the indirection hypothesis without confirming
+what the original measured. The argument only needs what is captured: no shape here comes
+within an order of magnitude of the shipped binary's 10–17 %.
+
+Confirming the mechanism needs the assembly, not another timing;
 the plausible-sounding candidate is that three slices conjured from one `*mut i32` have
 provenance LLVM cannot relate, while `split_at_mut` yields provably disjoint borrows, but
 that is a hypothesis and is recorded as one.
@@ -318,8 +331,9 @@ narrower question this audit inherits — how much of that win is the *intrinsic
 than the row restructuring — and found the AVX2 lane worth only **1–3 %** over the safe
 portable lane, which autovectorizes to 128-bit SSE2 by itself.
 
-That 1–3 % is the whole case for keeping 5 of the 9 remaining `unsafe` occurrences, and it
-is thin. It is not acted on here for two reasons: 1–3 % on the encode hot path is a real
+That 1–3 % is the whole case for keeping `mod avx2` — 3 of the 9 remaining `unsafe`
+occurrences in source, six once `kernel!` expands — and it is thin. It is not acted on here
+for two reasons: 1–3 % on the encode hot path is a real
 regression to accept for a lint number, and the *other* lane is NEON, which is
 unmeasurable on this x86-64 host — deleting AVX2 while keeping NEON would leave the module
 `unsafe` anyway and buy nothing. **The decision to revisit is on aarch64 hardware**, where
@@ -353,7 +367,7 @@ covered by the file-level allow.
 
 ### The `target_feature` note
 
-Six of the nine remaining occurrences are not intrinsics at all — they are `unsafe {}`
+Five of the nine remaining occurrences are not intrinsics at all — they are `unsafe {}`
 blocks around *calls* to `rows` (four in `neon`, and the one inside `macro_rules! kernel`
 that expands four times in `avx2`). Since `target_feature_11`, a `#[target_feature]`
 function may be declared safe and called without `unsafe` from a caller that carries the
@@ -364,9 +378,10 @@ table the lane dispatch is built on.
 
 For `neon::rows` the story is different and simpler: NEON is baseline aarch64, the function
 carries no `#[target_feature]` at all, and its `unsafe` is purely the raw-pointer loads. It
-could be `fn rows` with the `unsafe {}` block kept inside — turning 5 occurrences into 1 —
-and that is a genuine cleanup. It is not taken here because it is unverifiable on this
-host: the aarch64 lane cannot be compiled, let alone differentially tested, on x86-64, and
+could be `fn rows` with the `unsafe {}` block kept inside — turning the module's six
+occurrences into one — and that is a genuine cleanup. It is not taken here because it is
+unverifiable on this host: the aarch64 lane cannot be compiled, let alone differentially
+tested, on x86-64, and
 an untested edit to the shipped DWT is exactly the kind of change this phase exists to
 discourage. **Carried forward to the same aarch64 session as the NEON keep-or-delete
 measurement.**
@@ -453,8 +468,8 @@ actually shipped for wasip2 — is clean on both targets.
 1. **Measure NEON against portable on aarch64.** If the gap is the same 1–3 % AVX2 shows,
    delete both intrinsic lanes, keep the row restructuring that produces the actual ~10×,
    and take the workspace to `forbid(unsafe_code)`.
-2. **`neon::rows` can drop its `unsafe fn`** — 5 occurrences to 1 — but only with an
-   aarch64 differential test to back it.
+2. **`neon::rows` can drop its `unsafe fn`** — the module's six occurrences to one — but
+   only with an aarch64 differential test to back it.
 3. **`rayon` is declared in `[workspace.dependencies]` and used by nothing.** So is `wide`.
    Either wire them up or drop them; `AGENTS.md` currently documents both as if they were
    load-bearing.

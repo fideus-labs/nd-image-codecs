@@ -44,7 +44,7 @@ the Phase 02 baseline at `cc0cd12`; the raw output lives in the playbook's
 | Golden values moved | **0** — no vector regenerated, no tolerance assertion edited |
 | `algebraic_*` sites shipped | **0** — 2 converted and reverted; every other candidate measured and ruled out |
 | `unsafe` keywords in first-party source | 10 → **9**; hand-written aliasing arguments 1 → **0** |
-| Lines under an `allow(unsafe_code)` | 507 (a whole file) → **81** (one `#[cfg]`-selected module) |
+| Lines under an `allow(unsafe_code)` | 507 (a whole file) → **81** on x86-64, **97** on aarch64 (one `#[cfg]`-selected module, never both) |
 | Workspace `unsafe_code` | `warn` → **`deny`** |
 | 1.98 APIs applied | 4 sites, all `subslice_range` / `format_into`; **5 of the 7** APIs had no site at all |
 | Largest code effect | `transform/dwt53_fwd_2048`, SIMD lanes, **−15 % to −18 %** |
@@ -152,9 +152,10 @@ same toolchain and the same tracked `.cargo/config.toml` (verified identical —
 The scalar `dwt53` row is called noise **on evidence, not on principle**: the six scalar
 configs run byte-identical code through `dwt::forward_53` — the workload selects the lane
 on `BenchConfig::simd`, and nothing on that path changed — yet their deltas scatter
-−1.9 / −3.3 / −4.4 / −5.4 / −5.4 / −6.2 %. A spread that wide across configs doing
-identical work *is* the measurement's noise floor at a 62 ms workload, so no claim
-narrower than it can be made about that lane.
+−1.9 / −3.3 / −4.4 / −5.4 / −5.4 / −6.2 % (the three-arm run's `C−A` column; the `--filter`
+run scatters just as widely over the same six configs, −1.0 to −5.6 %). A spread that wide
+across configs doing identical work *is* the measurement's noise floor at a ~62 ms
+workload, so no claim narrower than it can be made about that lane.
 
 :::{warning} The whole-suite comparison is not the code effect
 `compare-vs-pre.txt` reads −11 % to −23 % on several workloads and flags one
@@ -202,13 +203,22 @@ and it is recorded as a hypothesis in the [Unsafe Audit](./unsafe-audit.md#split
 
 Phase 05 originally recorded that same rewrite as a **+1 % cost** — opposite sign, an
 order of magnitude smaller. Phase 07 settled it and **Phase 05 was wrong**, but not
-because it measured carelessly. Its scratch harness was pinned, interleaved,
-order-alternating, bit-exactness-checked, and consistent across four plane sizes; re-run,
-it still reads +0.13 / +0.84 / +1.20 / +1.36 %. Three different call shapes were then
-tried in one process — including the shipped one — and **none of them contains the
-effect**, so the harness under-models the transform rather than mis-calling into it: it
-drives the vertical forward pass with two of the four kernels, no horizontal pass, no
-`interleave_rows`, and no `forward_53` driver.
+because it measured carelessly: its scratch harness was pinned, interleaved,
+order-alternating, bit-exactness-checked, and consistent across four plane sizes. Three
+different call shapes were then tried in one process — including the shipped one — and
+**none of them contains the effect**, all sitting inside ±1.02 %, so the harness
+under-models the transform rather than mis-calling into it: it drives the vertical forward
+pass with two of the four kernels, no horizontal pass, no `interleave_rows`, and no
+`forward_53` driver.
+
+One caveat on that reconstruction, recorded because the alternative is to let it look
+firmer than it is: the Phase 05 harness's own re-run was quoted in the phase write-up as
++0.13 / +0.84 / +1.20 / +1.36 % but never written to a file, and re-running the same binary
+during final verification scattered from −6 % to +11 % across five runs on a
+heavily-I/O-loaded box. So *"the harness reproduces its original number"* is not something
+this migration can show. The conclusion does not rest on it — the three-call-shape run is
+captured, and no shape in it comes within an order of magnitude of the shipped binary's
+10–17 %.
 
 **A scratch harness that isolates a function is measuring the harness until something ties
 it to the shipped path.** The tie-back that would have caught this costs one extra build:
@@ -385,12 +395,14 @@ Full inventory, with every block's line number and safety argument, in the
 | Files containing `unsafe` | 1 | 1 |
 | `unsafe` keywords in first-party source | 10 | **9** |
 | Blocks resting on a hand-written aliasing argument | 1 | **0** |
-| Lines covered by an `allow(unsafe_code)` | 507 (a whole file) | **81** (one `#[cfg]`-selected module) |
+| Lines covered by an `allow(unsafe_code)` | 507 (a whole file) | **81** on x86-64, **97** on aarch64 (one `#[cfg]`-selected module, never both) |
 | `unsafe` reachable on a wasm build | 1 | **0** |
 
 Only one lane is ever compiled — `mod neon` is `#[cfg(target_arch = "aarch64")]` and
-`mod avx2` is `#[cfg(target_arch = "x86_64")]` — so an x86-64 build sees 5 occurrences, an
-aarch64 build 6, and every other target, both wasm targets included, now sees **none**.
+`mod avx2` is `#[cfg(target_arch = "x86_64")]` — and the nine split **6 in `neon`, 3 in
+`avx2`**, so an aarch64 build sees six and an x86-64 build three, the last of which the
+`kernel!` macro expands four times into six tokens. Every other target, both wasm targets
+included, now sees **none**.
 
 **What was removed** is `split_three`, and it turned out to be the performance story of
 the whole branch (see [above](#the-split-three-gain)). It was not a 1.98 API that made it
@@ -478,7 +490,7 @@ Every gate CI runs, at `9ae6dc4`:
 
 | Gate | Result |
 | --- | --- |
-| `cargo test --workspace --release` | **211 passed, 0 failed, 0 ignored** |
+| `cargo test --workspace --release` (with the `panic="unwind"` override — see the link-collision note below) | **211 passed, 0 failed, 0 ignored** |
 | The five exactness suites, individually | all pass with non-zero counts — see the [golden-value table](#golden-values) |
 | `ndic-zarr` codec tests `--features zarrs` | **53 passed** |
 | Python binding — wheel → `pytest` | **285 passed, 0 skipped**, native extension present |
@@ -502,18 +514,26 @@ Two boundaries are worth naming so nobody rediscovers them as regressions:
   reached through `ndic-zarr`'s *dev*-dependency on `zarrs`. Both are structural, both
   reproduce on a clean tree, and both are why CI scopes its `wasm` job to
   `-p ndic-zarr -p ndic-core`.
-- **`cargo test --workspace --release` does not link in this repo**, on 1.98 and equally on
-  1.91. `[profile.release]` sets `panic = "abort"`, so `cargo test` builds the dependency
-  graph twice, and `ndic-zarr`'s `cdylib` carries no metadata hash, so the two builds
-  collide on one filename ([cargo#6313](https://github.com/rust-lang/cargo/issues/6313)).
+- **`cargo test --workspace --release` can fail to link, intermittently.**
+  `[profile.release]` sets `panic = "abort"`, so `cargo test` builds the dependency graph
+  twice, and `ndic-zarr`'s `cdylib` carries no metadata hash, so the two builds collide on
+  one `libndic_zarr.so` — cargo warns about it by name on every run
+  ([cargo#6313](https://github.com/rust-lang/cargo/issues/6313)). What the collision does
+  next depends on which build wrote the file last, and that is **not** deterministic:
+  running the bare command three times over one tree produced one link failure (undefined
+  `serde_json` symbols reached through `ndic_zarr` while linking the `ndic` binary) and two
+  clean runs of **211 passed**, the third of them from an empty target directory. Treat a
+  green run as luck rather than as evidence the collision is gone.
   `scripts/rust198-remeasure.sh` passes `--config profile.release.panic="unwind"`, which
-  collapses the graphs. A panic strategy cannot move a golden value, but the real fix is
-  still owed.
+  collapses the two graphs so the collision cannot arise at all; that is why every measured
+  and captured run in this migration used it. A panic strategy cannot move a golden value,
+  but the real fix — giving the `cdylib` a distinct name, or dropping it from the default
+  build — is still owed.
 
 ### Records corrected
 
 The final sweep is also where the phase records were checked against reality rather than
-against each other. Five corrections landed:
+against each other. Five corrections landed there:
 
 1. **The `split_three` rewrite is a 10–17 % gain, not a ~1 % cost** — the sign error
    described [above](#the-measurement-lesson). `unsafe-audit.md` and `adoption-notes.md`
@@ -530,6 +550,28 @@ against each other. Five corrections landed:
    what a person types when narrowing a failure.
 5. **Not a discrepancy:** `unsafe-audit.md`'s 207 was correct when written.
 
+A final verification pass then re-ran every gate independently and checked each number on
+this page against a file rather than against another page. Everything green reproduced —
+211 tests, clippy clean on host and both wasm targets, `fmt` clean, the strict docs build
+at 37 pages, `publish-crates.py --dry-run` exit 0 with the probe in none of the seven
+tarballs and a README in all of them. Four more corrections came out of it, and all four
+are already folded into the text above:
+
+6. **The per-lane `unsafe` counts were wrong in four places.** A mechanical token census
+   puts the ten before at neon 6 / avx2 3 / `split_three` 1, and the nine after at neon 6 /
+   avx2 3. So an x86-64 build saw four of the ten, not five; it sees three of the nine, not
+   five; five of the nine are non-intrinsic call blocks, not six; and the narrowed `allow`
+   is 81 lines on x86-64 but 97 on aarch64, which the tables gave as a bare 81.
+7. **The release-mode link failure is intermittent, not certain** — see the link-collision
+   note above. Stating it as a hard fact would have made the next green run look like a
+   fix.
+8. **The Phase 05 harness re-run was never captured**, and the figures quoted for it did
+   not come from the file the write-up cites. The captured reconciliation is unaffected and
+   still refutes the indirection hypothesis; the "it reproduces" claim is withdrawn.
+9. **The six scalar-lane deltas come from the three-arm run, not the `--filter` run** the
+   surrounding section describes. Both scatter equally widely, so the conclusion stands,
+   but the provenance now matches the artifact a reader would open.
+
 (carried-forward)=
 
 ## Carried forward
@@ -539,9 +581,9 @@ Open at the close of the migration, with what each one needs:
 1. **Measure NEON against the portable lane on aarch64 hardware.** If the gap is the same
    1–3 % AVX2 shows, both intrinsic lanes can go, the row restructuring that produces the
    actual ~10× stays, and the workspace can take `forbid(unsafe_code)`.
-2. **`neon::rows` can drop its `unsafe fn`** — 5 occurrences to 1 — but only with an
-   aarch64 differential test behind it. An untested edit to the shipped DWT is exactly
-   what this migration is structured to avoid.
+2. **`neon::rows` can drop its `unsafe fn`** — that module's six occurrences to one — but
+   only with an aarch64 differential test behind it. An untested edit to the shipped DWT is
+   exactly what this migration is structured to avoid.
 3. **Establish why `split_at_mut` is 10–17 % faster.** The provenance hypothesis is
    plausible and unproven; it needs the assembly, not another timing.
 4. **The 9/7 kernel's real bottleneck is the boundary clamps.** Peeling the first and last
