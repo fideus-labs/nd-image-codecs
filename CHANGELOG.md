@@ -151,6 +151,24 @@ anyone building against the crates.
   `unsafe_op_in_unsafe_fn = "deny"`. Full inventory and the reasoning behind every
   kept block: [Unsafe Audit](docs/development/rust-198/unsafe-audit.md).
 
+### 📦 Build
+
+- ship a README with every published crate
+
+  `ndic-lift`, `ndic-zfp`, and `ndic-zarr` inherited `homepage` from the
+  workspace but not `readme`, so cargo found no README in their own directories
+  and published none — their crates.io pages have rendered empty since 0.1.0.
+  All seven published crates now inherit both. This is packaging metadata only;
+  no code, no dependency, and no version changed.
+
+- keep `__pycache__` out of the Python wheel
+
+  maturin copies `python-source` verbatim, so a wheel built from a working tree
+  that had run the test suite carried that tree's `__pycache__` — bytecode for
+  interpreter versions the wheel was not built against. The release workflow
+  never produced one (every job builds from a fresh checkout); the hand-publish
+  path in [Publishing](docs/development/publishing.md) did.
+
 ## v0.2.5 (2026-08-21)
 
 ### 🐛 Bug Fixes

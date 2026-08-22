@@ -8,6 +8,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme.workspace = true
 
 # cdylib for the wasm-pack build (`bindings/typescript`, feature `wasm`);
 # rlib so every native consumer links the crate as usual.
