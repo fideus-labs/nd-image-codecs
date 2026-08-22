@@ -33,7 +33,7 @@ The short version, before the evidence:
 | Files containing `unsafe` | 1 | 1 |
 | `unsafe` keywords in first-party source | 10 | 9 |
 | `unsafe` blocks whose safety argument is hand-written aliasing reasoning | 1 | **0** |
-| Lines covered by an `allow(unsafe_code)` | 507 (a whole file) | **81** (one `#[cfg]`-selected module) |
+| Lines covered by an `allow(unsafe_code)` | 507 (a whole file) | **81** on `x86_64`, **97** on `aarch64` (one `#[cfg]`-selected module) |
 | Workspace `unsafe_code` | `warn` | **`deny`** |
 | Workspace `unsafe_op_in_unsafe_fn` | unset (edition default `warn`) | **`deny`** |
 
@@ -50,10 +50,13 @@ grep -rn   "unsafe_code"           --include="*.rs" --include="*.toml" crates/ b
 grep -rn   "unsafe_op_in_unsafe_fn" -r --include="*.rs" --include="*.toml" .
 ```
 
-`grep -w unsafe` is the one that matters: it is a superset of the other four and it
-catches an `unsafe` this audit would otherwise have missed — the one inside a
-`macro_rules!` body, which `unsafe {` alone finds but which is easy to under-count
-because it expands four times.
+`grep -w unsafe` is the one that matters: it is the broadest scan for a standalone Rust
+`unsafe` token, so it subsumes the `unsafe fn` and `unsafe impl` searches, and it catches
+an `unsafe` this audit would otherwise have missed — the one inside a `macro_rules!`
+body, which `unsafe {` alone finds but which is easy to under-count because it expands
+four times. It is *not* a superset of the last two: `_` is a word constituent, so `-w`
+makes `unsafe_code` and `unsafe_op_in_unsafe_fn` invisible to it. Those lint keys need
+the separate scans above, which is why they are listed separately.
 
 Two negative results are worth recording because they bound the audit:
 

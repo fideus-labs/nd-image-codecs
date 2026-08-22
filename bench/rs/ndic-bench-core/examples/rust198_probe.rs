@@ -123,8 +123,10 @@ fn probe_float_algebraic() -> Outcome {
     }
 
     // Whether the two columns actually differ depends on the opt-level: at
-    // `-C opt-level=0` nothing is reassociated and both read 0. Reported, not
-    // asserted — the pass criterion below is the exact-arithmetic check.
+    // `-C opt-level=0` nothing is reassociated, so both walk the ladder in
+    // order — the two large terms cancel to zero and the 62 trailing `1.0`s
+    // leave both columns reading 62. Reported, not asserted — the pass
+    // criterion below is the exact-arithmetic check.
     let reassociated = strict_32.to_bits() != algebraic_32.to_bits()
         || strict_64.to_bits() != algebraic_64.to_bits();
 

@@ -33,7 +33,7 @@ are recorded below with what was searched, because "there is nothing to convert 
 only useful if the next reader can see it was looked for.
 
 Nothing about the emitted or accepted bytes changed. That is the whole point of the
-`subslice_range` work — see [Verification](#verification) for how it was established
+`subslice_range` work — see [Verification](#ergonomic-sweep-verification) for how it was established
 rather than assumed.
 
 ## What was applied where
@@ -164,6 +164,8 @@ The other three branches of the same function are `{:.2}` float renderings, and
 | [`zarr_io.rs`](https://github.com/fideus-labs/nd-image-codecs/blob/main/crates/ndic-cli/src/zarr_io.rs) | `format_into` | **No integer is formatted in a loop.** Every `format!` in the file is a one-shot `with_context` on a path, dtype, or shape in an error path. |
 | `report.rs` — `fmt_ns`'s three float branches, `fmt_ratio`, `fmt_change` | `format_into` | `format_into` is stable on integer types only; these render `f64` with a precision spec. |
 | `bench/rs/ndic-bench-cli/src/main.rs` | `format_into` | The two `format!` calls in the run loop join `&str` module and benchmark names. No integers. |
+
+(ergonomic-sweep-verification)=
 
 ## Verification
 
