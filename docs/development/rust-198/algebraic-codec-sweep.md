@@ -165,6 +165,8 @@ The reason is structural rather than lucky. `(v & 0x7FF) | 0x800` is an integer 
 `algebraic_*` has nothing to license.** The function also still has zero callers anywhere
 in `crates/`, `bench/`, or `bindings/`, exactly as the inventory found.
 
+(delta-float-is-a-scan)=
+
 ### `delta_float!` is a scan, not a reduction
 
 This corrects the inventory on a point that matters for any future sweep.

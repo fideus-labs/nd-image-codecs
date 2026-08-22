@@ -7,10 +7,11 @@
 #   scripts/rust198-remeasure.sh --bench-only
 #   scripts/rust198-remeasure.sh --tests-only --out /tmp/check
 #
-# Phases 03-07 change float arithmetic, so every claim about a speed or a
-# golden value has to compare like with like. This script is the "like": it
-# pins the profile, the feature set, the workload filter, and the output
-# layout, so two runs differ only by the code between them.
+# From Phase 03 on, every phase that touches code or claims a speed has to
+# compare like with like -- whether or not it moves a float operation. This
+# script is the "like": it pins the profile, the feature set, the workload
+# filter, and the output layout, so two runs differ only by the code between
+# them.
 #
 # Output lands in target/rust198-measurements/<timestamp>[-<label>]/ (override
 # the parent with --out):
@@ -111,7 +112,11 @@ sed 's/^/    /' "$out/manifest.txt"
 if $do_bench; then
   echo "==> bench suite"
   bench_start=$SECONDS
-  cargo run -p ndic-bench-cli --release -- run --format markdown > "$out/bench-table.md"
+  # Same --config as the test half: manifest.txt records one profile for the
+  # whole run, and a bench measured under panic=abort is not that profile.
+  # It also keeps both halves on one build graph instead of two.
+  cargo run -p ndic-bench-cli --release --config "$PANIC_CFG" \
+    -- run --format markdown > "$out/bench-table.md"
 
   {
     echo "# Bench run — $stamp${label:+ ($label)}"
@@ -191,8 +196,11 @@ if $do_tests; then
       echo "    FAIL  $pkg/$suite"
       test_status=1
     elif [[ "${n:-0}" -eq 0 ]]; then
-      # Green and empty is the failure mode this line exists to surface.
+      # Green and empty is the failure mode this line exists to surface, so it
+      # has to fail the run too — a measurement that tested nothing is not a
+      # measurement, and cargo exited 0 on it.
       echo "    ZERO  $pkg/$suite ran 0 tests — check the feature gate"
+      test_status=1
     else
       echo "    ok    $pkg/$suite ($n tests)"
     fi

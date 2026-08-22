@@ -117,6 +117,8 @@ Two effects are in play and they must not be quoted as one: the **toolchain effe
 (1.91 → 1.98, no code change) and the **code effect** (`cc0cd12` → `9ae6dc4`, same
 compiler). They were measured separately.
 
+(the-toolchain-effect)=
+
 ### The toolchain effect
 
 **On output: exactly zero.** Phase 02 established it for the compiler bump alone across 29

@@ -72,8 +72,11 @@ That is why the phase that captures a benchmark and golden-vector baseline runs
 (how-to-re-measure)=
 ## How to re-measure
 
-Every phase from 03 on changes float arithmetic, so every claim about a speed or a golden
-value has to compare like with like. One command does that:
+From Phase 03 on, every phase that touches code or makes a performance claim has to
+compare like with like — whether or not it ends up changing float arithmetic. Phases 03
+and 04 evaluated algebraic float directly and both declined it; 05 and 06 changed the
+`unsafe` surface and the codestream offset arithmetic without moving a float operation,
+and still needed the measurement to *show* they had not. One command does that:
 
 ```bash
 scripts/rust198-remeasure.sh --label phase03-after
@@ -322,7 +325,7 @@ later delta is attributable to a specific change rather than to the compiler upg
   [Cost](./unsafe-audit.md#splitter-cost) for the full reconciliation — including the
   lesson, which is that a microbenchmark can pass every quality check and still answer a
   different question than the one asked.
-- **The `allow` went from 507 lines to 81.** The file-scoped `#![allow(unsafe_code)]` is
+- **The `allow` went from 507 lines to 81 on x86-64, 97 on aarch64.** The file-scoped `#![allow(unsafe_code)]` is
   replaced by two module-scoped ones on `mod neon` and `mod avx2`, which are mutually
   exclusive by `#[cfg]` — so exactly one is live per target, and none on wasm. Everything
   else in the file, including both public entry points, is back under the deny.

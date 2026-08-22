@@ -154,16 +154,32 @@ The one that matters is `delta_zarrs.rs`. `roundtrip_dtype::<f32>("float32", |i|
 drives the `delta_float!` codec and asserts
 `assert_eq!(back, data, "float32 must round-trip exactly")` — an exact float comparison.
 
-**But it would not catch a reassociation regression**, and this is the trap in the whole
-inventory. The fixture is `|i| i as f32` for `i` in `0..512`: every value is a small
-exact integer, every partial sum is a small exact integer, and every one of them is
+**But it would not catch a change to this codec's arithmetic**, and this is the trap in
+the whole inventory. The fixture is `|i| i as f32` for `i` in `0..512`: every value is a
+small exact integer, every partial sum is a small exact integer, and every one of them is
 exactly representable in `f32`. Under those inputs `delta` then `cumsum` is exact
-*regardless* of summation order, so a reassociated `cumsum` still round-trips and the
-test still passes — while the codec's byte-level agreement with `numcodecs.delta` on real
-data has silently broken. Green here would mean nothing.
+*regardless* of how the sum is evaluated, so the test still passes — while the codec's
+byte-level agreement with `numcodecs.delta` on real data has silently broken. Green here
+would mean nothing.
 
-**Verdict:** drift-*capable* but not drift-*sensitive*. Do not treat a green
-`delta_zarrs` as evidence. See the "must not change" ruling in the site table below.
+:::{note} Corrected in Phase 04
+This section originally named *reassociation* as the specific regression the fixture
+would miss. That is the wrong mechanism. A `cumsum` is a **prefix scan**, not a
+reduction: every partial sum is stored and feeds the next iteration, so there is no
+associativity for the optimizer to exploit and LLVM will not synthesize a vectorized
+scan. Phase 04 measured it — four fixtures, byte-identical output in both forms, and an
+instruction census showing zero packed float operations. See
+[`delta_float!` is a scan, not a reduction](./algebraic-codec-sweep.md#delta-float-is-a-scan).
+
+The verdict below is unchanged, and firmer for it. What rules `delta_float!` off-limits
+is not a drift risk the optimizer might take — it is the **byte-level parity contract
+with `numcodecs.delta`**, which the Rust, Python, and TypeScript readers all depend on.
+`algebraic_add` formally surrenders that guarantee even on a compiler that declines to
+act on it, and Phase 04 measured no speed to buy it back.
+:::
+
+**Verdict:** the fixture is not evidence of anything. Do not treat a green `delta_zarrs`
+as a drift check. See the "must not change" ruling in the site table below.
 
 (the-97-path-is-not-wired-up)=
 ### The 9/7 path is not wired up
@@ -211,7 +227,7 @@ Classification: **hot** = worth changing, **cold** = config/report/format, not w
 
 | File | Function | Line | Expression | Loop shape | Feeds a bit-exact assertion? | Class |
 | --- | --- | --- | --- | --- | --- | --- |
-| `crates/ndic-zarr/src/delta_codec.rs` | `delta_float!` cumsum | 163 | `acc += v` | **Carried reduction** over the whole chunk | Yes — `delta_zarrs.rs` `assert_eq!`, and `numcodecs.delta` byte parity | **exactness-critical — DO NOT CHANGE** |
+| `crates/ndic-zarr/src/delta_codec.rs` | `delta_float!` cumsum | 163 | `acc += v` | **Prefix scan** over the whole chunk — every partial sum is stored, so it does not reassociate (corrected in Phase 04; first recorded here as a carried reduction) | Yes — `delta_zarrs.rs` `assert_eq!`, and `numcodecs.delta` byte parity | **exactness-critical — DO NOT CHANGE** |
 | `crates/ndic-zarr/src/delta_codec.rs` | `delta_float!` diff | 153 | `v - prev` | Sequential, one-step carried | Yes — same | **exactness-critical — DO NOT CHANGE** |
 | `crates/ndic-htj2k/src/dwt/mod.rs` | `lift_97` | 118 | `high[i] += coeff * (l + r)` | Elementwise over `nh`, no reduction | No — unreachable | hot *shape*, **unreachable** |
 | `crates/ndic-htj2k/src/dwt/mod.rs` | `lift_97` | 125 | `low[i] += coeff * (l + r)` | Elementwise over `nl`, no reduction | No — unreachable | hot *shape*, **unreachable** |
@@ -249,11 +265,12 @@ sample-type value that is validated or passed through, never computed on:
 2. **The 9/7 conversion is safe and unmeasurable.** Do it if the goal is to have the
    code ready for when 9/7 is wired up; do not report a benchmark delta for it without
    first adding a workload that calls it.
-3. **`delta_float!` is the one reachable float loop, and it is off limits.** Its
-   `cumsum` is precisely the shape `algebraic_add` targets, which is what makes it
-   dangerous: the win is real, and so is the break. The codec exists to reproduce
-   `numcodecs.delta` byte-for-byte so Rust, Python, and TypeScript readers agree; a
-   reassociated `cumsum` breaks that on real data while `delta_zarrs.rs` stays green.
+3. **`delta_float!` is the one reachable float loop, and it is off limits.** The codec
+   exists to reproduce `numcodecs.delta` byte-for-byte so Rust, Python, and TypeScript
+   readers agree, and `algebraic_add` formally surrenders that contract — while
+   `delta_zarrs.rs` stays green either way, so nothing in the suite would tell you.
+   Phase 04 went on to measure the conversion as bit-identical *and* no faster, a
+   `cumsum` being a prefix scan that does not vectorize: a licence with no upside.
 4. **Do not touch `ndic-bench-core`.** `sigma`, `ratio`, and the comparer are the
    measuring instrument. Changing the instrument mid-migration invalidates every
    before/after number in the phase.
