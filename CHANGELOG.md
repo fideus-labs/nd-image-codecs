@@ -1,12 +1,12 @@
 <!-- Hand-written ahead of the generator. CHANGELOG.md is produced by
-     `uvx --from commitizen cz changelog --incremental` (see .cz.toml), which
+     `uvx --from commitizen==4.17.0 cz changelog --incremental` (see .cz.toml), which
      inserts the next `## vX.Y.Z` section below this point from the Conventional
      Commits themselves.
 
      Merge this Unreleased block into that section by hand at release time —
      do NOT just delete it. Two things the generator does not reproduce, both
      confirmed by running
-     `uvx --from commitizen cz changelog --unreleased-version=v0.3.0 --dry-run`
+     `uvx --from commitizen==4.17.0 cz changelog --unreleased-version=v0.3.0 --dry-run`
      on this branch:
 
      1. Every commit of the Rust 1.98 migration except the MSRV bump itself

@@ -237,14 +237,22 @@ from the [Conventional Commits](./commits.md) in the range between two tags.
 `prepare-release.sh` writes the new section; the release workflow regenerates the
 same section for the tag and uses it as the GitHub release body. Both read
 [`.cz.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/.cz.toml),
-so the two cannot disagree.
+so the two cannot disagree on configuration.
+
+Sharing that file is not enough on its own: the generator reading it also has to
+be the same one, because commitizen's output has moved between releases. So
+`prepare-release.sh` pins `CZ_VERSION`, the workflow installs that version, and
+every command below names it too — hence the `==` in commands you would
+otherwise write bare. `scripts/tests/test_commitizen_pin.py` fails the build if
+any of them drifts, so bumping commitizen means changing one line and letting
+the test list the rest.
 
 ```bash
 # Preview the section the next release would carry.
-uvx --from commitizen cz changelog --unreleased-version=v0.2.0 --dry-run
+uvx --from commitizen==4.17.0 cz changelog --unreleased-version=v0.2.0 --dry-run
 
 # Regenerate the whole file (rebuilds every section from the tags).
-uvx --from commitizen cz changelog
+uvx --from commitizen==4.17.0 cz changelog
 ```
 
 Sections are emoji-titled and ordered users-first: 💥 Breaking Changes,
@@ -469,7 +477,7 @@ repository still records what shipped:
 # From the repository root, with $SP still holding the Python distributions.
 git tag -s -a v0.2.0 -m "nd-image-codecs 0.2.0"
 git push origin v0.2.0
-uvx --from commitizen cz changelog v0.2.0 --dry-run > /tmp/notes.md
+uvx --from commitizen==4.17.0 cz changelog v0.2.0 --dry-run > /tmp/notes.md
 gh release create v0.2.0 --title 0.2.0 --notes-file /tmp/notes.md --verify-tag "$SP"/*
 ```
 
