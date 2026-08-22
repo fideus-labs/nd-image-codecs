@@ -74,7 +74,12 @@ while [[ $# -gt 0 ]]; do
     --out) out_parent="${2:?--out needs a value}"; shift 2 ;;
     --bench-only) do_tests=false; shift ;;
     --tests-only) do_bench=false; shift ;;
-    -h|--help) sed -n '2,52p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+    # Print the header comment block: everything after the shebang up to the
+    # first non-comment line. Derived rather than a line range, so the header
+    # can grow without silently truncating this output — it already had, and
+    # the two doc pointers at the bottom of it were the part that vanished.
+    -h|--help) awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' \
+      "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
