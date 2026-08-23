@@ -1,6 +1,6 @@
 {
   "name": "main",
-  "git_hash": "e0da7b9",
+  "git_hash": "e88217d",
   "machine": "gha-ubuntu-24.04",
   "toolchain": "rustc 1.91.0 (f8297e351 2025-10-28) / Python 3.12.14 / zarr 3.3.0 / numcodecs 0.16.5",
   "captured": "2026-08-23"
