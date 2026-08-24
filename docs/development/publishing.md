@@ -45,9 +45,26 @@ gh run list --workflow=release.yml --limit 1
 gh run watch <run-id>
 ```
 
-Step 2 is optional in the sense that the release still publishes the right
-version without it — but skipping it leaves `main` claiming the previous
-version, and the release run says so in its job summary. Run it.
+**Step 2 is not optional.** It used to be described here as a convenience —
+the tag decides the version either way — but a release that skips it fails at
+`verify`, before anything is built. Every job stamps the version in first, and
+if the tagged tree does not already read it, that stamp rewrites the workspace
+`Cargo.toml`; `cargo publish --dry-run` then refuses the uncommitted change,
+because cargo counts the workspace root manifest as part of every member
+package that inherits `version` from it:
+
+```text
+error: 1 files in the working directory contain changes that were not yet committed into git:
+Cargo.toml
+to proceed despite this and include the uncommitted changes, pass the `--allow-dirty` flag
+```
+
+`verify`'s **Report drift between main and the tag** step is written to warn
+and continue past exactly this situation, and the step after it aborts instead,
+so that warning is unreachable. `crates-io` has the same shape. Passing
+`--allow-dirty` from `publish-crates.py` is the fix, and it is not made here
+because it also removes that guard from the real upload path — until it is,
+run `prepare-release.sh` and merge it before tagging.
 
 Step 5 is where a release stops and waits for a person. Everything up to that
 point is reversible; the approval is the point of no return. None of the three
@@ -197,6 +214,21 @@ a registry dep — so any published crate naming it fails `cargo publish`, even
 behind an off-by-default feature. `ndic-bench-cli` depends on it by bare path.
 Do not add it back.
 
+The cost of that shape is one command: **`cargo package --workspace` does not
+work here, and it is not supposed to.** Unlike `cargo publish --workspace`, it
+does not skip `publish = false` members, so it reaches `ndic-bench-cli` and
+stops on the bare path dep — `all dependencies must have a version requirement
+specified when packaging`. To package what would actually be published, exclude
+the three:
+
+```bash
+cargo package --workspace \
+  --exclude ndic-py --exclude ndic-bench-core --exclude ndic-bench-cli
+```
+
+That selects the same seven crates as `cargo publish --workspace`, which is what
+`publish-crates.py --dry-run` runs and what CI's `verify` job proves.
+
 ## The changelog
 
 [`CHANGELOG.md`](https://github.com/fideus-labs/nd-image-codecs/blob/main/CHANGELOG.md)
@@ -205,14 +237,29 @@ from the [Conventional Commits](./commits.md) in the range between two tags.
 `prepare-release.sh` writes the new section; the release workflow regenerates the
 same section for the tag and uses it as the GitHub release body. Both read
 [`.cz.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/.cz.toml),
-so the two cannot disagree.
+so the two cannot disagree on configuration.
+
+Sharing that file is not enough on its own: the generator reading it also has to
+be the same one, because commitizen's output has moved between releases. So
+`prepare-release.sh` pins `CZ_VERSION`, the workflow installs that version, and
+every command in this documentation that *installs* commitizen names it too —
+hence the `==` in the commands below, where the package name would otherwise
+stand bare and resolve to whatever is current that day.
+`scripts/tests/test_commitizen_pin.py` fails the build if any of them drifts, so
+bumping commitizen means changing one line and letting the test list the rest.
+
+A bare `cz …` elsewhere on this page names the subcommand, not an install: it
+runs whichever commitizen the surrounding context already established, which is
+the pinned one everywhere it matters. `prepare-release.sh` is explicit about
+that — it accepts an already-installed `cz` only when `cz version` equals
+`CZ_VERSION`, and otherwise resolves a pinned one through uv or pipx.
 
 ```bash
 # Preview the section the next release would carry.
-uvx --from commitizen cz changelog --unreleased-version=v0.2.0 --dry-run
+uvx --from commitizen==4.17.0 cz changelog --unreleased-version=v0.2.0 --dry-run
 
 # Regenerate the whole file (rebuilds every section from the tags).
-uvx --from commitizen cz changelog
+uvx --from commitizen==4.17.0 cz changelog
 ```
 
 Sections are emoji-titled and ordered users-first: 💥 Breaking Changes,
@@ -437,7 +484,7 @@ repository still records what shipped:
 # From the repository root, with $SP still holding the Python distributions.
 git tag -s -a v0.2.0 -m "nd-image-codecs 0.2.0"
 git push origin v0.2.0
-uvx --from commitizen cz changelog v0.2.0 --dry-run > /tmp/notes.md
+uvx --from commitizen==4.17.0 cz changelog v0.2.0 --dry-run > /tmp/notes.md
 gh release create v0.2.0 --title 0.2.0 --notes-file /tmp/notes.md --verify-tag "$SP"/*
 ```
 

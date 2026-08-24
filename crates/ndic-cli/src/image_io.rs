@@ -114,8 +114,8 @@ fn load_pnm(data: &[u8]) -> anyhow::Result<Image> {
         if body.len() < 2 * n * ncomp {
             bail!("PNM body truncated");
         }
-        for (i, ch) in body.chunks_exact(2).take(n * ncomp).enumerate() {
-            comps[i % ncomp][i / ncomp] = i32::from(u16::from_be_bytes([ch[0], ch[1]]));
+        for (i, &ch) in body.as_chunks::<2>().0.iter().take(n * ncomp).enumerate() {
+            comps[i % ncomp][i / ncomp] = i32::from(u16::from_be_bytes(ch));
         }
     } else {
         if body.len() < n * ncomp {

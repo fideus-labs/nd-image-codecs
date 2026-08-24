@@ -6,16 +6,25 @@ description: 'The Rust conventions every change is held to: pinned toolchain, wo
 
 ## Toolchain
 
-Rust 1.91+ (pinned in [`rust-toolchain.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/rust-toolchain.toml); MSRV is set
-by the `zarrs` dependency), edition 2024. Standard `rustfmt` defaults (no `rustfmt.toml`).
+Rust 1.98+ (pinned in [`rust-toolchain.toml`](https://github.com/fideus-labs/nd-image-codecs/blob/main/rust-toolchain.toml); the MSRV is
+set by this workspace, not by a dependency — the codecs adopt 1.98 standard-library
+APIs directly), edition 2024. Standard `rustfmt` defaults (no `rustfmt.toml`).
 
 ## Clippy
 
 Workspace clippy config in root `Cargo.toml` — all crates inherit via
 `[lints] workspace = true`. Clippy `all` + `pedantic` at warn level.
 Allowed: `module_name_repetitions`, `must_use_candidate`, `missing_errors_doc`,
-`missing_panics_doc`. `unsafe_code` is warn — use it only inside SIMD lane modules
-(`core::arch` intrinsics), each `unsafe` block carrying a `// SAFETY:` comment.
+`missing_panics_doc`.
+
+`unsafe_code` and `unsafe_op_in_unsafe_fn` are **`deny`**. The only `unsafe` in the
+workspace is in the two `#[cfg]`-selected `core::arch` kernel modules of
+`crates/ndic-htj2k/src/dwt/simd.rs`, each carrying a module-scoped
+`#[allow(unsafe_code)]` with a written justification and a `// SAFETY:` comment per
+block. If new `unsafe` is genuinely unavoidable, scope the `allow` to the smallest
+module that needs it and record it in the
+[Unsafe Audit](../rust-198/unsafe-audit.md), which accounts for every `unsafe` in the
+tree — never relax the workspace default.
 
 ## Imports
 

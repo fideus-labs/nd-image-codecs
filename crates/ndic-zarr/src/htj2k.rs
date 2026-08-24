@@ -167,17 +167,23 @@ fn widen_plane(bytes: &[u8], dtype: SampleType) -> Result<Vec<i32>> {
         #[allow(clippy::cast_possible_wrap)]
         SampleType::I8 => Ok(bytes.iter().map(|&b| i32::from(b as i8)).collect()),
         SampleType::U16 => Ok(bytes
-            .chunks_exact(2)
-            .map(|c| i32::from(u16::from_ne_bytes([c[0], c[1]])))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&c| i32::from(u16::from_ne_bytes(c)))
             .collect()),
         SampleType::I16 => Ok(bytes
-            .chunks_exact(2)
-            .map(|c| i32::from(i16::from_ne_bytes([c[0], c[1]])))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&c| i32::from(i16::from_ne_bytes(c)))
             .collect()),
         SampleType::U32 => bytes
-            .chunks_exact(4)
-            .map(|c| {
-                let v = u32::from_ne_bytes([c[0], c[1], c[2], c[3]]);
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&c| {
+                let v = u32::from_ne_bytes(c);
                 i32::try_from(v).map_err(|_| {
                     invalid(format!(
                         "uint32 sample {v} exceeds the 32-bit HT datapath; \
@@ -187,8 +193,10 @@ fn widen_plane(bytes: &[u8], dtype: SampleType) -> Result<Vec<i32>> {
             })
             .collect(),
         SampleType::I32 => Ok(bytes
-            .chunks_exact(4)
-            .map(|c| i32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&c| i32::from_ne_bytes(c))
             .collect()),
         _ => Err(Error::Unsupported {
             message: format!("htj2k does not support dtype {dtype:?}"),

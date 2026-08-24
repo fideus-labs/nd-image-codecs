@@ -5,7 +5,7 @@
 # (.github/workflows/release.yml) reuses the same command to build the body of
 # the GitHub release. Run it locally with:
 #
-#     uvx --from commitizen cz changelog --incremental
+#     uvx --from commitizen==4.17.0 cz changelog --incremental
 #
 # Commitizen is deliberately *not* the version bumper here. The one published
 # version number is written out 23 times across seven files (see

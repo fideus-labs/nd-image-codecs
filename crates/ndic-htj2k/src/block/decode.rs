@@ -355,7 +355,9 @@ pub fn decode_block(
                 let mut gamma = inf & 0xF0;
                 gamma &= gamma.wrapping_sub(0x10);
                 let emax = v_n_scratch[vp] | v_n_scratch[vp + 1];
-                let emax = 31 - (emax | 2).leading_zeros(); // E_max - 1
+                // E_max - 1. The `| 2` floors the operand at 2, so `ilog2` can
+                // never see the zero it would panic on.
+                let emax = (emax | 2).ilog2();
                 let kappa = if gamma != 0 { emax } else { 1 };
 
                 let u_q = u_q + kappa;

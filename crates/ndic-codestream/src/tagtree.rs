@@ -116,9 +116,7 @@ impl TagTree {
         }
         // Root value is 0 by construction (single entry at the top).
         let top = self.levels();
-        for v in &mut self.vals[top] {
-            *v = 0;
-        }
+        self.vals[top].fill(0);
     }
 }
 

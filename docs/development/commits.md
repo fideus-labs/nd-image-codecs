@@ -43,8 +43,8 @@ heading already states.
 Commitizen can write the message for you and check one you have written:
 
 ```bash
-uvx --from commitizen cz commit          # prompts for type, scope, subject
-uvx --from commitizen cz check --rev-range origin/main..HEAD
+uvx --from commitizen==4.17.0 cz commit  # prompts for type, scope, subject
+uvx --from commitizen==4.17.0 cz check --rev-range origin/main..HEAD
 ```
 
 Neither is required, and neither gates a pull request — see

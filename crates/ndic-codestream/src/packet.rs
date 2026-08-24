@@ -203,11 +203,16 @@ pub fn parse_packet_header(
     uses_eph: bool,
     offset: usize,
 ) -> Result<ParsedPacket> {
-    let mut start = 0usize;
+    let mut header = data;
     if uses_sop && data.len() >= 6 && data[0] == 0xFF && data[1] == 0x91 {
-        start = 6; // SOP marker + Lsop(4) + Nsop covered by Lsop = 4
+        header = &data[6..]; // SOP marker + Lsop(4) + Nsop covered by Lsop = 4
     }
-    let mut bb = HeaderBitReader::new_at(&data[start..], offset + start);
+    // The reader takes `data` and the sub-slice it reads, not a separately
+    // added offset for it: where `header` starts inside `data` is recovered
+    // from the slices themselves, so `terminate` already reports the header
+    // length in `data`'s coordinates and error offsets already carry the
+    // SOP skip.
+    let mut bb = HeaderBitReader::new_in(data, header, offset);
     let mut blocks = Vec::new();
 
     let mut empty_packet = true;
@@ -217,7 +222,7 @@ pub fn parse_packet_header(
         }
         if empty_packet {
             if bb.read_bit()? == 0 {
-                let mut header_len = start + bb.terminate();
+                let mut header_len = bb.terminate();
                 if uses_eph {
                     header_len = consume_eph(data, header_len, offset)?;
                 }
@@ -354,7 +359,7 @@ pub fn parse_packet_header(
         let _ = bb.read_bit();
     }
 
-    let mut header_len = start + bb.terminate();
+    let mut header_len = bb.terminate();
     if uses_eph {
         header_len = consume_eph(data, header_len, offset)?;
     }
@@ -481,5 +486,53 @@ mod tests {
         assert_eq!(parsed.blocks[0].band, 0);
         assert_eq!(parsed.blocks[1].band, 2);
         assert_eq!(parsed.blocks[1].len_cleanup, 300);
+    }
+
+    /// `header_len` indexes into the slice the caller passed, so a skipped
+    /// SOP segment has to be inside it — the reader derives that from the
+    /// slices rather than from an offset added alongside them.
+    #[test]
+    fn sop_prefix_counts_towards_the_header_length() {
+        let band = ParseBand {
+            nx: 1,
+            ny: 1,
+            k_max: 10,
+        };
+        let sop = || alloc::vec![0xFFu8, 0x91, 0x00, 0x04, 0x00, 0x00];
+
+        let packet = write_packet(&[BandBlocks {
+            nx: 1,
+            ny: 1,
+            blocks: alloc::vec![cb(2, 9)],
+        }]);
+        let plain = parse_packet_header(&packet, &[band], false, false, 0).unwrap();
+        let mut with_sop = sop();
+        with_sop.extend_from_slice(&packet);
+        let parsed = parse_packet_header(&with_sop, &[band], true, false, 0).unwrap();
+        assert_eq!(parsed.blocks, plain.blocks);
+        assert_eq!(parsed.header_len, plain.header_len + 6);
+
+        // The empty-packet early return goes through the same accounting.
+        let empty = write_packet(&[BandBlocks {
+            nx: 2,
+            ny: 2,
+            blocks: alloc::vec![None, None, None, None],
+        }]);
+        let mut with_sop = sop();
+        with_sop.extend_from_slice(&empty);
+        let parsed = parse_packet_header(
+            &with_sop,
+            &[ParseBand {
+                nx: 2,
+                ny: 2,
+                k_max: 10,
+            }],
+            true,
+            false,
+            0,
+        )
+        .unwrap();
+        assert!(parsed.blocks.is_empty());
+        assert_eq!(parsed.header_len, 6 + empty.len());
     }
 }

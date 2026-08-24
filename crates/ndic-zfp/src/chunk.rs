@@ -313,13 +313,21 @@ fn promoted_i32(chunk: &[u8], dtype: ZfpDtype) -> Vec<i32> {
             .iter()
             .map(|&v| i32::from(v.cast_signed()) << 23)
             .collect(),
+        // `as_chunks::<2>().0` is the same complete-chunk prefix `chunks_exact(2)`
+        // walked — the ragged tail is dropped either way — but it yields
+        // `&[u8; 2]`, so `from_le_bytes` takes the array directly and the
+        // per-element bounds checks go away.
         ZfpDtype::U16 => chunk
-            .chunks_exact(2)
-            .map(|b| (i32::from(u16::from_le_bytes([b[0], b[1]])) - 0x8000) << 15)
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&b| (i32::from(u16::from_le_bytes(b)) - 0x8000) << 15)
             .collect(),
         ZfpDtype::I16 => chunk
-            .chunks_exact(2)
-            .map(|b| i32::from(i16::from_le_bytes([b[0], b[1]])) << 15)
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&b| i32::from(i16::from_le_bytes(b)) << 15)
             .collect(),
         _ => unreachable!("promotion is only for narrow integer dtypes"),
     }

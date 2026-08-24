@@ -55,8 +55,14 @@ fn read_pnm(path: &Path) -> (usize, usize, Vec<Vec<i32>>) {
     let body = &data[pos..];
     let mut comps = vec![vec![0i32; w * h]; ncomp];
     if maxval > 255 {
-        for (i, ch) in body.chunks_exact(2).take(w * h * ncomp).enumerate() {
-            comps[i % ncomp][i / ncomp] = i32::from(u16::from_be_bytes([ch[0], ch[1]]));
+        for (i, &ch) in body
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .take(w * h * ncomp)
+            .enumerate()
+        {
+            comps[i % ncomp][i / ncomp] = i32::from(u16::from_be_bytes(ch));
         }
     } else {
         for (i, &b) in body.iter().take(w * h * ncomp).enumerate() {

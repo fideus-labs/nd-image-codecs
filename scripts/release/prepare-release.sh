@@ -9,8 +9,14 @@
 # documentation tells a reader to depend on, and the changelog entry the GitHub
 # release will carry.
 #
-# Run it, open a pull request, merge it, then tag the merge commit. Tagging
-# without it works and only costs you a drift warning in the release run.
+# Run it, open a pull request, merge it, then tag the merge commit. That order
+# is not optional. Tagging a tree that does not already carry the version fails
+# in the release run's `verify` job, before anything is built: every job stamps
+# the version in first, that stamp rewrites the workspace `Cargo.toml`, and
+# `cargo publish --dry-run` runs without `--allow-dirty` and refuses the
+# uncommitted change. The drift step warns and continues, but the step after it
+# aborts, so the warning never gets read. See docs/development/publishing.md
+# ("Step 2 is not optional").
 #
 #     scripts/release/prepare-release.sh 0.2.0
 #
