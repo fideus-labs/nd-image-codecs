@@ -118,5 +118,8 @@ consulted.
 - Round-trip: encode in Rust → decode in Python and TS on shared fixtures.
 - Third-party validation: decode our output with `imagecodecs` (ZFP, JPEG 2000,
   delta) via `zarr-python`, and decode `imagecodecs` output with ours.
-- OME-Zarr integration: write a `0.5` multiscales volume; validate with
-  `ome-zarr-py` and `ngff-zarr` readers.
+- OME-Zarr integration: write a `0.5` multiscales volume — metadata from
+  `ngff-zarr`, arrays from `zarr-python` — then validate it against the NGFF
+  JSON schema and read it back through `ome-zarr-py`. `ngff-zarr` ≥ 0.44
+  moves pixels through `zarrista`, which supports neither encoding nor
+  decoding of these codecs, so only its metadata half is in the lane.

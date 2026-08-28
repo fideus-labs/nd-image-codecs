@@ -1,13 +1,22 @@
 """OME-Zarr 0.5 integration: multiscales written with each codec family.
 
-The OME-Zarr lane: `ngff-zarr <https://github.com/fideus-labs/ngff-zarr>`_
-writes OME-Zarr 0.5 multiscales (its ``to_ngff_zarr`` forwards codec kwargs
-to ``zarr.create_array``, so the codec-series pipelines drop straight in),
-then the store must
+The OME-Zarr lane splits the write between the two libraries that can each
+do half of it: `ngff-zarr <https://github.com/fideus-labs/ngff-zarr>`_ models
+the multiscales and writes the OME metadata (``to_ngff_zarr`` with
+``metadata_only=True``, which creates every scale level's array and writes no
+pixels), and zarr-python re-creates each of those arrays with the codec-series
+pipeline and fills it. The store must then
 
-- validate and read back through ``ngff_zarr.from_ngff_zarr(validate=True)``
-  (JSON-schema validation of the OME metadata), and
+- validate against the OME-Zarr JSON schema (``ngff_zarr.validate``),
+- read back through zarr-python, and
 - open and match through ome-zarr-py's ``Reader``.
+
+ngff-zarr writes its pixels through zarrista from 0.44 on, and zarrista's
+codec set is ``bytes`` plus gzip/zstd/blosc: ``filters=`` raises, ``serializer=``
+is dropped silently, and ``from_ngff_zarr`` cannot open an array whose chain
+holds anything else (``codec numcodecs.delta is not supported``). Only
+zarr-python resolves a pipeline by the registered codec names, so the arrays
+go through it; ngff-zarr stays the authority on the OME metadata.
 
 nd-delta datasets are composed entirely of stock registered codecs
 (``transpose``, ``numcodecs.delta``, ``bytes``, ``blosc``), so any Zarr
@@ -61,6 +70,13 @@ FAMILIES = [
 ]
 
 
+def multiscales_datasets(root) -> list[str]:
+    """The scale-level array paths a store's OME metadata declares, coarsest last."""
+    return [
+        dataset["path"] for dataset in root.attrs["ome"]["multiscales"][0]["datasets"]
+    ]
+
+
 def volume(dtype: str) -> np.ndarray:
     rng = np.random.default_rng(20260803)
     if np.dtype(dtype).kind == "f":
@@ -71,21 +87,46 @@ def volume(dtype: str) -> np.ndarray:
 def write_multiscales(
     path: pathlib.Path, family: str, dtype: str, options: dict
 ) -> np.ndarray:
-    """Write an OME-Zarr 0.5 multiscales store through ngff-zarr."""
+    """Write an OME-Zarr 0.5 multiscales store, one library per half.
+
+    ngff-zarr writes the OME metadata and the array skeletons; zarr-python
+    re-creates each skeleton with the family's codec series and fills it.
+    """
     data = volume(dtype)
     image = ngff_zarr.to_ngff_image(data, dims=AXES)
     multiscales = ngff_zarr.to_multiscales(image, scale_factors=[2], chunks=CHUNKS)
-    parts = split_pipeline(
-        codec_series(list(AXES), list(CHUNKS), dtype, family, **options)
-    )
-    ngff_zarr.to_ngff_zarr(
-        str(path),
-        multiscales,
-        version="0.5",
-        filters=parts["filters"],
-        serializer=parts["serializer"],
-        compressors=parts["compressors"],
-    )
+    ngff_zarr.to_ngff_zarr(str(path), multiscales, version="0.5", metadata_only=True)
+
+    for dataset, level in zip(
+        multiscales.metadata.datasets, multiscales.images, strict=True
+    ):
+        level_data = np.asarray(level.data)
+        # The coarser levels are smaller than the requested chunk shape, and
+        # the pipeline is built for the chunk the codecs actually see.
+        chunks = tuple(min(c, s) for c, s in zip(CHUNKS, level_data.shape))
+        parts = split_pipeline(
+            codec_series(
+                list(level.dims), list(chunks), str(level_data.dtype), family, **options
+            )
+        )
+        array = zarr.create_array(
+            str(path),
+            name=dataset.path,
+            shape=level_data.shape,
+            chunks=chunks,
+            dtype=level_data.dtype,
+            filters=parts["filters"],
+            serializer=parts["serializer"],
+            compressors=parts["compressors"],
+            fill_value=0,
+            dimension_names=list(level.dims),
+            overwrite=True,  # replace the skeleton, codec chain and all
+        )
+        array[...] = level_data
+
+    # ngff-zarr consolidated the skeletons it wrote; refresh so a reader that
+    # trusts the consolidated document sees the codecs the arrays carry.
+    zarr.consolidate_metadata(str(path))
     return data
 
 
@@ -109,11 +150,13 @@ def test_multiscales_validate_and_open(
         names = [c["name"] for c in json.loads(meta_path.read_text())["codecs"]]
         assert expected in names, f"{meta_path}: {names}"
 
-    # ngff-zarr: JSON-schema validation of the OME metadata + full read.
-    multiscales = ngff_zarr.from_ngff_zarr(str(store), validate=True)
-    image = multiscales.images[0]
-    assert tuple(image.dims) == AXES
-    np.testing.assert_array_equal(np.asarray(image.data), data)
+    # ngff-zarr: JSON-schema validation of the OME metadata; zarr-python: the
+    # full read (from_ngff_zarr cannot decode these chains, see the module docs).
+    root = zarr.open_group(str(store), mode="r")
+    ngff_zarr.validate(dict(root.attrs), version="0.5", model="image")
+    full_scale = root[multiscales_datasets(root)[0]]
+    assert tuple(full_scale.metadata.dimension_names) == AXES
+    np.testing.assert_array_equal(full_scale[...], data)
 
     # ome-zarr-py: the reader used by napari-ome-zarr resolves the same store.
     from ome_zarr.io import parse_url
@@ -130,7 +173,8 @@ def test_lossy_zfp_multiscales_validate(tmp_path: pathlib.Path) -> None:
         pytest.skip("needs the native extension")
     store = tmp_path / "lossy.ome.zarr"
     data = write_multiscales(store, "nd-zfp", "float32", {"zfp_rate": 16})
-    multiscales = ngff_zarr.from_ngff_zarr(str(store), validate=True)
-    back = np.asarray(multiscales.images[0].data)
+    root = zarr.open_group(str(store), mode="r")
+    ngff_zarr.validate(dict(root.attrs), version="0.5", model="image")
+    back = root[multiscales_datasets(root)[0]][...]
     assert back.shape == data.shape
     assert float(np.abs(back - data).max()) < 1.0

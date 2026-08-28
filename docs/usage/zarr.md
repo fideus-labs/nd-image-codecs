@@ -134,6 +134,11 @@ common blosc/zstd defaults, expect substantially smaller lossless volumes on
 natural images — tracked continuously in the
 [bench suite](../development/benchmarking.md).
 
+Writing a multiscales store takes two libraries — ngff-zarr for the OME
+metadata, zarr-python for the codec-bearing arrays; see
+[Python → OME-Zarr](./python.md#ome-zarr) for the recipe and why the split is
+needed.
+
 ## Migration
 
 ```python
