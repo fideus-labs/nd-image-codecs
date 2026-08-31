@@ -113,8 +113,15 @@ assert [codec["name"] for codec in delta] == [
 ## OME-Zarr
 
 [ngff-zarr](https://github.com/fideus-labs/ngff-zarr) writes OME-Zarr 0.5
-multiscales, and forwards codec keywords to `zarr.create_array` — so a
-codec-series pipeline drops straight in:
+multiscales. Since v0.44 it moves pixels through
+[zarrista](https://pypi.org/project/zarrista/) rather than zarr-python, and
+zarrista's codec set is `bytes` plus gzip/zstd/blosc — it can encode none of
+these families (`filters=` raises, `serializer=` is dropped silently) and
+decode none of them either. So write the two halves of the store with the
+library that can do each: the OME metadata and the array skeletons with
+ngff-zarr, the arrays themselves with zarr-python, which resolves the
+pipeline through the registered codec names. `metadata_only=` arrived in the
+same release, so the recipe below wants `ngff-zarr >= 0.44`.
 
 ```python
 import ngff_zarr as nz
@@ -123,26 +130,50 @@ plane = (np.arange(4 * 64 * 64, dtype=np.uint16) * 11 % 4096).reshape(4, 64, 64)
 image = nz.to_ngff_image(plane, dims=("z", "y", "x"))
 multiscales = nz.to_multiscales(image, scale_factors=[2], chunks=(4, 32, 32))
 
-pipeline = codec_series(
-    axes=["z", "y", "x"], chunk_shape=[4, 32, 32], dtype="uint16", family="nd-lift-ht"
-)
-at = next(i for i, codec in enumerate(pipeline) if codec["name"] in SERIALIZERS)
-nz.to_ngff_zarr(
-    "volume.ome.zarr",
-    multiscales,
-    version="0.5",
-    filters=pipeline[:at],
-    serializer=pipeline[at],
-    compressors=pipeline[at + 1 :],
-)
+# The OME metadata plus one empty array per scale level, no pixels.
+nz.to_ngff_zarr("volume.ome.zarr", multiscales, version="0.5", metadata_only=True)
+
+for dataset, level in zip(multiscales.metadata.datasets, multiscales.images):
+    level_data = np.asarray(level.data)
+    # A coarser level can be smaller than the chunk asked for, and the
+    # pipeline belongs to the chunk the codecs actually see.
+    chunks = tuple(min(c, s) for c, s in zip((4, 32, 32), level_data.shape))
+    pipeline = codec_series(
+        axes=list(level.dims),
+        chunk_shape=list(chunks),
+        dtype=str(level_data.dtype),
+        family="nd-lift-ht",
+    )
+    at = next(i for i, codec in enumerate(pipeline) if codec["name"] in SERIALIZERS)
+    level_array = zarr.create_array(
+        "volume.ome.zarr",
+        name=dataset.path,
+        shape=level_data.shape,
+        chunks=chunks,
+        dtype=level_data.dtype,
+        filters=pipeline[:at],
+        serializer=pipeline[at],
+        compressors=pipeline[at + 1 :],
+        fill_value=0,
+        dimension_names=list(level.dims),
+        overwrite=True,  # replace the skeleton, codec chain and all
+    )
+    level_array[...] = level_data
+
+# ngff-zarr consolidated the skeletons; refresh so a reader that trusts the
+# consolidated document sees the codecs the arrays carry.
+zarr.consolidate_metadata("volume.ome.zarr")
 
 # Round-trips, and the OME metadata validates against the NGFF schema.
-back = nz.from_ngff_zarr("volume.ome.zarr", validate=True)
-np.testing.assert_array_equal(np.asarray(back.images[0].data), plane)
+root = zarr.open_group("volume.ome.zarr", mode="r")
+nz.validate(dict(root.attrs), version="0.5", model="image")
+np.testing.assert_array_equal(root["scale0/image"][...], plane)
 ```
 
-ome-zarr-py opens the same store, so napari-ome-zarr and other readers built
-on it work unmodified.
+Reading splits the same way: `nz.validate` checks the OME metadata, and the
+arrays open through zarr-python — `nz.from_ngff_zarr` goes to zarrista and
+fails on the codec chain. ome-zarr-py, which reads through zarr-python, opens
+the store unmodified, so napari-ome-zarr and other readers built on it work.
 
 ## Validation with imagecodecs
 

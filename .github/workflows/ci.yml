@@ -231,7 +231,7 @@ jobs:
       # imagecodecs powers the third-party interop lanes (JPEG 2000, delta,
       # ZFP); ngff-zarr + ome-zarr power the OME-Zarr 0.5 integration lane —
       # without them those tests silently skip.
-      - run: pip install pytest "zarr>=3.1" numpy numcodecs imagecodecs "ngff-zarr[validate]" ome-zarr
+      - run: pip install pytest "zarr>=3.1" numpy numcodecs imagecodecs "ngff-zarr[validate]>=0.44" ome-zarr
       # Install the built wheel so the suite exercises the native extension
       # (the htj2k codec has no pure-Python fallback and skips without it).
       - run: pip install --no-index --find-links target/wheels nd-image-codecs
@@ -304,7 +304,7 @@ jobs:
         with:
           node-version: "22"
       - uses: Swatinem/rust-cache@v2
-      - run: pip install "zarr>=3.1" numpy numcodecs imagecodecs "ngff-zarr[validate]"
+      - run: pip install "zarr>=3.1" numpy numcodecs imagecodecs "ngff-zarr[validate]>=0.44"
       - run: pip install bindings/python/nd-image-codecs
       - run: npm ci
         working-directory: bindings/typescript
