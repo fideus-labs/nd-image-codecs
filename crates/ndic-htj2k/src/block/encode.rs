@@ -12,7 +12,6 @@
 
 extern crate alloc;
 
-use alloc::vec;
 use alloc::vec::Vec;
 
 use ndic_core::{Error, Result};
@@ -102,6 +101,48 @@ fn emit_magsgn(ms: &mut MagSgnEncoder, q: &Quad, tuple: u32, uq: u32) {
     ms.encode_all(&[word(0), word(1), word(2), word(3)]);
 }
 
+/// Reusable working buffers for encoding code-blocks. Encoding through one
+/// [`BlockEncoder`] allocates its stream and line buffers once rather than
+/// once per block as [`encode_block`] does, so each block allocates only its
+/// own output.
+#[derive(Debug, Default)]
+pub struct BlockEncoder {
+    /// MEL stream bytes.
+    mel: Vec<u8>,
+    /// VLC stream bytes.
+    vlc: Vec<u8>,
+    /// `MagSgn` stream bytes.
+    ms: Vec<u8>,
+    /// E values a quad row leaves for the next.
+    e_val: Vec<u8>,
+    /// Context values a quad row leaves for the next.
+    cx_val: Vec<u8>,
+}
+
+impl BlockEncoder {
+    /// Creates an encoder whose buffers grow on first use.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Encodes one code-block exactly as [`encode_block`] does, reusing this
+    /// encoder's buffers.
+    ///
+    /// # Errors
+    /// As [`encode_block`].
+    pub fn encode(
+        &mut self,
+        buf: &[u32],
+        width: usize,
+        height: usize,
+        stride: usize,
+        missing_msbs: u32,
+    ) -> Result<Vec<u8>> {
+        encode_with(self, buf, width, height, stride, missing_msbs)
+    }
+}
+
 /// Encodes one code-block's cleanup pass, returning the codeword segment.
 ///
 /// * `buf` — sign-magnitude samples (see the module docs), row-major with
@@ -117,9 +158,21 @@ fn emit_magsgn(ms: &mut MagSgnEncoder, q: &Quad, tuple: u32, uq: u32) {
 /// # Errors
 /// [`Error::InvalidArgument`] on bad geometry or `missing_msbs` out of the
 /// 32-bit datapath's range.
+pub fn encode_block(
+    buf: &[u32],
+    width: usize,
+    height: usize,
+    stride: usize,
+    missing_msbs: u32,
+) -> Result<Vec<u8>> {
+    BlockEncoder::new().encode(buf, width, height, stride, missing_msbs)
+}
+
+/// The body of [`BlockEncoder::encode`], with its buffers.
 #[allow(clippy::too_many_lines)] // faithful port of one long reference routine
 #[allow(clippy::similar_names, clippy::many_single_char_names)] // T.814 names
-pub fn encode_block(
+fn encode_with(
+    bufs: &mut BlockEncoder,
     buf: &[u32],
     width: usize,
     height: usize,
@@ -143,15 +196,19 @@ pub fn encode_block(
     }
     let p = 30 - missing_msbs;
 
-    let mut mel = MelEncoder::new();
-    let mut vlc = VlcEncoder::new();
-    let mut ms = MagSgnEncoder::new();
+    let mut mel = MelEncoder::with_buffer(core::mem::take(&mut bufs.mel));
+    let mut vlc = VlcEncoder::with_buffer(core::mem::take(&mut bufs.vlc));
+    let mut ms = MagSgnEncoder::with_buffer(core::mem::take(&mut bufs.ms));
 
     // Line buffers for the E and context values a quad row leaves for the
     // next one. One byte per quad column; sized for 512 quads plus slack.
     let cols = width.div_ceil(2);
-    let mut e_val = vec![0u8; cols + 4];
-    let mut cx_val = vec![0u8; cols + 4];
+    let e_val = &mut bufs.e_val;
+    e_val.clear();
+    e_val.resize(cols + 4, 0);
+    let cx_val = &mut bufs.cx_val;
+    cx_val.clear();
+    cx_val.resize(cols + 4, 0);
 
     // ---- initial row of quads (kappa = 1) -----------------------------
     let mut c_q0: u32 = 0;
@@ -321,8 +378,8 @@ pub fn encode_block(
             message: "cleanup segment suffix out of range (Scup)".into(),
         });
     }
-    let mut out = ms_bytes;
-    out.reserve(scup);
+    let mut out = Vec::with_capacity(ms_bytes.len() + scup);
+    out.extend_from_slice(&ms_bytes);
     out.extend_from_slice(&mel_bytes);
     out.extend_from_slice(&vlc_bytes);
     let n = out.len();
@@ -331,6 +388,8 @@ pub fn encode_block(
         out[n - 1] = (scup >> 4) as u8;
         out[n - 2] = (out[n - 2] & 0xF0) | (scup & 0xF) as u8;
     }
+    // Hand the stream buffers back for the next block.
+    (bufs.mel, bufs.vlc, bufs.ms) = (mel_bytes, vlc_bytes, ms_bytes);
     Ok(out)
 }
 

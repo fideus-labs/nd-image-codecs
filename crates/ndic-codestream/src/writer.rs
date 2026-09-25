@@ -147,6 +147,7 @@ pub fn encode_image_with_depth(
 
     // ---- per-component wavelet transform + block coding ---------------
     let mut resolutions: Vec<Vec<Vec<BandBlocks>>> = Vec::new(); // [comp][res][band]
+    let mut coder = ndic_htj2k::BlockEncoder::new();
     for comp in comps {
         let mut plane = level_shifted(comp, bit_depth, signed);
         // The SIMD lane is bit-identical to the scalar reference
@@ -158,7 +159,9 @@ pub fn encode_image_with_depth(
             let (ecbw, ecbh) = effective_cb(cbw, cbh, 15, 15, r);
             let mut band_blocks = Vec::with_capacity(bands.len());
             for band in &bands {
-                band_blocks.push(code_band(&plane, width, band, ecbw, ecbh, &quant)?);
+                band_blocks.push(code_band(
+                    &mut coder, &plane, width, band, ecbw, ecbh, &quant,
+                )?);
             }
             per_res.push(band_blocks);
         }
@@ -350,6 +353,7 @@ fn level_shifted(comp: &CoeffPlane<'_>, bit_depth: u8, signed: bool) -> Vec<i32>
 
 /// Codes every code-block of one band from the Mallat plane.
 fn code_band(
+    coder: &mut ndic_htj2k::BlockEncoder,
     plane: &[i32],
     plane_width: usize,
     band: &Band,
@@ -384,7 +388,7 @@ fn code_band(
                 blocks.push(None); // nothing significant at any coded bitplane
                 continue;
             }
-            let data = ndic_htj2k::encode_block(&buf, r.w, r.h, r.w, u32::from(k_max) - 1)?;
+            let data = coder.encode(&buf, r.w, r.h, r.w, u32::from(k_max) - 1)?;
             #[allow(clippy::cast_possible_truncation)]
             blocks.push(Some(CodedBlock {
                 missing_msbs: k_max - 1,

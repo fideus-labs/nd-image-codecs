@@ -202,8 +202,16 @@ impl MelEncoder {
     /// Creates an empty encoder.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_buffer(alloc::vec::Vec::new())
+    }
+
+    /// Creates an empty encoder that writes into `buf`, reusing its capacity.
+    #[must_use]
+    pub fn with_buffer(mut buf: alloc::vec::Vec<u8>) -> Self {
+        buf.clear();
+        buf.reserve(192);
         Self {
-            buf: alloc::vec::Vec::with_capacity(192),
+            buf,
             tmp: 0,
             remaining_bits: 8,
             run: 0,

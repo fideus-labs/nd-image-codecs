@@ -357,7 +357,15 @@ impl VlcEncoder {
     /// Creates an encoder holding the initial placeholder byte.
     #[must_use]
     pub fn new() -> Self {
-        let mut buf = Vec::with_capacity(2880);
+        Self::with_buffer(Vec::new())
+    }
+
+    /// Creates an encoder holding the initial placeholder byte that writes
+    /// into `buf`, reusing its capacity.
+    #[must_use]
+    pub fn with_buffer(mut buf: Vec<u8>) -> Self {
+        buf.clear();
+        buf.reserve(2880);
         buf.push(0xFF);
         Self {
             buf,
@@ -515,8 +523,16 @@ impl MagSgnEncoder {
     /// Creates an empty encoder.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_buffer(Vec::new())
+    }
+
+    /// Creates an empty encoder that writes into `buf`, reusing its capacity.
+    #[must_use]
+    pub fn with_buffer(mut buf: Vec<u8>) -> Self {
+        buf.clear();
+        buf.reserve(4096);
         Self {
-            buf: Vec::with_capacity(4096),
+            buf,
             tmp: 0,
             used_bits: 0,
             max_bits: 8,

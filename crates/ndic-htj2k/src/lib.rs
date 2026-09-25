@@ -21,6 +21,6 @@ pub mod block;
 pub mod dwt;
 
 pub use block::{
-    BlockDecoder, BlockPasses, coeff_to_sign_magnitude, decode_block, encode_block,
+    BlockDecoder, BlockEncoder, BlockPasses, coeff_to_sign_magnitude, decode_block, encode_block,
     sign_magnitude_to_coeff,
 };
