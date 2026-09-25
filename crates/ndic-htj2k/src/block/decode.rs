@@ -682,15 +682,12 @@ fn decode_with(
 #[inline]
 fn bits_at(clean: &[u8], off: u32) -> u32 {
     let b = (off >> 3) as usize;
-    let word = if let Some(w) = clean.get(b..).and_then(<[u8]>::first_chunk::<8>) {
-        u64::from_le_bytes(*w)
-    } else {
-        let mut w = [0xFF; 8];
-        if let Some(rest) = clean.get(b..) {
-            w[..rest.len()].copy_from_slice(rest);
-        }
-        u64::from_le_bytes(w)
-    };
+    // The stream ends in more than eight bytes of ones, so a word that runs off its end holds
+    // only ones. Taking that constant keeps a copy call out of the decode loop.
+    let word = clean
+        .get(b..)
+        .and_then(<[u8]>::first_chunk::<8>)
+        .map_or(u64::MAX, |w| u64::from_le_bytes(*w));
     #[allow(clippy::cast_possible_truncation)] // the low 32 of at least 57 valid bits
     {
         (word >> (off & 7)) as u32

@@ -406,15 +406,12 @@ impl CleanBits {
     /// the refill needs no branch (the unconditional refill zlib-ng's inflate uses).
     #[inline]
     pub(crate) fn fetch(&mut self, clean: &[u8]) -> u32 {
-        let word = if let Some(w) = clean.get(self.pos..).and_then(<[u8]>::first_chunk::<8>) {
-            u64::from_le_bytes(*w)
-        } else {
-            let mut w = [0; 8];
-            if let Some(rest) = clean.get(self.pos..) {
-                w[..rest.len()].copy_from_slice(rest);
-            }
-            u64::from_le_bytes(w)
-        };
+        // The stream ends in more than eight zero bytes of padding, so a word that runs off its
+        // end holds only zeros. Taking that constant keeps a copy call out of the decode loop.
+        let word = clean
+            .get(self.pos..)
+            .and_then(<[u8]>::first_chunk::<8>)
+            .map_or(0, |w| u64::from_le_bytes(*w));
         self.buf |= word << self.cnt;
         self.pos += ((63 - self.cnt) >> 3) as usize;
         // The count is now at least 56, and adding the whole bytes taken is setting those bits.
