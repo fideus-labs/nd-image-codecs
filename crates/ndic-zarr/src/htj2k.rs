@@ -262,20 +262,21 @@ pub fn narrow_samples(samples: &[i32], dtype: SampleType, out: &mut Vec<u8>) -> 
 
 /// The narrowest `Ssiz` declaration covering the samples' actual range.
 fn depth_for(samples: &[i32], signed: bool) -> u8 {
-    let (lo, hi) = samples.iter().fold((0i64, 0i64), |(lo, hi), &v| {
-        (lo.min(i64::from(v)), hi.max(i64::from(v)))
-    });
-    for b in 1..=32u8 {
-        let fits = if signed {
-            lo >= -(1i64 << (b - 1)) && hi < (1i64 << (b - 1))
-        } else {
-            hi < (1i64 << b)
-        };
-        if fits {
-            return b;
-        }
+    let (lo, hi) = samples
+        .iter()
+        .fold((0i32, 0i32), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+    // Both bounds are non-negative here, so a bit length is `32 - leading_zeros`. The signed
+    // range also needs a sign bit and must hold `!lo = -lo - 1`, the largest magnitude below zero.
+    let bit_len = |v: i32| 32 - v.leading_zeros();
+    let depth = if signed {
+        bit_len(hi.max(!lo)) + 1
+    } else {
+        bit_len(hi)
+    };
+    #[allow(clippy::cast_possible_truncation)] // clamped to 1..=32
+    {
+        depth.clamp(1, 32) as u8
     }
-    32
 }
 
 /// Encodes a chunk (native-endian `dtype` elements, C order, trailing dims
