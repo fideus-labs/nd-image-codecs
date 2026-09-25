@@ -558,26 +558,19 @@ pub fn decode_block(
                 let mut cwd = cwd_start;
                 let sig = u32::from(scratch[cur_base + gi])
                     | (u32::from(scratch[cur_base + gi + 1]) << 16);
-                if sig != 0 {
-                    let mut col_mask = 0xFu32;
-                    for j in 0..8usize {
-                        if sig & col_mask != 0 {
-                            let mut sample_mask = 0x1111_1111 & col_mask;
-                            for k in 0..4usize {
-                                if sig & sample_mask != 0 {
-                                    // Refine bitplane p-1 of a cleanup-
-                                    // significant sample.
-                                    if i + j < width && y + k < height {
-                                        let sym = ((1 - (cwd & 1)) << (p - 1)) | half;
-                                        out[dpp + i + j + k * stride] ^= sym;
-                                    }
-                                    cwd >>= 1;
-                                }
-                                sample_mask <<= 1;
-                            }
-                        }
-                        col_mask <<= 4;
+                // Visit significant samples lowest bit first, which is column by column with rows
+                // in order.
+                let mut rest = sig;
+                while rest != 0 {
+                    let b = rest.trailing_zeros() as usize;
+                    rest &= rest - 1;
+                    let (j, k) = (b >> 2, b & 3);
+                    // Refine bitplane p-1 of a cleanup-significant sample.
+                    if i + j < width && y + k < height {
+                        let sym = ((1 - (cwd & 1)) << (p - 1)) | half;
+                        out[dpp + i + j + k * stride] ^= sym;
                     }
+                    cwd >>= 1;
                 }
                 magref.advance(sig.count_ones());
                 gi += 2;
