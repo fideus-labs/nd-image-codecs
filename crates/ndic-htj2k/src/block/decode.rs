@@ -271,27 +271,38 @@ pub fn decode_block(
         // Exponent bookkeeping: v_n of the bottom sample of column pairs
         // (2k-1, 2k), used as the E-max context of the quad row below.
         let mut v_n_scratch = vec![0u32; width / 2 + 4];
-        let mut magsgn = FwdReader::<0xFF>::new(&coded[..lcup - scup]);
+
+        // Unstuff the whole segment up front. Every sample's bit length is known from step 1,
+        // so its bits are then one unaligned load at a running offset, and consecutive samples no
+        // longer wait on each other through a stateful reader. The reader itself does the
+        // unstuffing, so stuffed bytes and the 0xFF fed past the end come out exactly as before.
+        let segment = &coded[..lcup - scup];
+        let mut clean = Vec::with_capacity(segment.len() + 16);
+        let mut magsgn = FwdReader::<0xFF>::new(segment);
+        for _ in 0..segment.len().div_ceil(4) + 2 {
+            clean.extend_from_slice(&magsgn.fetch().to_le_bytes());
+            magsgn.advance(32);
+        }
+        let mut off = 0u32;
 
         // Decode one sample; returns (value, v_n), both zero when its rho bit is clear.
         // Bits are always consumed, but the caller guards the store.
-        let decode_sample =
-            |magsgn: &mut FwdReader<'_, 0xFF>, inf: u32, bit: u32, u_q: u32| -> (u32, u32) {
-                // Significance is data-dependent and mispredicts, so an insignificant sample
-                // reads zero bits and is masked to zero instead of branching away.
-                let keep = ((inf >> (4 + bit)) & 1).wrapping_neg();
-                let ms_val = magsgn.fetch();
-                let m_n = u_q.wrapping_sub((inf >> (12 + bit)) & 1) & keep;
-                magsgn.advance(m_n);
-                let mut v_n = ms_val & ((1u32 << m_n) - 1);
-                v_n |= ((inf >> (8 + bit)) & 1) << m_n;
-                v_n |= 1; // half the bin, for mid-point reconstruction
-                let v_n = v_n & keep;
-                // Wrapping like the reference's u32 arithmetic: a malformed
-                // stream may produce out-of-range v_n, never a panic.
-                let val = ((ms_val << 31) | v_n.wrapping_add(2).wrapping_shl(p - 1)) & keep;
-                (val, v_n)
-            };
+        let decode_sample = |off: &mut u32, inf: u32, bit: u32, u_q: u32| -> (u32, u32) {
+            // Significance is data-dependent and mispredicts, so an insignificant sample
+            // reads zero bits and is masked to zero instead of branching away.
+            let keep = ((inf >> (4 + bit)) & 1).wrapping_neg();
+            let ms_val = bits_at(&clean, *off);
+            let m_n = u_q.wrapping_sub((inf >> (12 + bit)) & 1) & keep;
+            *off += m_n;
+            let mut v_n = ms_val & ((1u32 << m_n) - 1);
+            v_n |= ((inf >> (8 + bit)) & 1) << m_n;
+            v_n |= 1; // half the bin, for mid-point reconstruction
+            let v_n = v_n & keep;
+            // Wrapping like the reference's u32 arithmetic: a malformed
+            // stream may produce out-of-range v_n, never a panic.
+            let val = ((ms_val << 31) | v_n.wrapping_add(2).wrapping_shl(p - 1)) & keep;
+            (val, v_n)
+        };
 
         // Initial quad-pair rows (rows 0 and 1).
         let mut prev_v_n = 0u32;
@@ -307,9 +318,9 @@ pub fn decode_block(
                     return Err(malformed(0, "U_q exceeds the magnitude bound"));
                 }
 
-                let (val, _) = decode_sample(&mut magsgn, inf, 0, u_q);
+                let (val, _) = decode_sample(&mut off, inf, 0, u_q);
                 out[dp] = val;
-                let (val, v_n) = decode_sample(&mut magsgn, inf, 1, u_q);
+                let (val, v_n) = decode_sample(&mut off, inf, 1, u_q);
                 if height > 1 {
                     out[dp + stride] = val;
                 }
@@ -322,9 +333,9 @@ pub fn decode_block(
                     break;
                 }
 
-                let (val, _) = decode_sample(&mut magsgn, inf, 2, u_q);
+                let (val, _) = decode_sample(&mut off, inf, 2, u_q);
                 out[dp] = val;
-                let (val, v_n) = decode_sample(&mut magsgn, inf, 3, u_q);
+                let (val, v_n) = decode_sample(&mut off, inf, 3, u_q);
                 if height > 1 {
                     out[dp + stride] = val;
                 }
@@ -366,9 +377,9 @@ pub fn decode_block(
                     return Err(malformed(0, "U_q exceeds the magnitude bound"));
                 }
 
-                let (val, _) = decode_sample(&mut magsgn, inf, 0, u_q);
+                let (val, _) = decode_sample(&mut off, inf, 0, u_q);
                 out[dp] = val;
-                let (val, v_n) = decode_sample(&mut magsgn, inf, 1, u_q);
+                let (val, v_n) = decode_sample(&mut off, inf, 1, u_q);
                 if y + 1 < height {
                     out[dp + stride] = val;
                 }
@@ -381,9 +392,9 @@ pub fn decode_block(
                     break;
                 }
 
-                let (val, _) = decode_sample(&mut magsgn, inf, 2, u_q);
+                let (val, _) = decode_sample(&mut off, inf, 2, u_q);
                 out[dp] = val;
-                let (val, v_n) = decode_sample(&mut magsgn, inf, 3, u_q);
+                let (val, v_n) = decode_sample(&mut off, inf, 3, u_q);
                 if y + 1 < height {
                     out[dp + stride] = val;
                 }
@@ -581,6 +592,26 @@ pub fn decode_block(
     }
 
     Ok(())
+}
+
+/// The 32 bits at bit offset `off` of an unstuffed stream, LSB-first. Bits past the end read as
+/// ones, as the `MagSgn` reader feeds once its segment is exhausted.
+#[inline]
+fn bits_at(clean: &[u8], off: u32) -> u32 {
+    let b = (off >> 3) as usize;
+    let word = if let Some(w) = clean.get(b..).and_then(<[u8]>::first_chunk::<8>) {
+        u64::from_le_bytes(*w)
+    } else {
+        let mut w = [0xFF; 8];
+        if let Some(rest) = clean.get(b..) {
+            w[..rest.len()].copy_from_slice(rest);
+        }
+        u64::from_le_bytes(w)
+    };
+    #[allow(clippy::cast_possible_truncation)] // the low 32 of at least 57 valid bits
+    {
+        (word >> (off & 7)) as u32
+    }
 }
 
 /// Narrows an in-range `u32` scratch word to `u16`.
