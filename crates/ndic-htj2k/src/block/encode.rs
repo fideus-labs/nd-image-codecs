@@ -87,13 +87,14 @@ fn quad_rows(buf: &[u32], stride: usize, width: usize, height: usize, y: usize) 
 /// Emits the `MagSgn` bits of one quad given its VLC tuple (`e_k` in the
 /// low nibble) and exponent bound `u_q_cap`.
 fn emit_magsgn(ms: &mut MagSgnEncoder, q: &Quad, tuple: u32, uq: u32) {
-    for n in 0..4u32 {
-        if q.rho & (1 << n) != 0 {
-            let m = uq - ((tuple >> n) & 1);
-            let mask = 1u32.checked_shl(m).map_or(u32::MAX, |b| b - 1);
-            ms.encode(q.s[n as usize] & mask, m);
-        }
-    }
+    // Insignificant samples become zero-length codewords, so all four go out in one run and
+    // the encoder's state is loaded and stored once per quad.
+    let word = |n: usize| {
+        let m = (uq - ((tuple >> n) & 1)) * ((q.rho >> n) & 1);
+        let mask = 1u32.checked_shl(m).map_or(u32::MAX, |b| b - 1);
+        (q.s[n] & mask, m)
+    };
+    ms.encode_all(&[word(0), word(1), word(2), word(3)]);
 }
 
 /// Encodes one code-block's cleanup pass, returning the codeword segment.

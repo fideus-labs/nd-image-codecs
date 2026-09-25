@@ -411,24 +411,30 @@ impl MagSgnEncoder {
 
     /// Appends `cwd_len` bits of `cwd` (LSB-first).
     pub fn encode(&mut self, cwd: u32, cwd_len: u32) {
-        // Loop state lives in locals and is written back once, as in `VlcEncoder`.
+        self.encode_all(&[(cwd, cwd_len)]);
+    }
+
+    /// Appends each `(cwd, cwd_len)` codeword in order, as repeated
+    /// [`Self::encode`] calls would.
+    pub fn encode_all(&mut self, words: &[(u32, u32)]) {
+        // State lives in locals for the whole run and is written back once, as in `VlcEncoder`.
         let mut tmp = self.tmp;
         let mut used_bits = self.used_bits;
         let mut max_bits = self.max_bits;
-        let mut cwd = cwd;
-        let mut cwd_len = cwd_len;
-        while cwd_len > 0 {
-            let t = (max_bits - used_bits).min(cwd_len);
-            tmp |= (cwd & ((1 << t) - 1)) << used_bits;
-            used_bits += t;
-            cwd >>= t;
-            cwd_len -= t;
-            if used_bits >= max_bits {
-                #[allow(clippy::cast_possible_truncation)]
-                self.buf.push(tmp as u8);
-                max_bits = if tmp == 0xFF { 7 } else { 8 };
-                tmp = 0;
-                used_bits = 0;
+        for &(mut cwd, mut cwd_len) in words {
+            while cwd_len > 0 {
+                let t = (max_bits - used_bits).min(cwd_len);
+                tmp |= (cwd & ((1 << t) - 1)) << used_bits;
+                used_bits += t;
+                cwd >>= t;
+                cwd_len -= t;
+                if used_bits >= max_bits {
+                    #[allow(clippy::cast_possible_truncation)]
+                    self.buf.push(tmp as u8);
+                    max_bits = if tmp == 0xFF { 7 } else { 8 };
+                    tmp = 0;
+                    used_bits = 0;
+                }
             }
         }
         self.tmp = tmp;
