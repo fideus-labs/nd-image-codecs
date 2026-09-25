@@ -107,8 +107,9 @@ pub(crate) fn ana_53(x: &[i32], low: &mut [i32], high: &mut [i32]) {
     }
 }
 
-/// Inverse of [`ana_53`].
-pub(crate) fn syn_53(low: &[i32], high: &[i32], x: &mut [i32]) {
+/// Inverse of [`ana_53`]. Lifts in place, leaving the reconstructed even and
+/// odd samples in `low` and `high`.
+pub(crate) fn syn_53(low: &mut [i32], high: &mut [i32], x: &mut [i32]) {
     let n = x.len();
     if n == 1 {
         x[0] = low[0];
@@ -116,22 +117,30 @@ pub(crate) fn syn_53(low: &[i32], high: &[i32], x: &mut [i32]) {
     }
     let nl = n.div_ceil(2);
     let nh = n / 2;
-    // Boundary samples are peeled as in `ana_53`.
-    let (low, high) = (&low[..nl], &high[..nh]);
+    // Boundary samples are peeled as in `ana_53`, and both steps are undone in place on the
+    // contiguous bands before a single interleave.
+    let (low, high) = (&mut low[..nl], &mut high[..nh]);
     // Undo update.
-    x[0] = low[0] - ((high[0] + high[0] + 2) >> 2);
+    low[0] -= (high[0] + high[0] + 2) >> 2;
     for i in 1..nh {
-        x[2 * i] = low[i] - ((high[i - 1] + high[i] + 2) >> 2);
+        low[i] -= (high[i - 1] + high[i] + 2) >> 2;
     }
     if nl > nh {
-        x[2 * nh] = low[nh] - ((high[nh - 1] + high[nh - 1] + 2) >> 2);
+        low[nh] -= (high[nh - 1] + high[nh - 1] + 2) >> 2;
     }
     // Undo predict.
-    for i in 0..(n - 1) / 2 {
-        x[2 * i + 1] = high[i] + ((x[2 * i] + x[2 * i + 2]) >> 1);
+    for i in 0..nl - 1 {
+        high[i] += (low[i] + low[i + 1]) >> 1;
     }
     if nh == nl {
-        x[n - 1] = high[nh - 1] + ((x[n - 2] + x[n - 2]) >> 1);
+        high[nh - 1] += (low[nh - 1] + low[nh - 1]) >> 1;
+    }
+    let (pairs, _) = x.as_chunks_mut::<2>();
+    for ((pair, &l), &h) in pairs.iter_mut().zip(low.iter()).zip(high.iter()) {
+        *pair = [l, h];
+    }
+    if nl > nh {
+        x[n - 1] = low[nh];
     }
 }
 
