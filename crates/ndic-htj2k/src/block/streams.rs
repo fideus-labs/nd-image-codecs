@@ -305,29 +305,37 @@ impl VlcEncoder {
 
     /// Appends `cwd_len` bits of `cwd` (LSB-first).
     pub fn encode(&mut self, cwd: u32, cwd_len: u32) {
+        // Loop state lives in locals and is written back once. The `push` may call the allocator,
+        // which otherwise forces every field through memory on each iteration.
+        let mut tmp = self.tmp;
+        let mut used_bits = self.used_bits;
+        let mut last_greater_than_8f = self.last_greater_than_8f;
         let mut cwd = cwd;
         let mut cwd_len = cwd_len;
         while cwd_len > 0 {
-            let mut avail_bits = 8 - u32::from(self.last_greater_than_8f) - self.used_bits;
+            let mut avail_bits = 8 - u32::from(last_greater_than_8f) - used_bits;
             let t = avail_bits.min(cwd_len);
-            self.tmp |= (cwd & ((1 << t) - 1)) << self.used_bits;
-            self.used_bits += t;
+            tmp |= (cwd & ((1 << t) - 1)) << used_bits;
+            used_bits += t;
             avail_bits -= t;
             cwd_len -= t;
             cwd >>= t;
             if avail_bits == 0 {
-                if self.last_greater_than_8f && self.tmp != 0x7F {
+                if last_greater_than_8f && tmp != 0x7F {
                     // The stuffed bit is unnecessary: reclaim it.
-                    self.last_greater_than_8f = false;
+                    last_greater_than_8f = false;
                     continue;
                 }
                 #[allow(clippy::cast_possible_truncation)]
-                self.buf.push(self.tmp as u8);
-                self.last_greater_than_8f = self.tmp > 0x8F;
-                self.tmp = 0;
-                self.used_bits = 0;
+                self.buf.push(tmp as u8);
+                last_greater_than_8f = tmp > 0x8F;
+                tmp = 0;
+                used_bits = 0;
             }
         }
+        self.tmp = tmp;
+        self.used_bits = used_bits;
+        self.last_greater_than_8f = last_greater_than_8f;
     }
 
     /// Number of bytes produced so far (including the placeholder).
@@ -403,22 +411,29 @@ impl MagSgnEncoder {
 
     /// Appends `cwd_len` bits of `cwd` (LSB-first).
     pub fn encode(&mut self, cwd: u32, cwd_len: u32) {
+        // Loop state lives in locals and is written back once, as in `VlcEncoder`.
+        let mut tmp = self.tmp;
+        let mut used_bits = self.used_bits;
+        let mut max_bits = self.max_bits;
         let mut cwd = cwd;
         let mut cwd_len = cwd_len;
         while cwd_len > 0 {
-            let t = (self.max_bits - self.used_bits).min(cwd_len);
-            self.tmp |= (cwd & ((1 << t) - 1)) << self.used_bits;
-            self.used_bits += t;
+            let t = (max_bits - used_bits).min(cwd_len);
+            tmp |= (cwd & ((1 << t) - 1)) << used_bits;
+            used_bits += t;
             cwd >>= t;
             cwd_len -= t;
-            if self.used_bits >= self.max_bits {
+            if used_bits >= max_bits {
                 #[allow(clippy::cast_possible_truncation)]
-                self.buf.push(self.tmp as u8);
-                self.max_bits = if self.tmp == 0xFF { 7 } else { 8 };
-                self.tmp = 0;
-                self.used_bits = 0;
+                self.buf.push(tmp as u8);
+                max_bits = if tmp == 0xFF { 7 } else { 8 };
+                tmp = 0;
+                used_bits = 0;
             }
         }
+        self.tmp = tmp;
+        self.used_bits = used_bits;
+        self.max_bits = max_bits;
     }
 
     /// Terminates the stream (pads with ones; drops a trailing byte the
