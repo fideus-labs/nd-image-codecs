@@ -270,6 +270,63 @@ impl<'a, const FILL: u8> FwdReader<'a, FILL> {
     }
 }
 
+/// Unstuffs a whole `MagSgn` segment into a plain LSB-first bit stream, the same bits a
+/// [`FwdReader`] with `FILL = 0xFF` yields. Each byte lands whole at a running bit position that
+/// advances by 8, or by 7 after an `0xFF`, so a stuffed byte's MSB overlaps the next byte's
+/// first bit. Past the segment every bit reads as one, and the output ends with padding for
+/// 8-byte loads.
+pub(crate) fn unstuff_magsgn(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len() + 24);
+    // Pending output bits below `nbits`, plus possibly the overlapping MSB of a 7-bit byte at
+    // `nbits`.
+    let mut acc = 0u64;
+    let mut nbits = 0u32;
+    let mut after_ff = false;
+    let (chunks, tail) = data.as_chunks::<8>();
+    for &chunk in chunks {
+        let w = u64::from_le_bytes(chunk);
+        // A SWAR zero-byte test on the inverted word flags an 0xFF in the first seven bytes.
+        // With none, and none carried in, all eight bytes keep 8 bits and append as one word.
+        let ff = (!w).wrapping_sub(0x0101_0101_0101_0101) & w & 0x0080_8080_8080_8080;
+        if !after_ff && ff == 0 {
+            out.extend_from_slice(&(acc | (w << nbits)).to_le_bytes());
+            // The bits that did not fit; `(w >> 1) >> (63 - nbits)` is zero when `nbits` is 0.
+            acc = (w >> 1) >> (63 - nbits);
+            after_ff = w >> 56 == 0xFF;
+        } else {
+            for b in chunk {
+                push_byte(&mut out, &mut acc, &mut nbits, &mut after_ff, b);
+            }
+        }
+    }
+    for &b in tail {
+        push_byte(&mut out, &mut acc, &mut nbits, &mut after_ff, b);
+    }
+    // The reader feeds 0xFF past the segment, so every later bit is one.
+    out.extend_from_slice(&(acc | (u64::MAX << nbits)).to_le_bytes());
+    out.extend_from_slice(&[0xFF; 16]);
+    out
+}
+
+/// Places one byte of [`unstuff_magsgn`] whole at the running position, which advances 8 bits,
+/// or 7 after an `0xFF`.
+fn push_byte(out: &mut Vec<u8>, acc: &mut u64, nbits: &mut u32, after_ff: &mut bool, b: u8) {
+    let wide = u128::from(*acc) | (u128::from(b) << *nbits);
+    *nbits += 8 - u32::from(*after_ff);
+    *after_ff = b == 0xFF;
+    if *nbits >= 64 {
+        #[allow(clippy::cast_possible_truncation)]
+        out.extend_from_slice(&(wide as u64).to_le_bytes());
+        *acc = (wide >> 64) as u64;
+        *nbits -= 64;
+    } else {
+        #[allow(clippy::cast_possible_truncation)] // every placed bit is below 64
+        {
+            *acc = wide as u64;
+        }
+    }
+}
+
 /// Encoder for the VLC bitstream, which grows backward from the end of the
 /// cleanup segment.
 ///
@@ -609,6 +666,37 @@ mod tests {
             let got = dec.fetch() & ((1 << n) - 1);
             assert_eq!(got, w, "word {w:#x}/{n}");
             dec.advance(n);
+        }
+    }
+
+    #[test]
+    fn unstuff_magsgn_matches_the_reader() {
+        // Heavy in 0xFF so stuffing lands in every chunk position, in both paths, and at the end.
+        let mut state = 0x2545_F491u32;
+        for len in [0usize, 1, 7, 8, 9, 15, 16, 17, 63, 64, 65, 200, 1000] {
+            for ff_every in [2u32, 5, 17, 1000] {
+                let data: Vec<u8> = (0..len)
+                    .map(|_| {
+                        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                        if (state >> 8).is_multiple_of(ff_every) {
+                            0xFF
+                        } else {
+                            (state >> 24) as u8
+                        }
+                    })
+                    .collect();
+                let clean = unstuff_magsgn(&data);
+                let mut reader = FwdReader::<0xFF>::new(&data);
+                for (i, word) in clean.as_chunks::<4>().0.iter().enumerate() {
+                    let want = reader.fetch();
+                    reader.advance(32);
+                    assert_eq!(
+                        u32::from_le_bytes(*word),
+                        want,
+                        "len {len} ff {ff_every} word {i}"
+                    );
+                }
+            }
         }
     }
 

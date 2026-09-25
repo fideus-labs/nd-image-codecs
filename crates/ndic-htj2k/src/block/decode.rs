@@ -20,7 +20,7 @@ use ndic_core::{Error, Result};
 
 use super::BlockPasses;
 use super::mel::MelDecoder;
-use super::streams::{FwdReader, RevReader};
+use super::streams::{FwdReader, RevReader, unstuff_magsgn};
 use super::tables::{DEC_VLC_TBL0, DEC_VLC_TBL1, UVLC_TBL0, UVLC_TBL1};
 
 /// Neighbor-propagation masks for the `SigProp` membership scan, indexed by
@@ -274,15 +274,8 @@ pub fn decode_block(
 
         // Unstuff the whole segment up front. Every sample's bit length is known from step 1,
         // so its bits are then one unaligned load at a running offset, and consecutive samples no
-        // longer wait on each other through a stateful reader. The reader itself does the
-        // unstuffing, so stuffed bytes and the 0xFF fed past the end come out exactly as before.
-        let segment = &coded[..lcup - scup];
-        let mut clean = Vec::with_capacity(segment.len() + 16);
-        let mut magsgn = FwdReader::<0xFF>::new(segment);
-        for _ in 0..segment.len().div_ceil(4) + 2 {
-            clean.extend_from_slice(&magsgn.fetch().to_le_bytes());
-            magsgn.advance(32);
-        }
+        // longer wait on each other through a stateful reader.
+        let clean = unstuff_magsgn(&coded[..lcup - scup]);
         let mut off = 0u32;
 
         // Decode one sample; returns (value, v_n), both zero when its rho bit is clear.
