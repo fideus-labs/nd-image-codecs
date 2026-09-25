@@ -117,11 +117,14 @@ pub fn encode_image_with_depth(
         (0, (1i64 << bit_depth) - 1)
     };
     for comp in comps {
-        if comp
+        // A min/max reduction vectorizes, where an early-exit scan loads one sample at a time.
+        let (min, max) = comp
             .samples
             .iter()
-            .any(|&v| i64::from(v) < lo || i64::from(v) > hi)
-        {
+            .fold((i32::MAX, i32::MIN), |(min, max), &v| {
+                (min.min(v), max.max(v))
+            });
+        if !comp.samples.is_empty() && (i64::from(min) < lo || i64::from(max) > hi) {
             return Err(Error::InvalidArgument {
                 message: "sample outside the declared dtype range".into(),
             });
