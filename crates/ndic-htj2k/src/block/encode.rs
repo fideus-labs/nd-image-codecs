@@ -46,14 +46,16 @@ impl Quad {
                 continue;
             };
             // (raw + raw) drops the sign bit; >> p aligns the coding LSB.
-            let mut val = (raw.wrapping_add(raw) >> p) & !1; // 2 mu_p
-            if val != 0 {
-                quad.rho |= 1 << n;
-                val -= 1; // 2 mu_p - 1
-                quad.e_q[n] = 32 - val.leading_zeros();
-                quad.e_qmax = quad.e_qmax.max(quad.e_q[n]);
-                quad.s[n] = (val - 1) + (raw >> 31); // 2 (mu_p - 1) + sign
-            }
+            let val = (raw.wrapping_add(raw) >> p) & !1; // 2 mu_p
+            // Significance is data-dependent and mispredicts, so an insignificant sample is
+            // masked to zero instead of branched around. Its `val - 1` wraps to all ones, whose
+            // zero `leading_zeros` the significance bit then clears.
+            let sig = u32::from(val != 0);
+            let val = val.wrapping_sub(1); // 2 mu_p - 1
+            quad.rho |= sig << n;
+            quad.e_q[n] = (32 - val.leading_zeros()) * sig;
+            quad.e_qmax = quad.e_qmax.max(quad.e_q[n]);
+            quad.s[n] = (val.wrapping_sub(1) + (raw >> 31)) & sig.wrapping_neg(); // 2 (mu_p - 1) + sign
         }
         quad
     }
