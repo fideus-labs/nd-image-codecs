@@ -207,6 +207,9 @@ fn widen_plane(bytes: &[u8], dtype: SampleType) -> Result<Vec<i32>> {
 
 /// Writes decoded `i32` samples back as native-endian `dtype` elements,
 /// range-checking (a corrupt chunk must error, not wrap).
+///
+/// Each arm extends through a `flat_map` over fixed-size arrays, which is
+/// `TrustedLen`, so the output grows once rather than once per sample.
 pub fn narrow_samples(samples: &[i32], dtype: SampleType, out: &mut Vec<u8>) -> Result<()> {
     fn check(lo: i64, hi: i64, samples: &[i32], dtype: SampleType) -> Result<()> {
         let (min, max) = samples.iter().fold((i64::MAX, i64::MIN), |(lo, hi), &v| {
@@ -235,26 +238,18 @@ pub fn narrow_samples(samples: &[i32], dtype: SampleType, out: &mut Vec<u8>) -> 
         }
         SampleType::U16 => {
             check(0, 0xFFFF, samples, dtype)?;
-            for &v in samples {
-                out.extend_from_slice(&(v as u16).to_ne_bytes());
-            }
+            out.extend(samples.iter().flat_map(|&v| (v as u16).to_ne_bytes()));
         }
         SampleType::I16 => {
             check(i64::from(i16::MIN), i64::from(i16::MAX), samples, dtype)?;
-            for &v in samples {
-                out.extend_from_slice(&(v as i16).to_ne_bytes());
-            }
+            out.extend(samples.iter().flat_map(|&v| (v as i16).to_ne_bytes()));
         }
         SampleType::U32 => {
             check(0, i64::from(u32::MAX), samples, dtype)?;
-            for &v in samples {
-                out.extend_from_slice(&(v as u32).to_ne_bytes());
-            }
+            out.extend(samples.iter().flat_map(|&v| (v as u32).to_ne_bytes()));
         }
         SampleType::I32 => {
-            for &v in samples {
-                out.extend_from_slice(&v.to_ne_bytes());
-            }
+            out.extend(samples.iter().flat_map(|&v| v.to_ne_bytes()));
         }
         _ => {
             return Err(Error::Unsupported {
