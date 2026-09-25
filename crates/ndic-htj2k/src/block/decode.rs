@@ -487,52 +487,37 @@ pub fn decode_block(
                 mbr &= pattern;
                 mbr &= !cs;
 
-                let mut new_sig = mbr;
-                if new_sig != 0 {
+                let mut new_sig = 0u32;
+                if mbr != 0 {
                     let mut cwd = sigprop.fetch();
                     let mut cnt = 0u32;
                     let inv_sig = !cs & pattern;
 
-                    let mut col_mask = 0xFu32;
-                    let mut i = 0u32;
-                    while i < 16 {
-                        if (col_mask & new_sig) != 0 {
-                            let mut sample_mask = 0x1111 & col_mask;
-                            for row in 0..4u32 {
-                                if new_sig & sample_mask != 0 {
-                                    new_sig &= !sample_mask;
-                                    if cwd & 1 != 0 {
-                                        let t = SPP_PROPAGATION[row as usize] << i;
-                                        new_sig |= t & inv_sig;
-                                    }
-                                    cwd >>= 1;
-                                    cnt += 1;
-                                }
-                                sample_mask <<= 1;
-                            }
+                    // Visit candidates lowest bit first, which is column by column with rows in
+                    // order. A new significance only adds candidates at or after its own bit, so
+                    // taking the lowest pending bit each time keeps the reference order.
+                    let mut pending = mbr;
+                    while pending != 0 {
+                        let b = pending.trailing_zeros();
+                        pending &= pending - 1;
+                        if cwd & 1 != 0 {
+                            let t = (SPP_PROPAGATION[(b & 3) as usize] << (b & !3)) & inv_sig;
+                            new_sig |= 1 << b;
+                            pending |= t & !((2 << b) - 1);
                         }
-                        col_mask <<= 4;
-                        i += 4;
+                        cwd >>= 1;
+                        cnt += 1;
                     }
 
-                    if new_sig != 0 {
-                        // Read the sign bits of newly significant samples.
-                        let val = 3 << (p - 2);
-                        let mut col_mask = 0xFu32;
-                        for col in 0..4usize {
-                            if (col_mask & new_sig) != 0 {
-                                let mut sample_mask = 0x1111 & col_mask;
-                                for row in 0..4usize {
-                                    if new_sig & sample_mask != 0 {
-                                        out[dpp + x + col + row * stride] = (cwd << 31) | val;
-                                        cwd >>= 1;
-                                        cnt += 1;
-                                    }
-                                    sample_mask <<= 1;
-                                }
-                            }
-                            col_mask <<= 4;
-                        }
+                    // Read the sign bits of newly significant samples, in the same order.
+                    let val = 3 << (p - 2);
+                    let mut rest = new_sig;
+                    while rest != 0 {
+                        let b = rest.trailing_zeros() as usize;
+                        rest &= rest - 1;
+                        out[dpp + x + (b >> 2) + (b & 3) * stride] = (cwd << 31) | val;
+                        cwd >>= 1;
+                        cnt += 1;
                     }
                     sigprop.advance(cnt);
                 }
