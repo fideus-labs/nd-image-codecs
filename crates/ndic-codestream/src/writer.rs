@@ -364,11 +364,14 @@ fn code_band(
             let mut buf = alloc::vec![0u32; r.w * r.h];
             let mut mv = 0u32;
             for y in 0..r.h {
-                for x in 0..r.w {
-                    let src = plane[(band.y0 + r.y + y) * plane_width + band.x0 + r.x + x];
-                    let sm = ndic_htj2k::coeff_to_sign_magnitude(src, shift);
+                // Row slices hoist the index math and bounds checks out of the sample loop.
+                let src_start = (band.y0 + r.y + y) * plane_width + band.x0 + r.x;
+                let src = &plane[src_start..src_start + r.w];
+                let dst = &mut buf[y * r.w..(y + 1) * r.w];
+                for (d, &s) in dst.iter_mut().zip(src) {
+                    let sm = ndic_htj2k::coeff_to_sign_magnitude(s, shift);
                     mv |= sm & 0x7FFF_FFFF;
-                    buf[y * r.w + x] = sm;
+                    *d = sm;
                 }
             }
             if mv < (1 << shift) {
