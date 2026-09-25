@@ -180,13 +180,16 @@ fn load_png(data: &[u8]) -> anyhow::Result<Image> {
     };
     let n = width * height;
     let mut comps = vec![vec![0i32; n]; ncomp];
-    for i in 0..n * ncomp {
-        let v = if bytes_per == 2 {
-            i32::from(u16::from_be_bytes([buf[2 * i], buf[2 * i + 1]]))
-        } else {
-            i32::from(buf[i])
-        };
-        comps[i % ncomp][i / ncomp] = v;
+    // The sample width is chosen once, outside the loop. `as_chunks` hands each 16-bit sample
+    // over as a 2-byte array, one unaligned load rather than two bounds-checked ones.
+    if bytes_per == 2 {
+        for (i, &c) in buf.as_chunks::<2>().0[..n * ncomp].iter().enumerate() {
+            comps[i % ncomp][i / ncomp] = i32::from(u16::from_be_bytes(c));
+        }
+    } else {
+        for (i, &b) in buf[..n * ncomp].iter().enumerate() {
+            comps[i % ncomp][i / ncomp] = i32::from(b);
+        }
     }
     Ok(Image {
         comps,
@@ -247,23 +250,26 @@ fn load_raw(data: &[u8], width: usize, height: usize, dtype: SampleType) -> anyh
     if data.len() < need {
         bail!("raw file holds {} bytes, need {need}", data.len());
     }
-    let mut plane = vec![0i32; n];
-    for (i, v) in plane.iter_mut().enumerate() {
-        *v = match dtype {
-            SampleType::U8 => i32::from(data[i]),
-            #[allow(clippy::cast_possible_wrap)] // reinterpret the raw byte
-            SampleType::I8 => i32::from(data[i] as i8),
-            SampleType::U16 => i32::from(u16::from_le_bytes([data[2 * i], data[2 * i + 1]])),
-            SampleType::I16 => i32::from(i16::from_le_bytes([data[2 * i], data[2 * i + 1]])),
-            SampleType::U32 | SampleType::I32 => i32::from_le_bytes([
-                data[4 * i],
-                data[4 * i + 1],
-                data[4 * i + 2],
-                data[4 * i + 3],
-            ]),
-            _ => bail!("unsupported raw dtype {dtype:?}"),
-        };
-    }
+    // The dtype is matched once, outside the loop. `as_chunks` hands each sample over as a
+    // fixed-size array, which is one unaligned load rather than a bounds-checked load per byte.
+    let plane: Vec<i32> = match dtype {
+        SampleType::U8 => data[..n].iter().map(|&b| i32::from(b)).collect(),
+        #[allow(clippy::cast_possible_wrap)] // reinterpret the raw byte
+        SampleType::I8 => data[..n].iter().map(|&b| i32::from(b as i8)).collect(),
+        SampleType::U16 => data.as_chunks::<2>().0[..n]
+            .iter()
+            .map(|&c| i32::from(u16::from_le_bytes(c)))
+            .collect(),
+        SampleType::I16 => data.as_chunks::<2>().0[..n]
+            .iter()
+            .map(|&c| i32::from(i16::from_le_bytes(c)))
+            .collect(),
+        SampleType::U32 | SampleType::I32 => data.as_chunks::<4>().0[..n]
+            .iter()
+            .map(|&c| i32::from_le_bytes(c))
+            .collect(),
+        _ => bail!("unsupported raw dtype {dtype:?}"),
+    };
     Ok(Image {
         comps: vec![plane],
         width,
@@ -294,4 +300,26 @@ fn save_raw(image: &Image) -> anyhow::Result<Vec<u8>> {
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_roundtrips_every_dtype() {
+        let bytes: Vec<u8> = (0..120u8).map(|i| i.wrapping_mul(37)).collect();
+        for dtype in [
+            SampleType::U8,
+            SampleType::I8,
+            SampleType::U16,
+            SampleType::I16,
+            SampleType::U32,
+            SampleType::I32,
+        ] {
+            let need = 6 * 5 * dtype.size_bytes();
+            let image = load_raw(&bytes, 6, 5, dtype).unwrap();
+            assert_eq!(save_raw(&image).unwrap(), bytes[..need], "{dtype:?}");
+        }
+    }
 }
