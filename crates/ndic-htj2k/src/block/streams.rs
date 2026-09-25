@@ -441,15 +441,22 @@ impl CleanBits {
 /// Bytes are produced in reverse order: [`Self::into_bytes`] returns them in
 /// stream order (last produced first), ending with the placeholder byte that
 /// later receives the high bits of `Scup`.
+///
+/// Codewords go in with [`Self::merge`] and complete bytes leave with [`Self::flush`], a
+/// byte-granular writer after libdeflate and igzip: the flush stores all eight accumulator
+/// bytes unconditionally and advances past the complete ones, so how many bits the codewords
+/// brought never steers a branch, and several codewords share one flush.
 #[derive(Debug)]
 pub struct VlcEncoder {
-    /// Bytes in production order (reverse of final stream order). The first
-    /// element is the `0xFF` placeholder byte.
+    /// Bytes in production order (reverse of final stream order) in `buf[..len]`. The first
+    /// is the `0xFF` placeholder byte. Bytes past `len` are scratch that the flush's 8-byte
+    /// store runs into.
     buf: Vec<u8>,
-    /// Bit accumulator (LSB-first). Up to 31 bits wait here, so completed
-    /// bytes can leave four at a time.
-    tmp: u32,
-    /// Occupied bits in [`Self::tmp`].
+    /// Number of bytes produced.
+    len: usize,
+    /// Bit accumulator (LSB-first). Fewer than 8 bits wait here after a flush.
+    acc: u64,
+    /// Occupied bits in [`Self::acc`].
     used_bits: u32,
     /// True if the previously flushed byte is `> 0x8F` (stuffing state).
     last_greater_than_8f: bool,
@@ -468,16 +475,19 @@ impl VlcEncoder {
         Self::with_buffer(Vec::new())
     }
 
-    /// Creates an encoder holding the initial placeholder byte that writes
-    /// into `buf`, reusing its capacity.
+    /// Creates an encoder holding the initial placeholder byte that writes into `buf`, reusing
+    /// its capacity. Its old bytes stay as scratch past the logical end rather than being
+    /// cleared and zero-filled again.
     #[must_use]
     pub fn with_buffer(mut buf: Vec<u8>) -> Self {
-        buf.clear();
-        buf.reserve(2880);
-        buf.push(0xFF);
+        if buf.is_empty() {
+            buf.push(0);
+        }
+        buf[0] = 0xFF;
         Self {
             buf,
-            tmp: 0xF,
+            len: 1,
+            acc: 0xF,
             used_bits: 4,
             last_greater_than_8f: true,
         }
@@ -490,44 +500,68 @@ impl VlcEncoder {
 
     /// Appends each `(cwd, cwd_len)` codeword in order, as repeated
     /// [`Self::encode`] calls would.
-    // Inlined into the per-quad code, where a call would spill the quad loop's live values. The
-    // `#[inline]` hint leaves some call sites out of line.
-    #[allow(clippy::inline_always)]
-    #[inline(always)]
     pub fn encode_all(&mut self, words: &[(u32, u32)]) {
-        // State lives in locals for the whole run and is written back once. The `push` may call
-        // the allocator, which otherwise forces every field through memory on each iteration.
-        // A 64-bit accumulator takes each codeword whole, as in `MagSgnEncoder::encode_all`.
-        let mut acc = u64::from(self.tmp);
-        let mut used_bits = self.used_bits;
-        let mut last_greater_than_8f = self.last_greater_than_8f;
         for &(cwd, cwd_len) in words {
-            acc |= (u64::from(cwd) & ((1u64 << cwd_len.min(32)) - 1)) << used_bits;
-            used_bits += cwd_len;
-            // Once four bytes are complete, a SWAR zero-byte test flags any whose low 7 bits are
-            // all ones, the only kind that can be stuffed. With none, all four keep 8 bits and
-            // leave as one 32-bit store. Otherwise a single byte leaves and the test repeats.
-            while used_bits >= 32 {
-                #[allow(clippy::cast_possible_truncation)]
-                let word = acc as u32;
-                if (!word & 0x7F7F_7F7F).wrapping_sub(0x0101_0101) & 0x8080_8080 == 0 {
-                    self.buf.extend_from_slice(&word.to_le_bytes());
-                    acc >>= 32;
-                    used_bits -= 32;
-                    last_greater_than_8f = word >> 24 > 0x8F;
-                } else if let Some(byte) =
-                    Self::take_byte(&mut acc, &mut used_bits, &mut last_greater_than_8f)
-                {
-                    self.buf.push(byte);
-                }
+            self.merge(u64::from(cwd) & ((1u64 << cwd_len.min(32)) - 1), cwd_len);
+            self.flush();
+        }
+    }
+
+    /// Appends the `cwd_len`-bit codeword `cwd`, which holds no bits above them, without
+    /// writing any bytes. The caller flushes before the pending bits could pass 63.
+    #[inline]
+    pub(crate) fn merge(&mut self, cwd: u64, cwd_len: u32) {
+        debug_assert!(cwd_len <= 32 && cwd >> cwd_len == 0);
+        debug_assert!(self.used_bits + cwd_len <= 63);
+        self.acc |= cwd << self.used_bits;
+        self.used_bits += cwd_len;
+    }
+
+    /// Writes out the complete bytes, leaving fewer than 8 bits pending.
+    #[inline]
+    pub(crate) fn flush(&mut self) {
+        // Bits in complete bytes.
+        let done = self.used_bits & !7;
+        let acc = self.acc;
+        // A SWAR zero-byte test flags bytes whose low 7 bits are all ones, the only kind that
+        // can be stuffed. One among the complete bytes sends them out a byte at a time.
+        let sevens = (!acc & 0x7F7F_7F7F_7F7F_7F7F).wrapping_sub(0x0101_0101_0101_0101)
+            & 0x8080_8080_8080_8080;
+        if sevens & (1u64 << done).wrapping_sub(1) != 0 {
+            self.flush_bytes();
+            return;
+        }
+        let pos = self.len;
+        if self.buf.len() < pos + 8 {
+            self.buf.resize((pos + 8).max(2 * self.buf.len()), 0);
+        }
+        self.buf[pos..pos + 8].copy_from_slice(&acc.to_le_bytes());
+        self.len = pos + (done / 8) as usize;
+        let last = (acc >> (done.wrapping_sub(8) & 63)) & 0xFF;
+        self.last_greater_than_8f = if done == 0 {
+            self.last_greater_than_8f
+        } else {
+            last > 0x8F
+        };
+        self.acc = acc >> done;
+        self.used_bits -= done;
+    }
+
+    /// Writes out the complete bytes one at a time, applying the stuffing rule to each.
+    #[cold]
+    fn flush_bytes(&mut self) {
+        while let Some(byte) = Self::take_byte(
+            &mut self.acc,
+            &mut self.used_bits,
+            &mut self.last_greater_than_8f,
+        ) {
+            if self.buf.len() > self.len {
+                self.buf[self.len] = byte;
+            } else {
+                self.buf.push(byte);
             }
+            self.len += 1;
         }
-        #[allow(clippy::cast_possible_truncation)] // fewer than 32 bits remain
-        {
-            self.tmp = acc as u32;
-        }
-        self.used_bits = used_bits;
-        self.last_greater_than_8f = last_greater_than_8f;
     }
 
     /// Takes the next byte out of the accumulator if it is complete. After a
@@ -555,9 +589,9 @@ impl VlcEncoder {
     #[must_use]
     pub fn len(&self) -> usize {
         // Completed bytes may still wait in the accumulator, so they are counted too.
-        let mut acc = u64::from(self.tmp);
+        let mut acc = self.acc;
         let (mut used_bits, mut last) = (self.used_bits, self.last_greater_than_8f);
-        let mut n = self.buf.len();
+        let mut n = self.len;
         while Self::take_byte(&mut acc, &mut used_bits, &mut last).is_some() {
             n += 1;
         }
@@ -574,19 +608,11 @@ impl VlcEncoder {
     /// (T.814 §7.3.5), and returns `(mel_bytes, vlc_bytes_stream_order)`.
     #[must_use]
     pub fn terminate_with_mel(mut self, mut mel: super::mel::MelEncoder) -> (Vec<u8>, Vec<u8>) {
+        self.buf.truncate(self.len);
         // Flush the completed bytes still waiting in the accumulator.
-        let mut acc = u64::from(self.tmp);
-        while let Some(byte) = Self::take_byte(
-            &mut acc,
-            &mut self.used_bits,
-            &mut self.last_greater_than_8f,
-        ) {
-            self.buf.push(byte);
-        }
+        self.flush_bytes();
         #[allow(clippy::cast_possible_truncation)] // fewer than 8 bits remain
-        {
-            self.tmp = acc as u32;
-        }
+        let vlc_tmp = self.acc as u32;
         let (mel_tmp, mel_mask) = mel.terminate();
         let vlc_mask = if self.used_bits == 0 {
             0
@@ -594,8 +620,8 @@ impl VlcEncoder {
             0xFFu32 >> (8 - self.used_bits)
         };
         if (mel_mask | vlc_mask) != 0 {
-            let fuse = mel_tmp | self.tmp;
-            if ((fuse ^ mel_tmp) & mel_mask) | ((fuse ^ self.tmp) & vlc_mask) == 0
+            let fuse = mel_tmp | vlc_tmp;
+            if ((fuse ^ mel_tmp) & mel_mask) | ((fuse ^ vlc_tmp) & vlc_mask) == 0
                 && fuse != 0xFF
                 && self.buf.len() > 1
             {
@@ -605,7 +631,7 @@ impl VlcEncoder {
                 #[allow(clippy::cast_possible_truncation)]
                 mel.buf.push(mel_tmp as u8); // cannot be 0xFF
                 #[allow(clippy::cast_possible_truncation)]
-                self.buf.push(self.tmp as u8);
+                self.buf.push(vlc_tmp as u8);
             }
         }
         self.buf.reverse();
@@ -613,13 +639,18 @@ impl VlcEncoder {
     }
 }
 
-/// Encoder for the forward `MagSgn` bitstream (LSB-first, `0xFF`-stuffed).
+/// Encoder for the forward `MagSgn` bitstream (LSB-first, `0xFF`-stuffed), with the same
+/// merge and flush split as [`VlcEncoder`].
 #[derive(Debug)]
 pub struct MagSgnEncoder {
-    /// Completed bytes.
+    /// Completed bytes in `buf[..len]`. Bytes past `len` are scratch that the flush's 8-byte
+    /// store runs into.
     buf: Vec<u8>,
-    /// Pending bits, LSB-first. Up to 31 wait here, so completed bytes can leave four at a time.
-    tmp: u32,
+    /// Number of completed bytes.
+    len: usize,
+    /// Pending bits, LSB-first. Fewer than 8 wait here after a flush.
+    acc: u64,
+    /// Occupied bits in [`Self::acc`].
     used_bits: u32,
     /// 7 after an `0xFF` byte, else 8.
     max_bits: u32,
@@ -638,14 +669,14 @@ impl MagSgnEncoder {
         Self::with_buffer(Vec::new())
     }
 
-    /// Creates an empty encoder that writes into `buf`, reusing its capacity.
+    /// Creates an empty encoder that writes into `buf`, reusing its capacity. Its old bytes stay
+    /// as scratch past the logical end rather than being cleared and zero-filled again.
     #[must_use]
-    pub fn with_buffer(mut buf: Vec<u8>) -> Self {
-        buf.clear();
-        buf.reserve(4096);
+    pub fn with_buffer(buf: Vec<u8>) -> Self {
         Self {
             buf,
-            tmp: 0,
+            len: 0,
+            acc: 0,
             used_bits: 0,
             max_bits: 8,
         }
@@ -658,70 +689,85 @@ impl MagSgnEncoder {
 
     /// Appends each `(cwd, cwd_len)` codeword in order, as repeated
     /// [`Self::encode`] calls would.
-    // Inlined into the per-quad code, where a call would spill the quad loop's live values. The
-    // `#[inline]` hint leaves some call sites out of line.
-    #[allow(clippy::inline_always)]
-    #[inline(always)]
     pub fn encode_all(&mut self, words: &[(u32, u32)]) {
-        // State lives in locals for the whole run and is written back once, as in `VlcEncoder`.
-        // A 64-bit accumulator takes each codeword whole, since at most 31 pending bits plus 32
-        // new ones fit.
-        let mut acc = u64::from(self.tmp);
-        let mut used_bits = self.used_bits;
-        let mut max_bits = self.max_bits;
         for &(cwd, cwd_len) in words {
-            acc |= (u64::from(cwd) & ((1u64 << cwd_len.min(32)) - 1)) << used_bits;
-            used_bits += cwd_len;
-            // Once four bytes are complete, a SWAR zero-byte test on the inverted word looks for
-            // an 0xFF among the first three. With none, all four keep 8 bits and leave as one
-            // 32-bit store. Otherwise a single byte leaves and the test repeats.
-            while used_bits >= 32 {
-                #[allow(clippy::cast_possible_truncation)]
-                let word = acc as u32;
-                let inv = !word | 0xFF00_0000;
-                if max_bits == 8 && inv.wrapping_sub(0x0101_0101) & word & 0x0080_8080 == 0 {
-                    self.buf.extend_from_slice(&word.to_le_bytes());
-                    acc >>= 32;
-                    used_bits -= 32;
-                    max_bits = if word >> 24 == 0xFF { 7 } else { 8 };
-                } else {
-                    let byte = acc & ((1 << max_bits) - 1);
-                    #[allow(clippy::cast_possible_truncation)]
-                    self.buf.push(byte as u8);
-                    acc >>= max_bits;
-                    used_bits -= max_bits;
-                    max_bits = if byte == 0xFF { 7 } else { 8 };
-                }
+            self.merge(u64::from(cwd) & ((1u64 << cwd_len.min(32)) - 1), cwd_len);
+            self.flush();
+        }
+    }
+
+    /// Appends the `cwd_len`-bit codeword `cwd`, which holds no bits above them, without
+    /// writing any bytes. The caller flushes before the pending bits could pass 63.
+    #[inline]
+    pub(crate) fn merge(&mut self, cwd: u64, cwd_len: u32) {
+        debug_assert!(cwd_len <= 32 && cwd >> cwd_len == 0);
+        debug_assert!(self.used_bits + cwd_len <= 63);
+        self.acc |= cwd << self.used_bits;
+        self.used_bits += cwd_len;
+    }
+
+    /// Writes out the complete bytes, leaving fewer than 8 bits pending.
+    #[inline]
+    pub(crate) fn flush(&mut self) {
+        // Bits in complete bytes.
+        let done = self.used_bits & !7;
+        let acc = self.acc;
+        // A SWAR zero-byte test on the inverted accumulator flags 0xFF bytes. One before the
+        // last complete byte, or a stuffed byte pending from before, sends the bytes out one at
+        // a time, since each 0xFF shortens the byte after it to 7 bits.
+        let ff = (!acc).wrapping_sub(0x0101_0101_0101_0101) & acc & 0x8080_8080_8080_8080;
+        if self.max_bits != 8 || ff & ((1u64 << done).wrapping_sub(1) >> 8) != 0 {
+            self.flush_bytes();
+            return;
+        }
+        let pos = self.len;
+        if self.buf.len() < pos + 8 {
+            self.buf.resize((pos + 8).max(2 * self.buf.len()), 0);
+        }
+        self.buf[pos..pos + 8].copy_from_slice(&acc.to_le_bytes());
+        self.len = pos + (done / 8) as usize;
+        // A last complete byte of 0xFF shortens the next one. With no 0xFF below it, its flag is
+        // exact.
+        let last_ff = done != 0 && (ff >> (done.wrapping_sub(1) & 63)) & 1 != 0;
+        self.max_bits = 8 - u32::from(last_ff);
+        self.acc = acc >> done;
+        self.used_bits -= done;
+    }
+
+    /// Writes out the complete bytes one at a time, applying the stuffing rule to each.
+    #[cold]
+    fn flush_bytes(&mut self) {
+        while self.used_bits >= self.max_bits {
+            let byte = self.acc & ((1 << self.max_bits) - 1);
+            #[allow(clippy::cast_possible_truncation)]
+            let b = byte as u8;
+            if self.buf.len() > self.len {
+                self.buf[self.len] = b;
+            } else {
+                self.buf.push(b);
             }
+            self.len += 1;
+            self.acc >>= self.max_bits;
+            self.used_bits -= self.max_bits;
+            self.max_bits = if byte == 0xFF { 7 } else { 8 };
         }
-        #[allow(clippy::cast_possible_truncation)] // fewer than 32 bits remain
-        {
-            self.tmp = acc as u32;
-        }
-        self.used_bits = used_bits;
-        self.max_bits = max_bits;
     }
 
     /// Terminates the stream (pads with ones; drops a trailing byte the
     /// decoder regenerates) and returns the bytes.
     #[must_use]
     pub fn terminate(mut self) -> Vec<u8> {
+        self.buf.truncate(self.len);
         // Flush the completed bytes still waiting in the accumulator.
-        while self.used_bits >= self.max_bits {
-            let byte = self.tmp & ((1 << self.max_bits) - 1);
-            #[allow(clippy::cast_possible_truncation)]
-            self.buf.push(byte as u8);
-            self.tmp >>= self.max_bits;
-            self.used_bits -= self.max_bits;
-            self.max_bits = if byte == 0xFF { 7 } else { 8 };
-        }
+        self.flush_bytes();
+        #[allow(clippy::cast_possible_truncation)] // fewer than 8 bits remain
+        let mut tmp = self.acc as u32;
         if self.used_bits > 0 {
             let t = self.max_bits - self.used_bits;
-            self.tmp |= (0xFF & ((1u32 << t) - 1)) << self.used_bits;
-            self.used_bits += t;
-            if self.tmp != 0xFF {
+            tmp |= (0xFF & ((1u32 << t) - 1)) << self.used_bits;
+            if tmp != 0xFF {
                 #[allow(clippy::cast_possible_truncation)]
-                self.buf.push(self.tmp as u8);
+                self.buf.push(tmp as u8);
             }
         } else if self.max_bits == 7 {
             self.buf.pop();

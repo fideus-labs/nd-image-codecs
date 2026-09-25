@@ -91,14 +91,37 @@ fn quad_rows(buf: &[u32], stride: usize, width: usize, height: usize, y: usize) 
 /// Emits the `MagSgn` bits of one quad given its VLC tuple (`e_k` in the
 /// low nibble) and exponent bound `u_q_cap`.
 fn emit_magsgn(ms: &mut MagSgnEncoder, q: &Quad, tuple: u32, uq: u32) {
-    // Insignificant samples become zero-length codewords, so all four go out in one run and
-    // the encoder's state is loaded and stored once per quad.
+    // Insignificant samples become zero-length codewords, so all four go out in one run.
     let word = |n: usize| {
         let m = (uq - ((tuple >> n) & 1)) * ((q.rho >> n) & 1);
         let mask = 1u32.checked_shl(m).map_or(u32::MAX, |b| b - 1);
-        (q.s[n] & mask, m)
+        (u64::from(q.s[n] & mask), m)
     };
-    ms.encode_all(&[word(0), word(1), word(2), word(3)]);
+    if uq <= 14 {
+        // Four codewords of at most 14 bits fit beside the 7 a flush leaves, so the quad
+        // flushes once.
+        for n in 0..4 {
+            let (cwd, len) = word(n);
+            ms.merge(cwd, len);
+        }
+        ms.flush();
+    } else {
+        for n in 0..4 {
+            let (cwd, len) = word(n);
+            ms.merge(cwd, len);
+            ms.flush();
+        }
+    }
+}
+
+/// Merges a quad pair's UVLC codewords into the VLC stream and flushes it once for the whole
+/// pair. The pair's two VLC codewords of at most 7 bits and UVLC codes of at most 16 fit beside
+/// the 7 bits a flush leaves.
+fn finish_pair(vlc: &mut VlcEncoder, words: &[(u32, u32)]) {
+    for &(cwd, len) in words {
+        vlc.merge(u64::from(cwd), len);
+    }
+    vlc.flush();
 }
 
 /// Reusable working buffers for encoding code-blocks. Encoding through one
@@ -234,7 +257,7 @@ fn encode_with(
         cx_val[lcxp] = to_u8((q0.rho & 8) >> 3);
 
         let tuple0 = u32::from(ENC_VLC_TBL0[((c_q0 << 8) + (q0.rho << 4) + eps0) as usize]);
-        vlc.encode(tuple0 >> 8, (tuple0 >> 4) & 7);
+        vlc.merge(u64::from(tuple0 >> 8), (tuple0 >> 4) & 7);
         if c_q0 == 0 {
             mel.encode(q0.rho != 0);
         }
@@ -254,7 +277,7 @@ fn encode_with(
             cx_val[lcxp] = to_u8((q1.rho & 8) >> 3);
 
             let tuple1 = u32::from(ENC_VLC_TBL0[((c_q1 << 8) + (q1.rho << 4) + eps1) as usize]);
-            vlc.encode(tuple1 >> 8, (tuple1 >> 4) & 7);
+            vlc.merge(u64::from(tuple1 >> 8), (tuple1 >> 4) & 7);
             if c_q1 == 0 {
                 mel.encode(q1.rho != 0);
             }
@@ -271,17 +294,20 @@ fn encode_with(
         }
         if u_q0 > 2 && u_q1 > 2 {
             let (c0, c1) = (ENC_UVLC[(u_q0 - 2) as usize], ENC_UVLC[(u_q1 - 2) as usize]);
-            vlc.encode_all(&uvlc_pair(c0, c1));
+            finish_pair(&mut vlc, &uvlc_pair(c0, c1));
         } else if u_q0 > 2 && u_q1 > 0 {
             let c0 = ENC_UVLC[u_q0 as usize];
-            vlc.encode_all(&[
-                (c0.prefix.into(), c0.prefix_len.into()),
-                (u_q1 - 1, 1),
-                (c0.suffix.into(), c0.suffix_len.into()),
-            ]);
+            finish_pair(
+                &mut vlc,
+                &[
+                    (c0.prefix.into(), c0.prefix_len.into()),
+                    (u_q1 - 1, 1),
+                    (c0.suffix.into(), c0.suffix_len.into()),
+                ],
+            );
         } else {
             let (c0, c1) = (ENC_UVLC[u_q0 as usize], ENC_UVLC[u_q1 as usize]);
-            vlc.encode_all(&uvlc_pair(c0, c1));
+            finish_pair(&mut vlc, &uvlc_pair(c0, c1));
         }
 
         x += 4;
@@ -325,7 +351,7 @@ fn encode_with(
             cx_val[lcxp] = to_u8((q0.rho & 8) >> 3);
 
             let tuple0 = u32::from(ENC_VLC_TBL1[((c_q0 << 8) + (q0.rho << 4) + eps0) as usize]);
-            vlc.encode(tuple0 >> 8, (tuple0 >> 4) & 7);
+            vlc.merge(u64::from(tuple0 >> 8), (tuple0 >> 4) & 7);
             if c_q0 == 0 {
                 mel.encode(q0.rho != 0);
             }
@@ -352,7 +378,7 @@ fn encode_with(
                 cx_val[lcxp] = to_u8((q1.rho & 8) >> 3);
 
                 let tuple1 = u32::from(ENC_VLC_TBL1[((c_q1 << 8) + (q1.rho << 4) + eps1) as usize]);
-                vlc.encode(tuple1 >> 8, (tuple1 >> 4) & 7);
+                vlc.merge(u64::from(tuple1 >> 8), (tuple1 >> 4) & 7);
                 if c_q1 == 0 {
                     mel.encode(q1.rho != 0);
                 }
@@ -365,7 +391,7 @@ fn encode_with(
 
             // UVLC for the pair (no MEL event on non-initial rows).
             let (c0, c1) = (ENC_UVLC[u_q0 as usize], ENC_UVLC[u_q1 as usize]);
-            vlc.encode_all(&uvlc_pair(c0, c1));
+            finish_pair(&mut vlc, &uvlc_pair(c0, c1));
 
             x += 4;
         }
