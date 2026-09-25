@@ -623,12 +623,11 @@ impl<'a> Codestream<'a> {
             let cs = self.siz.comps[ci.min(self.siz.comps.len() - 1)];
             if !cs.signed {
                 let half = 1i32 << (cs.depth - 1);
-                let max = (1i64 << cs.depth) - 1;
+                // An i32 sample never exceeds a wider depth's maximum, so the bound saturates at
+                // i32::MAX and the clamp runs in 32-bit lanes, four samples per vector.
+                let max = i32::try_from((1i64 << cs.depth) - 1).unwrap_or(i32::MAX);
                 for v in plane.iter_mut() {
-                    #[allow(clippy::cast_possible_truncation)]
-                    {
-                        *v = i64::from(*v + half).clamp(0, max) as i32;
-                    }
+                    *v = (*v + half).clamp(0, max);
                 }
             }
         }
