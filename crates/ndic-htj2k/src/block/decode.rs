@@ -204,16 +204,17 @@ fn decode_with(
 
     let mmsbp2 = missing_msbs + 2;
 
-    // ---- step 1: decode the VLC + MEL segments ------------------------
+    // ---- steps 1 and 2: VLC + MEL, then MagSgn ------------------------
+    // Step 1 is a serial chain of table lookups, each waiting on the bits the one before
+    // consumed. Step 2 is independent loads and arithmetic. After the initial row, step 1 on a
+    // quad row runs in the same loop as step 2 on the row above, so the core overlaps the chains.
+    let mut mel = MelDecoder::new(coded, lcup, scup);
+    // Unstuffed up front, so the VLC bits sit in registers and refill without branching.
+    unstuff_vlc(coded, lcup, scup, &mut bufs.vlc_clean);
+    let vlc_clean = &bufs.vlc_clean;
+    let mut vlc = CleanBits::default();
+    let mut run = mel.get_run();
     {
-        let mut mel = MelDecoder::new(coded, lcup, scup);
-        // Unstuffed up front, so the VLC bits sit in registers and refill without branching.
-        unstuff_vlc(coded, lcup, scup, &mut bufs.vlc_clean);
-        let vlc_clean = &bufs.vlc_clean;
-        let mut vlc = CleanBits::default();
-
-        let mut run = mel.get_run();
-
         // Initial row of quads (kappa = 1).
         let mut c_q: u32 = 0;
         let mut idx = 0usize;
@@ -279,214 +280,73 @@ fn decode_with(
         }
         scratch[idx] = 0;
         scratch[idx + 1] = 0;
-
-        // Non-initial rows of quads.
-        let mut y = 2usize;
-        while y < height {
-            let base = (y >> 1) * sstr;
-            let above = base - sstr;
-            let mut c_q: u32 = 0;
-            let mut idx = 0usize;
-            let mut x = 0usize;
-            while x < width {
-                // sigma of the n, ne, nf neighbors (T.814 eq. 2).
-                c_q |= (u32::from(scratch[above + idx]) & 0xA0) << 2;
-                c_q |= (u32::from(scratch[above + idx + 2]) & 0x20) << 4;
-
-                let vlc_val = vlc.fetch(vlc_clean);
-                let mut t0 = u32::from(DEC_VLC_TBL1[(c_q | (vlc_val & 0x7F)) as usize]);
-                if c_q == 0 {
-                    run -= 2;
-                    t0 = if run == -1 { t0 } else { 0 };
-                    if run < 0 {
-                        run = mel.get_run();
-                    }
-                }
-                scratch[base + idx] = to_u16(t0);
-                x += 2;
-
-                // sigma of w, sw / nw / n, ne, nf for the second quad.
-                c_q = ((t0 & 0x40) << 2) | ((t0 & 0x80) << 1);
-                c_q |= u32::from(scratch[above + idx]) & 0x80;
-                c_q |= (u32::from(scratch[above + idx + 2]) & 0xA0) << 2;
-                c_q |= (u32::from(scratch[above + idx + 4]) & 0x20) << 4;
-                let vlc_val = vlc.advance(t0 & 0x7);
-
-                let mut t1 = u32::from(DEC_VLC_TBL1[(c_q | (vlc_val & 0x7F)) as usize]);
-                if c_q == 0 && x < width {
-                    run -= 2;
-                    t1 = if run == -1 { t1 } else { 0 };
-                    if run < 0 {
-                        run = mel.get_run();
-                    }
-                }
-                if x >= width {
-                    t1 = 0;
-                }
-                scratch[base + idx + 2] = to_u16(t1);
-                x += 2;
-
-                c_q = ((t1 & 0x40) << 2) | ((t1 & 0x80) << 1);
-                c_q |= u32::from(scratch[above + idx + 2]) & 0x80;
-                let vlc_val = vlc.advance(t1 & 0x7);
-
-                // u values (kappa is applied later, in the MagSgn step).
-                let uvlc_mode = ((t0 & 0x8) << 3) | ((t1 & 0x8) << 4);
-                let mut uvlc_entry = u32::from(UVLC_TBL1[(uvlc_mode + (vlc_val & 0x3F)) as usize]);
-                let vlc_val = vlc.advance(uvlc_entry & 0x7);
-                uvlc_entry >>= 3;
-                let len = uvlc_entry & 0xF;
-                let tmp = vlc_val & ((1 << len) - 1);
-                vlc.advance(len);
-                uvlc_entry >>= 4;
-                let len0 = uvlc_entry & 0x7;
-                uvlc_entry >>= 3;
-                scratch[base + idx + 1] = to_u16((uvlc_entry & 7) + (tmp & !(0xFF << len0)));
-                scratch[base + idx + 3] = to_u16((uvlc_entry >> 3) + (tmp >> len0));
-                idx += 4;
-            }
-            scratch[base + idx] = 0;
-            scratch[base + idx + 1] = 0;
-            y += 2;
-        }
     }
 
-    // ---- step 2: decode the MagSgn segment ----------------------------
-    {
-        // Exponent bookkeeping: v_n of the bottom sample of column pairs
-        // (2k-1, 2k), used as the E-max context of the quad row below.
-        let v_n_scratch = &mut bufs.v_n_scratch;
-        v_n_scratch.clear();
-        v_n_scratch.resize(width / 2 + 4, 0);
+    // Exponent bookkeeping: v_n of the bottom sample of column pairs (2k-1, 2k), used as the
+    // E-max context of the quad row below.
+    let v_n_scratch = &mut bufs.v_n_scratch;
+    v_n_scratch.clear();
+    v_n_scratch.resize(width / 2 + 4, 0);
+    // Unstuff the whole MagSgn segment up front. Every sample's bit length is known from step 1,
+    // so its bits are then one unaligned load at a running offset, and consecutive samples no
+    // longer wait on each other through a stateful reader.
+    unstuff_magsgn(&coded[..lcup - scup], &mut bufs.clean);
+    let mut ms = MagSgn {
+        clean: &bufs.clean,
+        off: 0,
+        p,
+        stride,
+        width,
+        mmsbp2,
+    };
 
-        // Unstuff the whole segment up front. Every sample's bit length is known from step 1,
-        // so its bits are then one unaligned load at a running offset, and consecutive samples no
-        // longer wait on each other through a stateful reader.
-        unstuff_magsgn(&coded[..lcup - scup], &mut bufs.clean);
-        let clean = &bufs.clean;
-        let mut off = 0u32;
-
-        // Decode one sample; returns (value, v_n), both zero when its rho bit is clear.
-        // Bits are always consumed, but the caller guards the store.
-        let decode_sample = |off: &mut u32, inf: u32, bit: u32, u_q: u32| -> (u32, u32) {
-            // Significance is data-dependent and mispredicts, so an insignificant sample
-            // reads zero bits and is masked to zero instead of branching away.
-            let keep = ((inf >> (4 + bit)) & 1).wrapping_neg();
-            let ms_val = bits_at(clean, *off);
-            let m_n = u_q.wrapping_sub((inf >> (12 + bit)) & 1) & keep;
-            *off += m_n;
-            let mut v_n = ms_val & ((1u32 << m_n) - 1);
-            v_n |= ((inf >> (8 + bit)) & 1) << m_n;
-            v_n |= 1; // half the bin, for mid-point reconstruction
-            let v_n = v_n & keep;
-            // Wrapping like the reference's u32 arithmetic: a malformed
-            // stream may produce out-of-range v_n, never a panic.
-            let val = ((ms_val << 31) | v_n.wrapping_add(2).wrapping_shl(p - 1)) & keep;
-            (val, v_n)
+    for qy in 1..=quad_rows {
+        // Step 2 decodes quad row qy - 1 while step 1 decodes quad row qy, when there is one.
+        let y = (qy - 1) * 2;
+        let mut r = MsRow {
+            sp: 0,
+            vp: 0,
+            dp: y * stride,
+            x: 0,
+            prev_v_n: 0,
+            bottom: y + 1 < height,
         };
-
-        // Initial quad-pair rows (rows 0 and 1).
-        let mut prev_v_n = 0u32;
-        {
-            let mut sp = 0usize;
-            let mut vp = 0usize;
-            let mut dp = 0usize;
+        let (done, rest) = scratch.split_at_mut(qy * sstr);
+        let above = &done[(qy - 1) * sstr..];
+        let mut idx = 0usize;
+        if qy < quad_rows {
+            let row = &mut rest[..sstr];
+            let mut c_q: u32 = 0;
             let mut x = 0usize;
             while x < width {
-                let inf = u32::from(scratch[sp]);
-                let u_q = u32::from(scratch[sp + 1]);
-                if u_q > mmsbp2 {
-                    return Err(malformed(0, "U_q exceeds the magnitude bound"));
+                vlc_pair(
+                    &mut vlc, vlc_clean, &mut mel, &mut run, above, row, &mut c_q, idx, x, width,
+                );
+                if qy == 1 {
+                    ms_pair::<true>(&mut ms, &mut r, above, out, v_n_scratch)?;
+                } else {
+                    ms_pair::<false>(&mut ms, &mut r, above, out, v_n_scratch)?;
                 }
-
-                let (val, _) = decode_sample(&mut off, inf, 0, u_q);
-                out[dp] = val;
-                let (val, v_n) = decode_sample(&mut off, inf, 1, u_q);
-                if height > 1 {
-                    out[dp + stride] = val;
-                }
-                v_n_scratch[vp] = prev_v_n | v_n;
-                prev_v_n = 0;
-                dp += 1;
-                x += 1;
-                if x >= width {
-                    vp += 1;
-                    break;
-                }
-
-                let (val, _) = decode_sample(&mut off, inf, 2, u_q);
-                out[dp] = val;
-                let (val, v_n) = decode_sample(&mut off, inf, 3, u_q);
-                if height > 1 {
-                    out[dp + stride] = val;
-                }
-                prev_v_n = v_n;
-                dp += 1;
-                x += 1;
-                sp += 2;
-                vp += 1;
+                idx += 4;
+                x += 4;
             }
-            v_n_scratch[vp] = prev_v_n;
+        } else {
+            // The last quad row has no step 1 partner.
+            while r.x < width {
+                if qy == 1 {
+                    ms_pair::<true>(&mut ms, &mut r, above, out, v_n_scratch)?;
+                } else {
+                    ms_pair::<false>(&mut ms, &mut r, above, out, v_n_scratch)?;
+                }
+            }
         }
-
-        // Non-initial quad-pair rows.
-        let mut y = 2usize;
-        while y < height {
-            let row_base = (y >> 1) * sstr;
-            let mut sp = row_base;
-            let mut vp = 0usize;
-            let mut dp = y * stride;
-
-            let mut prev_v_n = 0u32;
-            let mut x = 0usize;
-            while x < width {
-                let inf = u32::from(scratch[sp]);
-                let u_q = u32::from(scratch[sp + 1]);
-
-                // kappa (T.814 eq. 5): 1 unless the quad has two or more
-                // significant samples and the row above saw larger exponents.
-                let mut gamma = inf & 0xF0;
-                gamma &= gamma.wrapping_sub(0x10);
-                let emax = v_n_scratch[vp] | v_n_scratch[vp + 1];
-                // E_max - 1. The `| 2` floors the operand at 2, so `ilog2` can
-                // never see the zero it would panic on.
-                let emax = (emax | 2).ilog2();
-                let kappa = if gamma != 0 { emax } else { 1 };
-
-                let u_q = u_q + kappa;
-                if u_q > mmsbp2 {
-                    return Err(malformed(0, "U_q exceeds the magnitude bound"));
-                }
-
-                let (val, _) = decode_sample(&mut off, inf, 0, u_q);
-                out[dp] = val;
-                let (val, v_n) = decode_sample(&mut off, inf, 1, u_q);
-                if y + 1 < height {
-                    out[dp + stride] = val;
-                }
-                v_n_scratch[vp] = prev_v_n | v_n;
-                prev_v_n = 0;
-                dp += 1;
-                x += 1;
-                if x >= width {
-                    vp += 1;
-                    break;
-                }
-
-                let (val, _) = decode_sample(&mut off, inf, 2, u_q);
-                out[dp] = val;
-                let (val, v_n) = decode_sample(&mut off, inf, 3, u_q);
-                if y + 1 < height {
-                    out[dp + stride] = val;
-                }
-                prev_v_n = v_n;
-                dp += 1;
-                x += 1;
-                sp += 2;
-                vp += 1;
-            }
-            v_n_scratch[vp] = prev_v_n;
-            y += 2;
+        v_n_scratch[r.vp] = r.prev_v_n;
+        if qy < quad_rows {
+            // Terminator writes, which can reach into the next row's first entries as in the
+            // reference layout, so they go through the whole buffer.
+            let base = qy * sstr;
+            scratch[base + idx] = 0;
+            scratch[base + idx + 1] = 0;
         }
     }
 
@@ -674,6 +534,188 @@ fn decode_with(
         }
     }
 
+    Ok(())
+}
+
+/// Decodes the VLC and MEL symbols of the quad pair at entry `idx`, column `x`, of a non-initial
+/// quad row into `row`, with `c_q` the context the pair's left neighbour left and `above` the
+/// row above. The row above's entry past a pair whose second quad lies outside the block may
+/// sit beyond `above`, and reads as zero, since only that absent quad would use it.
+#[inline(always)]
+#[allow(clippy::inline_always, clippy::too_many_arguments)] // inlined into the fused step loop
+fn vlc_pair(
+    vlc: &mut CleanBits,
+    clean: &[u8],
+    mel: &mut MelDecoder<'_>,
+    run: &mut i32,
+    above: &[u16],
+    row: &mut [u16],
+    c_q: &mut u32,
+    idx: usize,
+    x: usize,
+    width: usize,
+) {
+    // sigma of the n, ne, nf neighbors (T.814 eq. 2).
+    *c_q |= (u32::from(above[idx]) & 0xA0) << 2;
+    *c_q |= (u32::from(above[idx + 2]) & 0x20) << 4;
+
+    let vlc_val = vlc.fetch(clean);
+    let mut t0 = u32::from(DEC_VLC_TBL1[(*c_q | (vlc_val & 0x7F)) as usize]);
+    if *c_q == 0 {
+        *run -= 2;
+        t0 = if *run == -1 { t0 } else { 0 };
+        if *run < 0 {
+            *run = mel.get_run();
+        }
+    }
+    row[idx] = to_u16(t0);
+
+    // sigma of w, sw / nw / n, ne, nf for the second quad.
+    *c_q = ((t0 & 0x40) << 2) | ((t0 & 0x80) << 1);
+    *c_q |= u32::from(above[idx]) & 0x80;
+    *c_q |= (u32::from(above[idx + 2]) & 0xA0) << 2;
+    *c_q |= (u32::from(above.get(idx + 4).copied().unwrap_or(0)) & 0x20) << 4;
+    let vlc_val = vlc.advance(t0 & 0x7);
+
+    let mut t1 = u32::from(DEC_VLC_TBL1[(*c_q | (vlc_val & 0x7F)) as usize]);
+    if *c_q == 0 && x + 2 < width {
+        *run -= 2;
+        t1 = if *run == -1 { t1 } else { 0 };
+        if *run < 0 {
+            *run = mel.get_run();
+        }
+    }
+    if x + 2 >= width {
+        t1 = 0;
+    }
+    row[idx + 2] = to_u16(t1);
+
+    *c_q = ((t1 & 0x40) << 2) | ((t1 & 0x80) << 1);
+    *c_q |= u32::from(above[idx + 2]) & 0x80;
+    let vlc_val = vlc.advance(t1 & 0x7);
+
+    // u values (kappa is applied later, in the MagSgn step).
+    let uvlc_mode = ((t0 & 0x8) << 3) | ((t1 & 0x8) << 4);
+    let mut uvlc_entry = u32::from(UVLC_TBL1[(uvlc_mode + (vlc_val & 0x3F)) as usize]);
+    let vlc_val = vlc.advance(uvlc_entry & 0x7);
+    uvlc_entry >>= 3;
+    let len = uvlc_entry & 0xF;
+    let tmp = vlc_val & ((1 << len) - 1);
+    vlc.advance(len);
+    uvlc_entry >>= 4;
+    let len0 = uvlc_entry & 0x7;
+    uvlc_entry >>= 3;
+    row[idx + 1] = to_u16((uvlc_entry & 7) + (tmp & !(0xFF << len0)));
+    row[idx + 3] = to_u16((uvlc_entry >> 3) + (tmp >> len0));
+}
+
+/// Step 2's decoder state: the unstuffed `MagSgn` bits and the geometry every quad shares.
+struct MagSgn<'a> {
+    clean: &'a [u8],
+    /// Bit offset of the next sample's magnitude and sign.
+    off: u32,
+    p: u32,
+    stride: usize,
+    width: usize,
+    mmsbp2: u32,
+}
+
+/// Step 2's position within one quad row.
+struct MsRow {
+    /// Entry of the next quad in the row's scratch.
+    sp: usize,
+    /// Column pair of the next quad in `v_n_scratch`.
+    vp: usize,
+    /// Output index of the next quad's top-left sample.
+    dp: usize,
+    /// Column of the next quad.
+    x: usize,
+    /// `v_n` of the previous quad's bottom-right sample.
+    prev_v_n: u32,
+    /// Whether the row has a bottom sample row inside the block.
+    bottom: bool,
+}
+
+/// Decodes one sample; returns (value, `v_n`), both zero when its rho bit is clear. Bits are
+/// always consumed, but the caller guards the store.
+#[inline(always)]
+#[allow(clippy::inline_always)] // four per quad in the fused step loop
+fn decode_sample(ms: &mut MagSgn<'_>, inf: u32, bit: u32, u_q: u32) -> (u32, u32) {
+    // Significance is data-dependent and mispredicts, so an insignificant sample reads zero bits
+    // and is masked to zero instead of branching away.
+    let keep = ((inf >> (4 + bit)) & 1).wrapping_neg();
+    let ms_val = bits_at(ms.clean, ms.off);
+    let m_n = u_q.wrapping_sub((inf >> (12 + bit)) & 1) & keep;
+    ms.off += m_n;
+    let mut v_n = ms_val & ((1u32 << m_n) - 1);
+    v_n |= ((inf >> (8 + bit)) & 1) << m_n;
+    v_n |= 1; // half the bin, for mid-point reconstruction
+    let v_n = v_n & keep;
+    // Wrapping like the reference's u32 arithmetic: a malformed
+    // stream may produce out-of-range v_n, never a panic.
+    let val = ((ms_val << 31) | v_n.wrapping_add(2).wrapping_shl(ms.p - 1)) & keep;
+    (val, v_n)
+}
+
+/// Decodes the `MagSgn` bits of the next two quads of a quad row, fewer at the row's end, from
+/// the row's step 1 entries in `row`. `INITIAL` is the first quad row, whose kappa is 1.
+#[inline(always)]
+#[allow(clippy::inline_always)] // inlined into the fused step loop beside step 1
+fn ms_pair<const INITIAL: bool>(
+    ms: &mut MagSgn<'_>,
+    r: &mut MsRow,
+    row: &[u16],
+    out: &mut [u32],
+    v_n_scratch: &mut [u32],
+) -> Result<()> {
+    for _ in 0..2 {
+        if r.x >= ms.width {
+            break;
+        }
+        let inf = u32::from(row[r.sp]);
+        let mut u_q = u32::from(row[r.sp + 1]);
+        if !INITIAL {
+            // kappa (T.814 eq. 5): 1 unless the quad has two or more
+            // significant samples and the row above saw larger exponents.
+            let mut gamma = inf & 0xF0;
+            gamma &= gamma.wrapping_sub(0x10);
+            let emax = v_n_scratch[r.vp] | v_n_scratch[r.vp + 1];
+            // E_max - 1. The `| 2` floors the operand at 2, so `ilog2` can
+            // never see the zero it would panic on.
+            let emax = (emax | 2).ilog2();
+            u_q += if gamma != 0 { emax } else { 1 };
+        }
+        if u_q > ms.mmsbp2 {
+            return Err(malformed(0, "U_q exceeds the magnitude bound"));
+        }
+
+        let (val, _) = decode_sample(ms, inf, 0, u_q);
+        out[r.dp] = val;
+        let (val, v_n) = decode_sample(ms, inf, 1, u_q);
+        if r.bottom {
+            out[r.dp + ms.stride] = val;
+        }
+        v_n_scratch[r.vp] = r.prev_v_n | v_n;
+        r.prev_v_n = 0;
+        r.dp += 1;
+        r.x += 1;
+        if r.x >= ms.width {
+            r.vp += 1;
+            break;
+        }
+
+        let (val, _) = decode_sample(ms, inf, 2, u_q);
+        out[r.dp] = val;
+        let (val, v_n) = decode_sample(ms, inf, 3, u_q);
+        if r.bottom {
+            out[r.dp + ms.stride] = val;
+        }
+        r.prev_v_n = v_n;
+        r.dp += 1;
+        r.x += 1;
+        r.sp += 2;
+        r.vp += 1;
+    }
     Ok(())
 }
 
