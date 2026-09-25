@@ -327,6 +327,117 @@ fn push_byte(out: &mut Vec<u8>, acc: &mut u64, nbits: &mut u32, after_ff: &mut b
     }
 }
 
+/// Unstuffs a cleanup segment's VLC stream into a plain LSB-first bit stream, the same bits
+/// [`RevReader::new_vlc`] yields. The stream starts with the high nibble of `coded[lcup - 2]`,
+/// then takes bytes backward from `coded[lcup - 3]` to `coded[lcup - scup]`. Each lands whole at
+/// a running bit position that advances by 8, or by 7 when the byte before was above `0x8F` and
+/// this one's low 7 bits are all ones. Past the stream every bit reads as zero, and the output
+/// replaces `out`'s contents, reusing its capacity.
+pub(crate) fn unstuff_vlc(coded: &[u8], lcup: usize, scup: usize, out: &mut Vec<u8>) {
+    out.clear();
+    out.reserve(scup + 24);
+    let d = coded[lcup - 2];
+    // The interface byte's high nibble keeps 3 bits when its low three are all ones.
+    let mut acc = u64::from(d >> 4);
+    let mut nbits = 4 - u32::from((d >> 4) & 7 == 7);
+    let mut after_8f = (d | 0xF) > 0x8F;
+    let bytes = &coded[lcup - scup..lcup - 2];
+    let (tail, chunks) = bytes.as_rchunks::<8>();
+    for &chunk in chunks.iter().rev() {
+        // The byte read first, the highest address, lands lowest.
+        let w = u64::from_be_bytes(chunk);
+        // A SWAR zero-byte test flags a byte whose low 7 bits are all ones, the only kind that
+        // can be stuffed. With none, all eight bytes keep 8 bits and append as one word.
+        if (!w & 0x7F7F_7F7F_7F7F_7F7F).wrapping_sub(0x0101_0101_0101_0101) & 0x8080_8080_8080_8080
+            == 0
+        {
+            out.extend_from_slice(&(acc | (w << nbits)).to_le_bytes());
+            // The bits that did not fit; `(w >> 1) >> (63 - nbits)` is zero when `nbits` is 0.
+            acc = (w >> 1) >> (63 - nbits);
+            after_8f = w >> 56 > 0x8F;
+        } else {
+            for b in chunk.into_iter().rev() {
+                push_vlc_byte(out, &mut acc, &mut nbits, &mut after_8f, b);
+            }
+        }
+    }
+    for &b in tail.iter().rev() {
+        push_vlc_byte(out, &mut acc, &mut nbits, &mut after_8f, b);
+    }
+    // The reader feeds zeros past the stream.
+    out.extend_from_slice(&acc.to_le_bytes());
+    out.extend_from_slice(&[0; 16]);
+}
+
+/// Places one byte of [`unstuff_vlc`] whole at the running position, which advances 8 bits, or
+/// 7 for a stuffed byte.
+fn push_vlc_byte(out: &mut Vec<u8>, acc: &mut u64, nbits: &mut u32, after_8f: &mut bool, b: u8) {
+    let wide = u128::from(*acc) | (u128::from(b) << *nbits);
+    *nbits += 8 - u32::from(*after_8f && b & 0x7F == 0x7F);
+    *after_8f = b > 0x8F;
+    if *nbits >= 64 {
+        #[allow(clippy::cast_possible_truncation)]
+        out.extend_from_slice(&(wide as u64).to_le_bytes());
+        *acc = (wide >> 64) as u64;
+        *nbits -= 64;
+    } else {
+        #[allow(clippy::cast_possible_truncation)] // every placed bit is below 64
+        {
+            *acc = wide as u64;
+        }
+    }
+}
+
+/// An LSB-first reader over a stream from [`unstuff_vlc`], small enough to live in registers.
+/// Bits past the end read as zero.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct CleanBits {
+    /// Bit buffer, next bit lowest.
+    buf: u64,
+    /// Valid bits in [`Self::buf`].
+    cnt: u32,
+    /// Next byte of the stream not yet wholly in the buffer.
+    pos: usize,
+}
+
+impl CleanBits {
+    /// Tops the buffer up to at least 56 bits and returns the low 32. The next eight bytes are
+    /// merged in at the fill level, then the position advances past the whole bytes that fit, so
+    /// the refill needs no branch (the unconditional refill zlib-ng's inflate uses).
+    #[inline]
+    pub(crate) fn fetch(&mut self, clean: &[u8]) -> u32 {
+        let word = if let Some(w) = clean.get(self.pos..).and_then(<[u8]>::first_chunk::<8>) {
+            u64::from_le_bytes(*w)
+        } else {
+            let mut w = [0; 8];
+            if let Some(rest) = clean.get(self.pos..) {
+                w[..rest.len()].copy_from_slice(rest);
+            }
+            u64::from_le_bytes(w)
+        };
+        self.buf |= word << self.cnt;
+        self.pos += ((63 - self.cnt) >> 3) as usize;
+        // The count is now at least 56, and adding the whole bytes taken is setting those bits.
+        self.cnt |= 0b11_1000;
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            self.buf as u32
+        }
+    }
+
+    /// Consumes `n` bits and returns the next 32.
+    #[inline]
+    pub(crate) fn advance(&mut self, n: u32) -> u32 {
+        debug_assert!(n <= self.cnt);
+        self.buf >>= n;
+        self.cnt -= n;
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            self.buf as u32
+        }
+    }
+}
+
 /// Encoder for the VLC bitstream, which grows backward from the end of the
 /// cleanup segment.
 ///
@@ -682,6 +793,39 @@ mod tests {
             let got = dec.fetch() & ((1 << n) - 1);
             assert_eq!(got, w, "word {w:#x}/{n}");
             dec.advance(n);
+        }
+    }
+
+    #[test]
+    fn unstuff_vlc_matches_the_reader() {
+        // Heavy in bytes above 0x8F and bytes whose low 7 bits are all ones, so stuffing lands in
+        // every chunk position, in both paths, and against the interface nibble.
+        let mut state = 0x9E37_79B9u32;
+        for scup in [2usize, 3, 5, 9, 10, 11, 17, 18, 64, 65, 200, 1000] {
+            for mix in [2u32, 3, 7, 1000] {
+                let lcup = scup + 5;
+                let coded: Vec<u8> = (0..lcup)
+                    .map(|_| {
+                        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                        let r = (state >> 24) as u8;
+                        match (state >> 8) % mix {
+                            0 => r | 0x7F,
+                            1 => r | 0x90,
+                            _ => r,
+                        }
+                    })
+                    .collect();
+                let mut clean = Vec::new();
+                unstuff_vlc(&coded, lcup, scup, &mut clean);
+                let mut reader = RevReader::new_vlc(&coded, lcup, scup);
+                let mut bits = CleanBits::default();
+                for i in 0..(clean.len() / 4) {
+                    let want = reader.fetch();
+                    reader.advance(32);
+                    assert_eq!(bits.fetch(&clean), want, "scup {scup} mix {mix} word {i}");
+                    bits.advance(32);
+                }
+            }
         }
     }
 

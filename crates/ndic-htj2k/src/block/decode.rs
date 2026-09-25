@@ -20,7 +20,7 @@ use ndic_core::{Error, Result};
 
 use super::BlockPasses;
 use super::mel::MelDecoder;
-use super::streams::{FwdReader, RevReader, unstuff_magsgn};
+use super::streams::{CleanBits, FwdReader, RevReader, unstuff_magsgn, unstuff_vlc};
 use super::tables::{DEC_VLC_TBL0, DEC_VLC_TBL1, UVLC_TBL0, UVLC_TBL1};
 
 /// Neighbor-propagation masks for the `SigProp` membership scan, indexed by
@@ -48,6 +48,8 @@ pub struct BlockDecoder {
     v_n_scratch: Vec<u32>,
     /// The unstuffed `MagSgn` segment.
     clean: Vec<u8>,
+    /// The unstuffed VLC stream.
+    vlc_clean: Vec<u8>,
     /// Significance of the stripe row above, for `SigProp`.
     prev_row_sig: Vec<u16>,
 }
@@ -205,7 +207,10 @@ fn decode_with(
     // ---- step 1: decode the VLC + MEL segments ------------------------
     {
         let mut mel = MelDecoder::new(coded, lcup, scup);
-        let mut vlc = RevReader::new_vlc(coded, lcup, scup);
+        // Unstuffed up front, so the VLC bits sit in registers and refill without branching.
+        unstuff_vlc(coded, lcup, scup, &mut bufs.vlc_clean);
+        let vlc_clean = &bufs.vlc_clean;
+        let mut vlc = CleanBits::default();
 
         let mut run = mel.get_run();
 
@@ -215,7 +220,7 @@ fn decode_with(
         let mut x = 0usize;
         while x < width {
             // First quad of the pair.
-            let vlc_val = vlc.fetch();
+            let vlc_val = vlc.fetch(vlc_clean);
             let mut t0 = u32::from(DEC_VLC_TBL0[(c_q | (vlc_val & 0x7F)) as usize]);
             if c_q == 0 {
                 // Zero context: quad significance comes from a MEL event.
@@ -288,7 +293,7 @@ fn decode_with(
                 c_q |= (u32::from(scratch[above + idx]) & 0xA0) << 2;
                 c_q |= (u32::from(scratch[above + idx + 2]) & 0x20) << 4;
 
-                let vlc_val = vlc.fetch();
+                let vlc_val = vlc.fetch(vlc_clean);
                 let mut t0 = u32::from(DEC_VLC_TBL1[(c_q | (vlc_val & 0x7F)) as usize]);
                 if c_q == 0 {
                     run -= 2;
