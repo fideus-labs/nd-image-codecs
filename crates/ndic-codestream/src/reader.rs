@@ -524,6 +524,7 @@ impl<'a> Codestream<'a> {
         // One block buffer for the whole decode. `decode_block` fully overwrites its
         // `width x height` region, so a reused buffer needs no zeroing between blocks.
         let mut out: Vec<u32> = Vec::new();
+        let mut block_decoder = ndic_htj2k::BlockDecoder::new();
         for (i, (comp, res, ppx_i, ppy_i)) in sequence.into_iter().enumerate() {
             if last_needed.is_none_or(|last| i > last) {
                 break;
@@ -582,7 +583,7 @@ impl<'a> Codestream<'a> {
                 }
 
                 out.resize(rect.w * rect.h, 0);
-                ndic_htj2k::decode_block(
+                block_decoder.decode(
                     seg,
                     &mut out,
                     rect.w,

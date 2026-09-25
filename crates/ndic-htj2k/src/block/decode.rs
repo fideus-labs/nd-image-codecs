@@ -14,7 +14,7 @@
 
 extern crate alloc;
 
-use alloc::vec;
+use alloc::vec::Vec;
 
 use ndic_core::{Error, Result};
 
@@ -37,6 +37,59 @@ fn malformed(offset: usize, message: &str) -> Error {
     }
 }
 
+/// Reusable working buffers for decoding code-blocks. Decoding through one
+/// [`BlockDecoder`] allocates its buffers once, sized to the largest block,
+/// rather than once per block as [`decode_block`] does.
+#[derive(Debug, Default)]
+pub struct BlockDecoder {
+    /// Quad-row `inf`/`u_q` pairs, later re-packed into the `sigma` map.
+    scratch: Vec<u16>,
+    /// `v_n` of the quad row above, the E-max context.
+    v_n_scratch: Vec<u32>,
+    /// The unstuffed `MagSgn` segment.
+    clean: Vec<u8>,
+    /// Significance of the stripe row above, for `SigProp`.
+    prev_row_sig: Vec<u16>,
+}
+
+impl BlockDecoder {
+    /// Creates a decoder whose buffers grow on first use.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Decodes one code-block exactly as [`decode_block`] does, reusing this
+    /// decoder's buffers.
+    ///
+    /// # Errors
+    /// As [`decode_block`].
+    #[allow(clippy::too_many_arguments)] // the decode_block signature
+    pub fn decode(
+        &mut self,
+        coded: &[u8],
+        out: &mut [u32],
+        width: usize,
+        height: usize,
+        stride: usize,
+        missing_msbs: u32,
+        passes: &BlockPasses,
+        stripe_causal: bool,
+    ) -> Result<()> {
+        decode_with(
+            self,
+            coded,
+            out,
+            width,
+            height,
+            stride,
+            missing_msbs,
+            passes,
+            stripe_causal,
+        )
+    }
+}
+
 /// Decodes one HT code-block into sign-magnitude samples.
 ///
 /// * `coded` — the codeword segment: cleanup bytes (`passes.len_cleanup`)
@@ -49,9 +102,34 @@ fn malformed(offset: usize, message: &str) -> Error {
 ///
 /// # Errors
 /// [`Error::Codestream`] on malformed input; never panics.
+#[allow(clippy::too_many_arguments)] // faithful port
+pub fn decode_block(
+    coded: &[u8],
+    out: &mut [u32],
+    width: usize,
+    height: usize,
+    stride: usize,
+    missing_msbs: u32,
+    passes: &BlockPasses,
+    stripe_causal: bool,
+) -> Result<()> {
+    BlockDecoder::new().decode(
+        coded,
+        out,
+        width,
+        height,
+        stride,
+        missing_msbs,
+        passes,
+        stripe_causal,
+    )
+}
+
+/// The body of [`BlockDecoder::decode`], with its buffers.
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)] // faithful port
 #[allow(clippy::similar_names, clippy::many_single_char_names)] // T.814 names
-pub fn decode_block(
+fn decode_with(
+    bufs: &mut BlockDecoder,
     coded: &[u8],
     out: &mut [u32],
     width: usize,
@@ -118,7 +196,9 @@ pub fn decode_block(
     let mstr = (width.div_ceil(4) + 2 + 7) & !7;
     let sig_rows = height.div_ceil(4);
     let scratch_len = ((quad_rows + 1) * sstr + 8).max((sig_rows + 1) * mstr + 8);
-    let mut scratch = vec![0u16; scratch_len];
+    let scratch = &mut bufs.scratch;
+    scratch.clear();
+    scratch.resize(scratch_len, 0);
 
     let mmsbp2 = missing_msbs + 2;
 
@@ -270,12 +350,15 @@ pub fn decode_block(
     {
         // Exponent bookkeeping: v_n of the bottom sample of column pairs
         // (2k-1, 2k), used as the E-max context of the quad row below.
-        let mut v_n_scratch = vec![0u32; width / 2 + 4];
+        let v_n_scratch = &mut bufs.v_n_scratch;
+        v_n_scratch.clear();
+        v_n_scratch.resize(width / 2 + 4, 0);
 
         // Unstuff the whole segment up front. Every sample's bit length is known from step 1,
         // so its bits are then one unaligned load at a running offset, and consecutive samples no
         // longer wait on each other through a stateful reader.
-        let clean = unstuff_magsgn(&coded[..lcup - scup]);
+        unstuff_magsgn(&coded[..lcup - scup], &mut bufs.clean);
+        let clean = &bufs.clean;
         let mut off = 0u32;
 
         // Decode one sample; returns (value, v_n), both zero when its rho bit is clear.
@@ -284,7 +367,7 @@ pub fn decode_block(
             // Significance is data-dependent and mispredicts, so an insignificant sample
             // reads zero bits and is masked to zero instead of branching away.
             let keep = ((inf >> (4 + bit)) & 1).wrapping_neg();
-            let ms_val = bits_at(&clean, *off);
+            let ms_val = bits_at(clean, *off);
             let m_n = u_q.wrapping_sub((inf >> (12 + bit)) & 1) & keep;
             *off += m_n;
             let mut v_n = ms_val & ((1u32 << m_n) - 1);
@@ -446,7 +529,9 @@ pub fn decode_block(
     // ---- Significance Propagation pass --------------------------------
     {
         let groups = width.div_ceil(4);
-        let mut prev_row_sig = vec![0u16; groups + 2];
+        let prev_row_sig = &mut bufs.prev_row_sig;
+        prev_row_sig.clear();
+        prev_row_sig.resize(groups + 2, 0);
         let mut sigprop = FwdReader::<0>::new(&coded[lcup..lcup + lengths2]);
 
         let mut y = 0usize;

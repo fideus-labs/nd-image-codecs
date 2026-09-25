@@ -274,9 +274,10 @@ impl<'a, const FILL: u8> FwdReader<'a, FILL> {
 /// [`FwdReader`] with `FILL = 0xFF` yields. Each byte lands whole at a running bit position that
 /// advances by 8, or by 7 after an `0xFF`, so a stuffed byte's MSB overlaps the next byte's
 /// first bit. Past the segment every bit reads as one, and the output ends with padding for
-/// 8-byte loads.
-pub(crate) fn unstuff_magsgn(data: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(data.len() + 24);
+/// 8-byte loads. The output replaces `out`'s contents, reusing its capacity.
+pub(crate) fn unstuff_magsgn(data: &[u8], out: &mut Vec<u8>) {
+    out.clear();
+    out.reserve(data.len() + 24);
     // Pending output bits below `nbits`, plus possibly the overlapping MSB of a 7-bit byte at
     // `nbits`.
     let mut acc = 0u64;
@@ -295,17 +296,16 @@ pub(crate) fn unstuff_magsgn(data: &[u8]) -> Vec<u8> {
             after_ff = w >> 56 == 0xFF;
         } else {
             for b in chunk {
-                push_byte(&mut out, &mut acc, &mut nbits, &mut after_ff, b);
+                push_byte(out, &mut acc, &mut nbits, &mut after_ff, b);
             }
         }
     }
     for &b in tail {
-        push_byte(&mut out, &mut acc, &mut nbits, &mut after_ff, b);
+        push_byte(out, &mut acc, &mut nbits, &mut after_ff, b);
     }
     // The reader feeds 0xFF past the segment, so every later bit is one.
     out.extend_from_slice(&(acc | (u64::MAX << nbits)).to_le_bytes());
     out.extend_from_slice(&[0xFF; 16]);
-    out
 }
 
 /// Places one byte of [`unstuff_magsgn`] whole at the running position, which advances 8 bits,
@@ -685,7 +685,8 @@ mod tests {
                         }
                     })
                     .collect();
-                let clean = unstuff_magsgn(&data);
+                let mut clean = Vec::new();
+                unstuff_magsgn(&data, &mut clean);
                 let mut reader = FwdReader::<0xFF>::new(&data);
                 for (i, word) in clean.as_chunks::<4>().0.iter().enumerate() {
                     let want = reader.fetch();
