@@ -240,15 +240,18 @@ pub fn encode_image_with_depth(
             })?;
         }
     }
-    let psot = 12 + plt.len() + 2 + body.len(); // SOT seg + PLT + SOD + body
-    let mut tile_part = Vec::with_capacity(psot);
-    #[allow(clippy::cast_possible_truncation)]
+    let tile_part_len = 12 + plt.len() + 2 + body.len(); // SOT seg + PLT + SOD + body
+    // `Psot` and the `TLM` entry are 32-bit, so a single tile-part holds at most 4 GiB.
+    let psot = u32::try_from(tile_part_len).map_err(|_| Error::Unsupported {
+        message: "tile-part exceeds the 4 GiB a 32-bit Psot can declare".into(),
+    })?;
+    let mut tile_part = Vec::with_capacity(tile_part_len);
     push_segment(
         &mut tile_part,
         markers::SOT,
         &markers::Sot {
             isot: 0,
-            psot: psot as u32,
+            psot,
             tpsot: 0,
             tnsot: 1,
         }
@@ -323,12 +326,7 @@ pub fn encode_image_with_depth(
         &com_payload("nd-image-codecs ndic-codestream"),
     )?;
     if params.emit_tlm_plt {
-        #[allow(clippy::cast_possible_truncation)]
-        push_segment(
-            &mut out,
-            markers::TLM,
-            &tlm_payload(&[tile_part.len() as u32]),
-        )?;
+        push_segment(&mut out, markers::TLM, &tlm_payload(&[psot]))?;
     }
     out.extend_from_slice(&tile_part);
     out.extend_from_slice(&markers::EOC.to_be_bytes());
