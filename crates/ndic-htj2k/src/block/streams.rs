@@ -221,6 +221,16 @@ impl<'a, const FILL: u8> FwdReader<'a, FILL> {
             fill
         };
 
+        // SWAR zero-byte test on the inverted word flags an 0xFF in the first three bytes. With
+        // none, and no stuffing carried in, every byte keeps all 8 bits and the word passes as is.
+        let inv = !val | 0xFF00_0000;
+        if !self.unstuff && inv.wrapping_sub(0x0101_0101) & val & 0x0080_8080 == 0 {
+            self.unstuff = val >> 24 == 0xFF;
+            self.tmp |= u64::from(val) << self.bits;
+            self.bits += 32;
+            return;
+        }
+
         // Unstuff, starting from the lowest byte.
         let mut bits = 8 - u32::from(self.unstuff);
         let mut t = val & 0xFF;
