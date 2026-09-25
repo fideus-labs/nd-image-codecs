@@ -7,7 +7,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -Dwarnings
+  # A set RUSTFLAGS replaces the rustflags in .cargo/config.toml, so the machine-outliner
+  # guard is repeated here.
+  RUSTFLAGS: -Dwarnings -Cllvm-args=-enable-machine-outliner=never
 
 # Least privilege for every job: this workflow only builds, lints, and tests
 # a checkout — nothing here writes to the repository or its metadata. Any job

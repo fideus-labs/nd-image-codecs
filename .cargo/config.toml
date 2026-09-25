@@ -8,6 +8,14 @@
 # Keep incremental artifacts in the workspace `target/` so the bench
 # layer and CI cache a single tree.
 
+[target.'cfg(all())']
+# Keep LLVM's machine outliner off on every target. It hoists repeated instruction sequences into
+# shared `OUTLINED_FUNCTION_*` stubs reached by calls, trading speed for size and shifting code
+# layout between otherwise identical builds. LLVM only runs it on size-optimized functions today,
+# so this holds whatever the profile or a future default. It is joined with the per-target flags
+# below. A set `RUSTFLAGS` replaces this table, so CI repeats the flag there.
+rustflags = ["-C", "llvm-args=-enable-machine-outliner=never"]
+
 [target.wasm32-unknown-unknown]
 # wasm-bindgen browser target; SIMD enabled for the HT block coder hot
 # loops (mirrors OpenJPH's `-msimd128` WASM build).
