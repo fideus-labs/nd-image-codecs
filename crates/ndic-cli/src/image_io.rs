@@ -289,16 +289,18 @@ fn save_raw(image: &Image) -> anyhow::Result<Vec<u8>> {
             image.comps.len()
         );
     }
-    let mut out = Vec::new();
-    for &v in &image.comps[0] {
-        match image.dtype {
-            SampleType::U8 | SampleType::I8 => out.push((v & 0xFF) as u8),
-            SampleType::U16 | SampleType::I16 => {
-                out.extend_from_slice(&((v & 0xFFFF) as u16).to_le_bytes());
-            }
-            _ => out.extend_from_slice(&v.to_le_bytes()),
-        }
-    }
+    let samples = &image.comps[0];
+    // The dtype is matched once, outside the loop. Each sample becomes a fixed-size array, and a
+    // `flat_map` over those is `TrustedLen`, so `collect` sizes the buffer once and the stores
+    // vectorize.
+    let out = match image.dtype {
+        SampleType::U8 | SampleType::I8 => samples.iter().map(|&v| (v & 0xFF) as u8).collect(),
+        SampleType::U16 | SampleType::I16 => samples
+            .iter()
+            .flat_map(|&v| ((v & 0xFFFF) as u16).to_le_bytes())
+            .collect(),
+        _ => samples.iter().flat_map(|&v| v.to_le_bytes()).collect(),
+    };
     Ok(out)
 }
 

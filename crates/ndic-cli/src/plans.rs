@@ -450,15 +450,16 @@ pub fn thumbnail(args: &ThumbnailArgs) -> anyhow::Result<()> {
         }
         let mut out = Vec::new();
         for decoded in &planes {
-            for &v in &decoded.comps[0] {
-                // Truncating casts are exact: the decoder bounds samples to
-                // the declared depth `dtype_of` sized the element from.
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                match dtype.size_bytes() {
-                    1 => out.push(v as u8),
-                    2 => out.extend_from_slice(&(v as u16).to_le_bytes()),
-                    _ => out.extend_from_slice(&v.to_le_bytes()),
-                }
+            let samples = &decoded.comps[0];
+            // The element width is matched once per plane. A `flat_map` over fixed-size arrays
+            // is `TrustedLen`, so `extend` reserves once and the stores vectorize.
+            // Truncating casts are exact: the decoder bounds samples to
+            // the declared depth `dtype_of` sized the element from.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            match dtype.size_bytes() {
+                1 => out.extend(samples.iter().map(|&v| v as u8)),
+                2 => out.extend(samples.iter().flat_map(|&v| (v as u16).to_le_bytes())),
+                _ => out.extend(samples.iter().flat_map(|&v| v.to_le_bytes())),
             }
         }
         std::fs::write(&args.output, &out)
