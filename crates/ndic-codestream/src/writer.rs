@@ -134,18 +134,7 @@ pub fn encode_image_with_depth(
     }
 
     let levels = params.xy_levels;
-    let quant = Quant::reversible(levels, bit_depth, false)?;
-    // The scalar HT coder uses a 32-bit datapath: K_max <= 30.
-    let k_max_max = (0..=levels)
-        .flat_map(|r| (u8::from(r > 0)..=if r > 0 { 3 } else { 0 }).map(move |b| (r, b)))
-        .map(|(r, b)| quant.k_max(r, b))
-        .max()
-        .unwrap_or(0);
-    if k_max_max > 30 {
-        return Err(Error::Unsupported {
-            message: "bit depth exceeds the 32-bit HT datapath (K_max > 30)".into(),
-        });
-    }
+    let quant = check_datapath(levels, bit_depth)?;
 
     // ---- per-component wavelet transform + block coding ---------------
     let mut resolutions: Vec<Vec<Vec<BandBlocks>>> = Vec::new(); // [comp][res][band]
@@ -341,6 +330,47 @@ fn progression_code(p: ProgressionOrder) -> u8 {
         ProgressionOrder::Rpcl => 2,
         ProgressionOrder::Pcrl => 3,
         ProgressionOrder::Cprl => 4,
+    }
+}
+
+/// The reversible quantization for `levels` decompositions of `bit_depth` samples, refused when
+/// a subband would exceed the 32-bit HT datapath.
+///
+/// # Errors
+/// [`Error::Unsupported`] when `K_max` exceeds 30.
+pub(crate) fn check_datapath(levels: u8, bit_depth: u8) -> Result<Quant> {
+    let quant = Quant::reversible(levels, bit_depth, false)?;
+    // The scalar HT coder uses a 32-bit datapath: K_max <= 30.
+    let k_max_max = (0..=levels)
+        .flat_map(|r| (u8::from(r > 0)..=if r > 0 { 3 } else { 0 }).map(move |b| (r, b)))
+        .map(|(r, b)| quant.k_max(r, b))
+        .max()
+        .unwrap_or(0);
+    if k_max_max > 30 {
+        return Err(Error::Unsupported {
+            message: "bit depth exceeds the 32-bit HT datapath (K_max > 30)".into(),
+        });
+    }
+    Ok(quant)
+}
+
+/// The narrowest `Ssiz` depth covering the samples' actual range.
+#[must_use]
+pub fn sample_depth(samples: &[i32], signed: bool) -> u8 {
+    let (lo, hi) = samples
+        .iter()
+        .fold((0i32, 0i32), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+    // Both bounds are non-negative here, so a bit length is `32 - leading_zeros`. The signed
+    // range also needs a sign bit and must hold `!lo = -lo - 1`, the largest magnitude below zero.
+    let bit_len = |v: i32| 32 - v.leading_zeros();
+    let depth = if signed {
+        bit_len(hi.max(!lo)) + 1
+    } else {
+        bit_len(hi)
+    };
+    #[allow(clippy::cast_possible_truncation)] // clamped to 1..=32
+    {
+        depth.clamp(1, 32) as u8
     }
 }
 

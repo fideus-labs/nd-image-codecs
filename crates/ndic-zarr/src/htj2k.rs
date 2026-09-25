@@ -17,7 +17,7 @@ use ndic_core::{CoeffPlane, EncodeParams, Error, ProgressionOrder, Result, Sampl
 
 use ndic_codestream::container::{ChunkHeader, PlaneEntry};
 use ndic_codestream::reader::Codestream;
-use ndic_codestream::writer::encode_image_with_depth;
+use ndic_codestream::writer::{encode_image_with_depth, sample_depth};
 
 /// The `htj2k` codec `configuration` object (Zarr v3), shared verbatim by
 /// the Rust, Python, and TypeScript builders.
@@ -260,25 +260,6 @@ pub fn narrow_samples(samples: &[i32], dtype: SampleType, out: &mut Vec<u8>) -> 
     Ok(())
 }
 
-/// The narrowest `Ssiz` declaration covering the samples' actual range.
-fn depth_for(samples: &[i32], signed: bool) -> u8 {
-    let (lo, hi) = samples
-        .iter()
-        .fold((0i32, 0i32), |(lo, hi), &v| (lo.min(v), hi.max(v)));
-    // Both bounds are non-negative here, so a bit length is `32 - leading_zeros`. The signed
-    // range also needs a sign bit and must hold `!lo = -lo - 1`, the largest magnitude below zero.
-    let bit_len = |v: i32| 32 - v.leading_zeros();
-    let depth = if signed {
-        bit_len(hi.max(!lo)) + 1
-    } else {
-        bit_len(hi)
-    };
-    #[allow(clippy::cast_possible_truncation)] // clamped to 1..=32
-    {
-        depth.clamp(1, 32) as u8
-    }
-}
-
 /// Encodes a chunk (native-endian `dtype` elements, C order, trailing dims
 /// `(y, x)`) into the `htj2k` container.
 ///
@@ -307,7 +288,7 @@ pub fn encode_chunk(
     let mut codestreams = Vec::with_capacity(num_planes);
     for p in 0..num_planes {
         let samples = widen_plane(&bytes[p * plane_bytes..(p + 1) * plane_bytes], dtype)?;
-        let depth = depth_for(&samples, signed);
+        let depth = sample_depth(&samples, signed);
         let plane = CoeffPlane::new(&samples, width, height)?;
         let stream =
             encode_image_with_depth(&[plane], depth, signed, &params).map_err(|e| match e {
