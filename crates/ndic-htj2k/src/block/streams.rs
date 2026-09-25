@@ -281,7 +281,8 @@ pub struct VlcEncoder {
     /// Bytes in production order (reverse of final stream order). The first
     /// element is the `0xFF` placeholder byte.
     buf: Vec<u8>,
-    /// Bit accumulator (LSB-first).
+    /// Bit accumulator (LSB-first). Up to 31 bits wait here, so completed
+    /// bytes can leave four at a time.
     tmp: u32,
     /// Occupied bits in [`Self::tmp`].
     used_bits: u32,
@@ -326,22 +327,25 @@ impl VlcEncoder {
         for &(cwd, cwd_len) in words {
             acc |= (u64::from(cwd) & ((1u64 << cwd_len.min(32)) - 1)) << used_bits;
             used_bits += cwd_len;
-            loop {
-                // After a byte above 0x8F the next one keeps its MSB stuffed only when its low 7
-                // bits are 0x7F. Otherwise the stuffed bit is unnecessary and is reclaimed.
-                let n = 8 - u32::from(last_greater_than_8f && acc & 0x7F == 0x7F);
-                if used_bits < n {
-                    break;
-                }
-                let byte = acc & ((1 << n) - 1);
+            // Once four bytes are complete, a SWAR zero-byte test flags any whose low 7 bits are
+            // all ones, the only kind that can be stuffed. With none, all four keep 8 bits and
+            // leave as one 32-bit store. Otherwise a single byte leaves and the test repeats.
+            while used_bits >= 32 {
                 #[allow(clippy::cast_possible_truncation)]
-                self.buf.push(byte as u8);
-                acc >>= n;
-                used_bits -= n;
-                last_greater_than_8f = byte > 0x8F;
+                let word = acc as u32;
+                if (!word & 0x7F7F_7F7F).wrapping_sub(0x0101_0101) & 0x8080_8080 == 0 {
+                    self.buf.extend_from_slice(&word.to_le_bytes());
+                    acc >>= 32;
+                    used_bits -= 32;
+                    last_greater_than_8f = word >> 24 > 0x8F;
+                } else if let Some(byte) =
+                    Self::take_byte(&mut acc, &mut used_bits, &mut last_greater_than_8f)
+                {
+                    self.buf.push(byte);
+                }
             }
         }
-        #[allow(clippy::cast_possible_truncation)] // fewer than 8 bits remain
+        #[allow(clippy::cast_possible_truncation)] // fewer than 32 bits remain
         {
             self.tmp = acc as u32;
         }
@@ -349,22 +353,63 @@ impl VlcEncoder {
         self.last_greater_than_8f = last_greater_than_8f;
     }
 
+    /// Takes the next byte out of the accumulator if it is complete. After a
+    /// byte above `0x8F` the next one keeps its MSB stuffed only when its low
+    /// 7 bits are `0x7F`. Otherwise the stuffed bit is unnecessary and is
+    /// reclaimed.
+    fn take_byte(
+        acc: &mut u64,
+        used_bits: &mut u32,
+        last_greater_than_8f: &mut bool,
+    ) -> Option<u8> {
+        let n = 8 - u32::from(*last_greater_than_8f && *acc & 0x7F == 0x7F);
+        if *used_bits < n {
+            return None;
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        let byte = (*acc & ((1 << n) - 1)) as u8;
+        *acc >>= n;
+        *used_bits -= n;
+        *last_greater_than_8f = byte > 0x8F;
+        Some(byte)
+    }
+
     /// Number of bytes produced so far (including the placeholder).
     #[must_use]
     pub fn len(&self) -> usize {
-        self.buf.len()
+        // Completed bytes may still wait in the accumulator, so they are counted too.
+        let mut acc = u64::from(self.tmp);
+        let (mut used_bits, mut last) = (self.used_bits, self.last_greater_than_8f);
+        let mut n = self.buf.len();
+        while Self::take_byte(&mut acc, &mut used_bits, &mut last).is_some() {
+            n += 1;
+        }
+        n
     }
 
     /// True if only the placeholder byte exists.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.buf.len() <= 1
+        self.len() <= 1
     }
 
     /// Terminates MEL and VLC together, fusing their last bytes when possible
     /// (T.814 §7.3.5), and returns `(mel_bytes, vlc_bytes_stream_order)`.
     #[must_use]
     pub fn terminate_with_mel(mut self, mut mel: super::mel::MelEncoder) -> (Vec<u8>, Vec<u8>) {
+        // Flush the completed bytes still waiting in the accumulator.
+        let mut acc = u64::from(self.tmp);
+        while let Some(byte) = Self::take_byte(
+            &mut acc,
+            &mut self.used_bits,
+            &mut self.last_greater_than_8f,
+        ) {
+            self.buf.push(byte);
+        }
+        #[allow(clippy::cast_possible_truncation)] // fewer than 8 bits remain
+        {
+            self.tmp = acc as u32;
+        }
         let (mel_tmp, mel_mask) = mel.terminate();
         let vlc_mask = if self.used_bits == 0 {
             0
@@ -564,6 +609,26 @@ mod tests {
             let got = dec.fetch() & ((1 << n) - 1);
             assert_eq!(got, w, "word {w:#x}/{n}");
             dec.advance(n);
+        }
+    }
+
+    #[test]
+    fn vlc_len_counts_bytes_waiting_in_the_accumulator() {
+        let mut state = 0x1234_5678u32;
+        let words: Vec<(u32, u32)> = (0..200)
+            .map(|_| {
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (state >> 3, state >> 29)
+            })
+            .collect();
+        // For every prefix, terminating adds at most the one partial byte, so nothing completed
+        // went uncounted by `len`.
+        for k in 0..=words.len() {
+            let mut enc = VlcEncoder::new();
+            enc.encode_all(&words[..k]);
+            let len = enc.len();
+            let (_, bytes) = enc.terminate_with_mel(super::super::mel::MelEncoder::new());
+            assert!((len..=len + 1).contains(&bytes.len()), "prefix {k}");
         }
     }
 
