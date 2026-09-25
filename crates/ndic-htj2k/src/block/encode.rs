@@ -19,7 +19,7 @@ use ndic_core::{Error, Result};
 
 use super::mel::MelEncoder;
 use super::streams::{MagSgnEncoder, VlcEncoder};
-use super::tables::{ENC_UVLC, ENC_VLC_TBL0, ENC_VLC_TBL1};
+use super::tables::{ENC_UVLC, ENC_VLC_TBL0, ENC_VLC_TBL1, UvlcCode};
 
 /// Per-quad working state gathered from the sample buffer.
 #[derive(Default, Clone, Copy)]
@@ -207,21 +207,17 @@ pub fn encode_block(
         }
         if u_q0 > 2 && u_q1 > 2 {
             let (c0, c1) = (ENC_UVLC[(u_q0 - 2) as usize], ENC_UVLC[(u_q1 - 2) as usize]);
-            vlc.encode(c0.prefix.into(), c0.prefix_len.into());
-            vlc.encode(c1.prefix.into(), c1.prefix_len.into());
-            vlc.encode(c0.suffix.into(), c0.suffix_len.into());
-            vlc.encode(c1.suffix.into(), c1.suffix_len.into());
+            vlc.encode_all(&uvlc_pair(c0, c1));
         } else if u_q0 > 2 && u_q1 > 0 {
             let c0 = ENC_UVLC[u_q0 as usize];
-            vlc.encode(c0.prefix.into(), c0.prefix_len.into());
-            vlc.encode(u_q1 - 1, 1);
-            vlc.encode(c0.suffix.into(), c0.suffix_len.into());
+            vlc.encode_all(&[
+                (c0.prefix.into(), c0.prefix_len.into()),
+                (u_q1 - 1, 1),
+                (c0.suffix.into(), c0.suffix_len.into()),
+            ]);
         } else {
             let (c0, c1) = (ENC_UVLC[u_q0 as usize], ENC_UVLC[u_q1 as usize]);
-            vlc.encode(c0.prefix.into(), c0.prefix_len.into());
-            vlc.encode(c1.prefix.into(), c1.prefix_len.into());
-            vlc.encode(c0.suffix.into(), c0.suffix_len.into());
-            vlc.encode(c1.suffix.into(), c1.suffix_len.into());
+            vlc.encode_all(&uvlc_pair(c0, c1));
         }
 
         x += 4;
@@ -303,10 +299,7 @@ pub fn encode_block(
 
             // UVLC for the pair (no MEL event on non-initial rows).
             let (c0, c1) = (ENC_UVLC[u_q0 as usize], ENC_UVLC[u_q1 as usize]);
-            vlc.encode(c0.prefix.into(), c0.prefix_len.into());
-            vlc.encode(c1.prefix.into(), c1.prefix_len.into());
-            vlc.encode(c0.suffix.into(), c0.suffix_len.into());
-            vlc.encode(c1.suffix.into(), c1.suffix_len.into());
+            vlc.encode_all(&uvlc_pair(c0, c1));
 
             x += 4;
         }
@@ -334,6 +327,17 @@ pub fn encode_block(
         out[n - 2] = (out[n - 2] & 0xF0) | (scup & 0xF) as u8;
     }
     Ok(out)
+}
+
+/// The UVLC codewords of a quad pair in stream order: both prefixes, then both
+/// suffixes.
+fn uvlc_pair(c0: UvlcCode, c1: UvlcCode) -> [(u32, u32); 4] {
+    [
+        (c0.prefix.into(), c0.prefix_len.into()),
+        (c1.prefix.into(), c1.prefix_len.into()),
+        (c0.suffix.into(), c0.suffix_len.into()),
+        (c1.suffix.into(), c1.suffix_len.into()),
+    ]
 }
 
 #[inline]

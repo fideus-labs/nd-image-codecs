@@ -305,32 +305,38 @@ impl VlcEncoder {
 
     /// Appends `cwd_len` bits of `cwd` (LSB-first).
     pub fn encode(&mut self, cwd: u32, cwd_len: u32) {
-        // Loop state lives in locals and is written back once. The `push` may call the allocator,
-        // which otherwise forces every field through memory on each iteration.
+        self.encode_all(&[(cwd, cwd_len)]);
+    }
+
+    /// Appends each `(cwd, cwd_len)` codeword in order, as repeated
+    /// [`Self::encode`] calls would.
+    pub fn encode_all(&mut self, words: &[(u32, u32)]) {
+        // State lives in locals for the whole run and is written back once. The `push` may call
+        // the allocator, which otherwise forces every field through memory on each iteration.
         let mut tmp = self.tmp;
         let mut used_bits = self.used_bits;
         let mut last_greater_than_8f = self.last_greater_than_8f;
-        let mut cwd = cwd;
-        let mut cwd_len = cwd_len;
-        while cwd_len > 0 {
-            let mut avail_bits = 8 - u32::from(last_greater_than_8f) - used_bits;
-            let t = avail_bits.min(cwd_len);
-            tmp |= (cwd & ((1 << t) - 1)) << used_bits;
-            used_bits += t;
-            avail_bits -= t;
-            cwd_len -= t;
-            cwd >>= t;
-            if avail_bits == 0 {
-                if last_greater_than_8f && tmp != 0x7F {
-                    // The stuffed bit is unnecessary: reclaim it.
-                    last_greater_than_8f = false;
-                    continue;
+        for &(mut cwd, mut cwd_len) in words {
+            while cwd_len > 0 {
+                let mut avail_bits = 8 - u32::from(last_greater_than_8f) - used_bits;
+                let t = avail_bits.min(cwd_len);
+                tmp |= (cwd & ((1 << t) - 1)) << used_bits;
+                used_bits += t;
+                avail_bits -= t;
+                cwd_len -= t;
+                cwd >>= t;
+                if avail_bits == 0 {
+                    if last_greater_than_8f && tmp != 0x7F {
+                        // The stuffed bit is unnecessary: reclaim it.
+                        last_greater_than_8f = false;
+                        continue;
+                    }
+                    #[allow(clippy::cast_possible_truncation)]
+                    self.buf.push(tmp as u8);
+                    last_greater_than_8f = tmp > 0x8F;
+                    tmp = 0;
+                    used_bits = 0;
                 }
-                #[allow(clippy::cast_possible_truncation)]
-                self.buf.push(tmp as u8);
-                last_greater_than_8f = tmp > 0x8F;
-                tmp = 0;
-                used_bits = 0;
             }
         }
         self.tmp = tmp;
