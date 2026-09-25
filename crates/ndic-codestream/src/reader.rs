@@ -618,11 +618,20 @@ impl<'a> Codestream<'a> {
         let (out_w, out_h) = dwt::level_dims(width, height, levels - max_res);
         let mut comps_out = Vec::with_capacity(ncomps);
         for plane in &mut planes {
-            let mut region = alloc::vec![0i32; out_w * out_h];
-            for y in 0..out_h {
-                region[y * out_w..(y + 1) * out_w]
-                    .copy_from_slice(&plane[y * width..y * width + out_w]);
-            }
+            // At full width the region is the plane's leading rows, so it is taken in place
+            // rather than copied into a fresh buffer.
+            let mut region = if out_w == width {
+                let mut region = core::mem::take(plane);
+                region.truncate(out_w * out_h);
+                region
+            } else {
+                let mut region = alloc::vec![0i32; out_w * out_h];
+                for y in 0..out_h {
+                    region[y * out_w..(y + 1) * out_w]
+                        .copy_from_slice(&plane[y * width..y * width + out_w]);
+                }
+                region
+            };
             dwt::simd::inverse_53(&mut region, out_w, out_h, max_res)?;
             comps_out.push(region);
         }
