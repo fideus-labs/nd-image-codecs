@@ -490,6 +490,10 @@ impl VlcEncoder {
 
     /// Appends each `(cwd, cwd_len)` codeword in order, as repeated
     /// [`Self::encode`] calls would.
+    // Inlined into the per-quad code, where a call would spill the quad loop's live values. The
+    // `#[inline]` hint leaves some call sites out of line.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn encode_all(&mut self, words: &[(u32, u32)]) {
         // State lives in locals for the whole run and is written back once. The `push` may call
         // the allocator, which otherwise forces every field through memory on each iteration.
@@ -654,6 +658,10 @@ impl MagSgnEncoder {
 
     /// Appends each `(cwd, cwd_len)` codeword in order, as repeated
     /// [`Self::encode`] calls would.
+    // Inlined into the per-quad code, where a call would spill the quad loop's live values. The
+    // `#[inline]` hint leaves some call sites out of line.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn encode_all(&mut self, words: &[(u32, u32)]) {
         // State lives in locals for the whole run and is written back once, as in `VlcEncoder`.
         // A 64-bit accumulator takes each codeword whole, since at most 31 pending bits plus 32
