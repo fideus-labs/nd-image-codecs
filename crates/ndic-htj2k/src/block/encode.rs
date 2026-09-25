@@ -35,25 +35,16 @@ struct Quad {
 }
 
 impl Quad {
-    /// Loads one 2x2 quad from the sign-magnitude buffer; columns or the
-    /// bottom row beyond the block read as insignificant.
-    fn load(
-        buf: &[u32],
-        stride: usize,
-        width: usize,
-        height: usize,
-        x: usize,
-        y: usize,
-        p: u32,
-    ) -> Self {
+    /// Loads the 2x2 quad at column `x` from the sign-magnitude rows `rows`
+    /// (top, bottom); columns past a row's end read as insignificant, and an
+    /// empty bottom row stands in for the one beyond the block.
+    #[inline]
+    fn load(rows: [&[u32]; 2], x: usize, p: u32) -> Self {
         let mut quad = Self::default();
         for n in 0..4usize {
-            let sx = x + n / 2;
-            let sy = y + n % 2;
-            if sx >= width || sy >= height {
+            let Some(&raw) = rows[n % 2].get(x + n / 2) else {
                 continue;
-            }
-            let raw = buf[sy * stride + sx];
+            };
             // (raw + raw) drops the sign bit; >> p aligns the coding LSB.
             let mut val = (raw.wrapping_add(raw) >> p) & !1; // 2 mu_p
             if val != 0 {
@@ -79,6 +70,18 @@ impl Quad {
         }
         eps
     }
+}
+
+/// The two sample rows of the quad row starting at `y`, each `width` long.
+/// The bottom row is empty when `y` is the block's last row.
+fn quad_rows(buf: &[u32], stride: usize, width: usize, height: usize, y: usize) -> [&[u32]; 2] {
+    let top = &buf[y * stride..y * stride + width];
+    let bottom = if y + 1 < height {
+        &buf[(y + 1) * stride..(y + 1) * stride + width]
+    } else {
+        &[]
+    };
+    [top, bottom]
 }
 
 /// Emits the `MagSgn` bits of one quad given its VLC tuple (`e_k` in the
@@ -148,9 +151,10 @@ pub fn encode_block(
     let mut c_q0: u32 = 0;
     let mut lep = 0usize; // cursor into e_val
     let mut lcxp = 0usize; // cursor into cx_val
+    let rows = quad_rows(buf, stride, width, height, 0);
     let mut x = 0usize;
     while x < width {
-        let q0 = Quad::load(buf, stride, width, height, x, 0, p);
+        let q0 = Quad::load(rows, x, p);
         let uq0 = q0.e_qmax.max(1); // kappa = 1
         let u_q0 = uq0 - 1;
         let mut u_q1 = 0;
@@ -171,7 +175,7 @@ pub fn encode_block(
         emit_magsgn(&mut ms, &q0, tuple0, uq0);
 
         if x + 2 < width {
-            let q1 = Quad::load(buf, stride, width, height, x + 2, 0, p);
+            let q1 = Quad::load(rows, x + 2, p);
             let c_q1 = (q0.rho >> 1) | (q0.rho & 1);
             let uq1 = q1.e_qmax.max(1); // kappa = 1
             u_q1 = uq1 - 1;
@@ -233,9 +237,10 @@ pub fn encode_block(
         c_q0 = u32::from(cx_val[0]) + (u32::from(cx_val[1]) << 2);
         cx_val[0] = 0;
 
+        let rows = quad_rows(buf, stride, width, height, y);
         let mut x = 0usize;
         while x < width {
-            let q0 = Quad::load(buf, stride, width, height, x, y, p);
+            let q0 = Quad::load(rows, x, p);
             let kappa = if q0.rho & (q0.rho.wrapping_sub(1)) != 0 {
                 to_u32_clamped(max_e.max(1))
             } else {
@@ -263,7 +268,7 @@ pub fn encode_block(
             emit_magsgn(&mut ms, &q0, tuple0, uq0);
 
             if x + 2 < width {
-                let q1 = Quad::load(buf, stride, width, height, x + 2, y, p);
+                let q1 = Quad::load(rows, x + 2, p);
                 let kappa = if q1.rho & (q1.rho.wrapping_sub(1)) != 0 {
                     to_u32_clamped(max_e.max(1))
                 } else {
