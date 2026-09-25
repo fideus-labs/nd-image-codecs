@@ -13,7 +13,9 @@ use alloc::vec::Vec;
 use ndic_core::{CoeffPlane, EncodeParams, Error, ProgressionOrder, Result, SampleType};
 use ndic_htj2k::dwt;
 
-use crate::geometry::{Band, bands_of_resolution, effective_cb};
+use crate::geometry::{
+    Band, bands_of_resolution, effective_cb, packet_sequence, precinct_block_range, precinct_grid,
+};
 use crate::markers::{
     self, Cap, Cod, ComponentSiz, Siz, com_payload, plt_payload, push_segment, tlm_payload,
 };
@@ -169,32 +171,37 @@ pub fn encode_image_with_depth(
     }
 
     // ---- packets in progression order ---------------------------------
-    // With one layer and one precinct per resolution, every progression
-    // reduces to resolution-major (LRCP/RLCP/RPCL) or component-major
-    // (PCRL/CPRL) order.
-    let comp_major = matches!(
-        params.progression,
-        ProgressionOrder::Pcrl | ProgressionOrder::Cprl
+    // A maximal precinct spans 2^15 samples of its resolution, so a larger resolution splits into
+    // several precincts, each a packet holding its share of every band's code-blocks.
+    let packet_order = packet_sequence(
+        progression_code(params.progression),
+        comps.len(),
+        levels,
+        |r| precinct_grid(width, height, levels, r, 15, 15),
+        |_| (15, 15),
     );
-    let mut packet_order = Vec::new();
-    if comp_major {
-        for c in 0..comps.len() {
-            for r in 0..=levels {
-                packet_order.push((c, r));
-            }
-        }
-    } else {
-        for r in 0..=levels {
-            for c in 0..comps.len() {
-                packet_order.push((c, r));
-            }
-        }
-    }
-
     let mut body = Vec::new();
     let mut packet_lengths = Vec::with_capacity(packet_order.len());
-    for &(c, r) in &packet_order {
-        let bytes = write_packet(&resolutions[c][usize::from(r)]);
+    for (c, r, px, py) in packet_order {
+        let (ecbw, ecbh) = effective_cb(cbw, cbh, 15, 15, r);
+        // Precinct exponents in band coordinates.
+        let pp = 15 - u8::from(r > 0);
+        let bands = bands_of_resolution(width, height, levels, r);
+        let precinct: Vec<BandBlocks> = bands
+            .iter()
+            .zip(&mut resolutions[c][usize::from(r)])
+            .map(|(band, coded)| {
+                let (bx0, by0, nx, ny) =
+                    precinct_block_range(band.w, band.h, pp, pp, px, py, ecbw, ecbh);
+                // Each block belongs to one precinct, so it moves out rather than being copied.
+                let blocks = (by0..by0 + ny)
+                    .flat_map(|by| (bx0..bx0 + nx).map(move |bx| (bx, by)))
+                    .map(|(bx, by)| coded.blocks[by * coded.nx + bx].take())
+                    .collect();
+                BandBlocks { nx, ny, blocks }
+            })
+            .collect();
+        let bytes = write_packet(&precinct);
         #[allow(clippy::cast_possible_truncation)]
         packet_lengths.push(bytes.len() as u32);
         body.extend_from_slice(&bytes);

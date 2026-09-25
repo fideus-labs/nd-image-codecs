@@ -13,7 +13,9 @@ use alloc::vec::Vec;
 use ndic_core::{Error, Result};
 use ndic_htj2k::{BlockPasses, dwt};
 
-use crate::geometry::{bands_of_resolution, effective_cb};
+use crate::geometry::{
+    bands_of_resolution, effective_cb, packet_sequence, precinct_block_range, precinct_grid,
+};
 use crate::markers::{self, Cap, Cod, Siz, Sot, parse_com, parse_plt, parse_tlm};
 use crate::packet::{ParseBand, parse_packet_header};
 use crate::quant::Quant;
@@ -357,64 +359,27 @@ impl<'a> Codestream<'a> {
 
     /// Precinct grid of resolution `r`: `(npx, npy)`.
     fn precinct_grid(&self, r: u8) -> (usize, usize) {
-        let levels = self.cod.decomps;
-        let (rw, rh) = dwt::level_dims(self.siz.xsiz as usize, self.siz.ysiz as usize, levels - r);
         let (ppx, ppy) = self.cod.precinct_exp(r);
-        if rw == 0 || rh == 0 {
-            (0, 0)
-        } else {
-            (rw.div_ceil(1 << ppx.min(31)), rh.div_ceil(1 << ppy.min(31)))
-        }
+        precinct_grid(
+            self.siz.xsiz as usize,
+            self.siz.ysiz as usize,
+            self.cod.decomps,
+            r,
+            ppx,
+            ppy,
+        )
     }
 
     /// The packet visit order: `(comp, res, px, py)` per the progression
     /// (T.800 §B.12, single tile, one layer).
     fn packet_sequence(&self) -> Vec<(usize, u8, usize, usize)> {
-        let comps = self.siz.comps.len();
-        let mut order = Vec::new();
-        match self.cod.progression {
-            // RPCL: resolution, position raster, component.
-            2 => {
-                for r in 0..=self.cod.decomps {
-                    let (npx, npy) = self.precinct_grid(r);
-                    for py in 0..npy {
-                        for px in 0..npx {
-                            for c in 0..comps {
-                                order.push((c, r, px, py));
-                            }
-                        }
-                    }
-                }
-            }
-            // PCRL/CPRL: only reachable with maximal precincts (one per
-            // resolution), where they reduce to component-major order.
-            3 | 4 => {
-                for c in 0..comps {
-                    for r in 0..=self.cod.decomps {
-                        let (npx, npy) = self.precinct_grid(r);
-                        for py in 0..npy {
-                            for px in 0..npx {
-                                order.push((c, r, px, py));
-                            }
-                        }
-                    }
-                }
-            }
-            // LRCP/RLCP: resolution, component, position raster.
-            _ => {
-                for r in 0..=self.cod.decomps {
-                    for c in 0..comps {
-                        let (npx, npy) = self.precinct_grid(r);
-                        for py in 0..npy {
-                            for px in 0..npx {
-                                order.push((c, r, px, py));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        order
+        packet_sequence(
+            self.cod.progression,
+            self.siz.comps.len(),
+            self.cod.decomps,
+            |r| self.precinct_grid(r),
+            |r| self.cod.precinct_exp(r),
+        )
     }
 
     /// Reconstructs the packet index purely from `TLM`/`PLT` — no packet
@@ -674,40 +639,6 @@ impl<'a> Codestream<'a> {
             comps: comps_out,
         })
     }
-}
-
-#[allow(clippy::too_many_arguments, clippy::similar_names)]
-/// The aligned code-block sub-grid a precinct covers within a band:
-/// `(bx0, by0, nx, ny)` in the band's global block grid.
-///
-/// `pp_log` are the precinct exponents in *band* coordinates (already
-/// reduced by one for resolutions above 0); block sizes divide precinct
-/// sizes, so precinct edges align with block boundaries.
-fn precinct_block_range(
-    bw: usize,
-    bh: usize,
-    ppx_log: u8,
-    ppy_log: u8,
-    px: usize,
-    py: usize,
-    cbw: usize,
-    cbh: usize,
-) -> (usize, usize, usize, usize) {
-    if bw == 0 || bh == 0 {
-        return (0, 0, 0, 0);
-    }
-    let ppw = 1usize << ppx_log.min(31);
-    let pph = 1usize << ppy_log.min(31);
-    let x0 = px * ppw;
-    let y0 = py * pph;
-    if x0 >= bw || y0 >= bh {
-        return (0, 0, 0, 0);
-    }
-    let x1 = (x0 + ppw).min(bw);
-    let y1 = (y0 + pph).min(bh);
-    let bx0 = x0 / cbw;
-    let by0 = y0 / cbh;
-    (bx0, by0, x1.div_ceil(cbw) - bx0, y1.div_ceil(cbh) - by0)
 }
 
 #[cfg(test)]
