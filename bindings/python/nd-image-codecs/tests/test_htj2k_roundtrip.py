@@ -71,22 +71,48 @@ def test_nd_lift_ht_series_roundtrips(dtype: str) -> None:
     assert chunks and all(v[:4] == b"ndht" for v in chunks)
 
 
+def _mixed_fixture_data() -> np.ndarray:
+    """Plane 0 a ramp HT coding shrinks, plane 1 hashed noise it cannot."""
+    i = np.arange(16 * 16, dtype=np.uint32)
+    ramp = (i * 7 % 4096).astype(np.uint16)
+    h = (i + 1) * np.uint32(0x9E3779B1)
+    h ^= h >> 16
+    h *= np.uint32(0x85EBCA6B)
+    h ^= h >> 13
+    noise = (h & 0xFFFF).astype(np.uint16)
+    return np.stack([ramp, noise]).reshape(2, 16, 16)
+
+
 @needs_native
 def test_chunks_are_byte_identical_to_the_rust_codec_fixture() -> None:
     """Python encodes the committed micro-fixture byte-for-byte.
 
     The Rust `zarrs` codec pins the same file
-    (``fixtures/codestreams/tiny-chunk-4x8x8.ndht``), so this is the
+    (``fixtures/codestreams/tiny-chunk-2x16x16-mixed.ndht``), so this is the
     cross-ecosystem byte-identity gate.
     """
     from conftest import REPO
 
-    shape = [4, 8, 8]
-    data = np.arange(np.prod(shape), dtype=np.uint16) * 7 % 4096
+    shape = [2, 16, 16]
+    data = _mixed_fixture_data()
     blob = _native.htj2k_encode(data.tobytes(), list(shape), "uint16", xy_levels=2)
-    committed = (REPO / "fixtures" / "codestreams" / "tiny-chunk-4x8x8.ndht").read_bytes()
+    committed = (
+        REPO / "fixtures" / "codestreams" / "tiny-chunk-2x16x16-mixed.ndht"
+    ).read_bytes()
     assert blob == committed
     back = _native.htj2k_decode(blob, list(shape), "uint16")
+    np.testing.assert_array_equal(np.frombuffer(back, dtype=np.uint16), data.ravel())
+
+
+@needs_native
+def test_version_1_chunks_still_decode() -> None:
+    """Chunks written before stored planes existed stay readable."""
+    from conftest import REPO
+
+    shape = [4, 8, 8]
+    data = np.arange(np.prod(shape), dtype=np.uint16) * 7 % 4096
+    committed = (REPO / "fixtures" / "codestreams" / "tiny-chunk-4x8x8.ndht").read_bytes()
+    back = _native.htj2k_decode(committed, list(shape), "uint16")
     np.testing.assert_array_equal(np.frombuffer(back, dtype=np.uint16), data)
 
 

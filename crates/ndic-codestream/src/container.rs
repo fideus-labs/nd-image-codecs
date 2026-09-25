@@ -11,34 +11,46 @@
 //! byte-range plans; the header parses from a chunk *prefix* so a remote
 //! reader bootstraps from one small ranged fetch.
 //!
-//! All integers little-endian. Layout (version 1):
+//! All integers little-endian. Layout:
 //!
 //! ```text
 //! 0        4   magic  "ndht"
-//! 4        1   version = 1
+//! 4        1   version = 1, or 2 when a plane is stored
 //! 5        1   flags   (bit 0: coefficient-plane index present)
 //! 6        1   xy_levels
 //! 7        1   ndim    (2..=32)
 //! 8    4*ndim  dims, u32 each — transformed order, trailing two = (y, x)
 //! ...          index: num_planes entries, each
 //!                u64 offset | u32 len | (xy_levels + 1) * u32 prefix
-//! ...          codestreams, in plane order
+//! ...          planes, in plane order
 //! ```
 //!
 //! `prefix[r]` is the byte count from the plane's first byte that suffices
 //! to decode resolutions `0..=r` (main header + tile-part header + the
 //! leading packets) via [`crate::reader::Codestream::parse_prefix`].
+//!
+//! A plane is a codestream, or in version 2 a [`StoredPlane`] of raw samples when HT coding
+//! would not shrink it. A stored plane's `prefix[r]` is its whole length.
 
 extern crate alloc;
 
 use alloc::vec::Vec;
 
 use ndic_core::{Error, Result};
+use ndic_htj2k::dwt;
+
+use crate::reader::Decoded;
 
 /// Magic bytes opening every `htj2k` chunk.
 pub const MAGIC: [u8; 4] = *b"ndht";
-/// The container version this build writes and reads.
+/// The container version of a chunk whose planes are all codestreams.
 pub const VERSION: u8 = 1;
+/// The container version of a chunk holding at least one [`StoredPlane`].
+pub const VERSION_STORED: u8 = 2;
+/// Magic bytes opening a [`StoredPlane`]. A codestream opens with `SOC` (`FF 4F`) instead.
+pub const STORED_MAGIC: [u8; 3] = *b"ndr";
+/// Bit 7 of a stored plane's kind byte marks two's-complement samples.
+const STORED_SIGNED: u8 = 0x80;
 /// Flag bit 0: the coefficient-plane index follows the fixed header.
 pub const FLAG_INDEX: u8 = 0x01;
 
@@ -98,6 +110,181 @@ impl PlaneEntry {
             prefix,
         })
     }
+
+    /// Builds the entry for a stored plane of `len` bytes placed at `offset`. Every resolution
+    /// needs the whole plane.
+    #[must_use]
+    pub fn stored(offset: u64, len: u32, xy_levels: u8) -> Self {
+        Self {
+            offset,
+            len,
+            prefix: alloc::vec![len; usize::from(xy_levels) + 1],
+        }
+    }
+}
+
+/// A plane kept as raw samples because HT coding did not shrink it, as deflate falls back to a
+/// stored block.
+///
+/// Layout is `"ndr" | kind | samples`. The kind byte holds the sample width in bytes (1, 2, or
+/// 4) with bit 7 set for signed samples, and the samples follow in little-endian C order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoredPlane<'a> {
+    /// Bytes per sample: 1, 2, or 4.
+    pub size: usize,
+    /// Whether the samples are two's complement.
+    pub signed: bool,
+    /// The little-endian samples.
+    pub samples: &'a [u8],
+}
+
+impl<'a> StoredPlane<'a> {
+    /// Bytes before the samples.
+    pub const HEADER_LEN: usize = 4;
+
+    /// Whether plane bytes open with the stored-plane magic.
+    #[must_use]
+    pub fn is_stored(bytes: &[u8]) -> bool {
+        bytes.starts_with(&STORED_MAGIC)
+    }
+
+    /// Total bytes of a stored plane of `pixels` samples of `size` bytes.
+    #[must_use]
+    pub fn stored_len(pixels: usize, size: usize) -> Option<usize> {
+        pixels.checked_mul(size)?.checked_add(Self::HEADER_LEN)
+    }
+
+    /// Appends a stored plane's header. The caller appends the little-endian samples.
+    ///
+    /// # Panics
+    /// When `size` is not 1, 2, or 4.
+    pub fn write_header(out: &mut Vec<u8>, size: usize, signed: bool) {
+        assert!(matches!(size, 1 | 2 | 4), "stored sample width {size}");
+        out.extend_from_slice(&STORED_MAGIC);
+        #[allow(clippy::cast_possible_truncation)] // asserted <= 4
+        out.push(size as u8 | if signed { STORED_SIGNED } else { 0 });
+    }
+
+    /// Parses the stored plane of `pixels` samples opening `bytes`.
+    ///
+    /// # Errors
+    /// [`Error::Codestream`] on a bad magic or sample width, or truncated samples.
+    pub fn parse(bytes: &'a [u8], pixels: usize) -> Result<Self> {
+        if bytes.len() < Self::HEADER_LEN || !Self::is_stored(bytes) {
+            return Err(err(0, "not a stored plane"));
+        }
+        let kind = bytes[3];
+        let size = usize::from(kind & !STORED_SIGNED);
+        if !matches!(size, 1 | 2 | 4) {
+            return Err(err(3, "stored plane sample width must be 1, 2, or 4 bytes"));
+        }
+        let samples = pixels
+            .checked_mul(size)
+            .and_then(|n| bytes.get(Self::HEADER_LEN..Self::HEADER_LEN.checked_add(n)?))
+            .ok_or_else(|| err(bytes.len(), "truncated stored plane"))?;
+        Ok(Self {
+            size,
+            signed: kind & STORED_SIGNED != 0,
+            samples,
+        })
+    }
+
+    /// Total bytes of the plane, header included.
+    #[must_use]
+    pub fn total_len(&self) -> usize {
+        Self::HEADER_LEN + self.samples.len()
+    }
+
+    /// Widens the samples to `i32`.
+    ///
+    /// # Errors
+    /// [`Error::Codestream`] when an unsigned 32-bit sample exceeds `i32::MAX`.
+    pub fn widen(&self) -> Result<Vec<i32>> {
+        let s = self.samples;
+        Ok(match (self.size, self.signed) {
+            (1, false) => s.iter().map(|&b| i32::from(b)).collect(),
+            (1, true) => s.iter().map(|&b| i32::from(b.cast_signed())).collect(),
+            (2, false) => s
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&c| i32::from(u16::from_le_bytes(c)))
+                .collect(),
+            (2, true) => s
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&c| i32::from(i16::from_le_bytes(c)))
+                .collect(),
+            (_, false) => s
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|&c| i32::try_from(u32::from_le_bytes(c)))
+                .collect::<core::result::Result<_, _>>()
+                .map_err(|_| err(Self::HEADER_LEN, "stored uint32 sample exceeds i32"))?,
+            (_, true) => s
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|&c| i32::from_le_bytes(c))
+                .collect(),
+        })
+    }
+
+    /// Decodes resolutions `0..=max_res` of a `width x height` plane of `levels` decompositions,
+    /// with the `Ssiz` depth a codestream of the same samples declares.
+    ///
+    /// A reduced resolution is the LL band of the forward 5/3 transform, clamped to the depth as
+    /// the codestream reader clamps it. It equals the same resolution of the HT-coded plane.
+    ///
+    /// # Errors
+    /// [`Error::Codestream`] on a geometry mismatch or an unsigned 32-bit sample beyond `i32`.
+    /// [`Error::Unsupported`] when a reduced resolution exceeds the 32-bit HT datapath.
+    pub fn decode_to_resolution(
+        &self,
+        width: usize,
+        height: usize,
+        levels: u8,
+        max_res: u8,
+    ) -> Result<(Decoded, u8)> {
+        let mut samples = self.widen()?;
+        if samples.len() != width * height {
+            return Err(err(0, "stored plane geometry does not match the chunk"));
+        }
+        let depth = crate::writer::sample_depth(&samples, self.signed);
+        let drop = levels - max_res.min(levels);
+        if drop == 0 {
+            let decoded = Decoded {
+                width,
+                height,
+                comps: alloc::vec![samples],
+            };
+            return Ok((decoded, depth));
+        }
+        // The writer refuses the same range, so the lifting below cannot overflow.
+        crate::writer::check_datapath(levels, depth)?;
+        // The 5/3 lifting commutes with the DC level shift, so the unshifted samples give the
+        // shifted LL band plus the shift.
+        dwt::simd::forward_53(&mut samples, width, height, drop)?;
+        let (out_w, out_h) = dwt::level_dims(width, height, drop);
+        let mut region = Vec::with_capacity(out_w * out_h);
+        for row in samples.chunks_exact(width).take(out_h) {
+            region.extend_from_slice(&row[..out_w]);
+        }
+        if !self.signed {
+            let max = i32::try_from((1i64 << depth) - 1).unwrap_or(i32::MAX);
+            for v in &mut region {
+                *v = (*v).clamp(0, max);
+            }
+        }
+        let decoded = Decoded {
+            width: out_w,
+            height: out_h,
+            comps: alloc::vec![region],
+        };
+        Ok((decoded, depth))
+    }
 }
 
 /// The parsed (or to-be-written) chunk header and coefficient-plane index.
@@ -110,6 +297,8 @@ pub struct ChunkHeader {
     pub xy_levels: u8,
     /// The coefficient-plane index, when written (`index: true`).
     pub planes: Option<Vec<PlaneEntry>>,
+    /// Whether planes may be [`StoredPlane`]s, which marks the container version 2.
+    pub stored: bool,
 }
 
 impl ChunkHeader {
@@ -157,6 +346,21 @@ impl ChunkHeader {
                 .map_or(0, |p| p.len() * Self::entry_len(self.xy_levels))
     }
 
+    /// The stored plane opening `bytes`, when this container permits stored planes and the bytes
+    /// carry the stored-plane magic. `None` means the plane is a codestream.
+    ///
+    /// # Errors
+    /// [`Error::Codestream`] on a malformed stored plane.
+    pub fn stored_plane<'a>(&self, bytes: &'a [u8]) -> Result<Option<StoredPlane<'a>>> {
+        if !self.stored || !StoredPlane::is_stored(bytes) {
+            return Ok(None);
+        }
+        let pixels = (self.plane_height() as usize)
+            .checked_mul(self.plane_width() as usize)
+            .ok_or_else(|| err(0, "plane area overflows"))?;
+        StoredPlane::parse(bytes, pixels).map(Some)
+    }
+
     /// Whether `bytes` opens with the container magic.
     #[must_use]
     pub fn is_container(bytes: &[u8]) -> bool {
@@ -171,7 +375,7 @@ impl ChunkHeader {
     /// [`Error::Codestream`] when the prefix is shorter than the fixed
     /// header or the header is malformed.
     pub fn required_len(bytes: &[u8]) -> Result<usize> {
-        let (ndim, xy_levels, flags) = Self::parse_fixed(bytes)?;
+        let (ndim, xy_levels, flags, _) = Self::parse_fixed(bytes)?;
         if bytes.len() < Self::fixed_len(ndim) {
             return Err(err(bytes.len(), "chunk header prefix too short"));
         }
@@ -185,16 +389,18 @@ impl ChunkHeader {
         Ok(Self::fixed_len(ndim) + index_len)
     }
 
-    fn parse_fixed(bytes: &[u8]) -> Result<(usize, u8, u8)> {
+    fn parse_fixed(bytes: &[u8]) -> Result<(usize, u8, u8, bool)> {
         if bytes.len() < 8 {
             return Err(err(0, "chunk header prefix too short"));
         }
         if bytes[..4] != MAGIC {
             return Err(err(0, "not an htj2k chunk (bad magic)"));
         }
-        if bytes[4] != VERSION {
-            return Err(err(4, "unsupported htj2k chunk container version"));
-        }
+        let stored = match bytes[4] {
+            VERSION => false,
+            VERSION_STORED => true,
+            _ => return Err(err(4, "unsupported htj2k chunk container version")),
+        };
         let flags = bytes[5];
         if flags & !FLAG_INDEX != 0 {
             return Err(err(5, "unknown htj2k chunk container flags"));
@@ -210,7 +416,7 @@ impl ChunkHeader {
         if !(2..=MAX_NDIM).contains(&ndim) {
             return Err(err(7, "chunk ndim outside 2..=32"));
         }
-        Ok((ndim, xy_levels, flags))
+        Ok((ndim, xy_levels, flags, stored))
     }
 
     fn parse_dims(bytes: &[u8], ndim: usize) -> Result<Vec<u32>> {
@@ -259,7 +465,7 @@ impl ChunkHeader {
         );
         let mut out = Vec::with_capacity(self.header_len());
         out.extend_from_slice(&MAGIC);
-        out.push(VERSION);
+        out.push(if self.stored { VERSION_STORED } else { VERSION });
         out.push(if self.planes.is_some() { FLAG_INDEX } else { 0 });
         out.push(self.xy_levels);
         #[allow(clippy::cast_possible_truncation)] // asserted <= MAX_NDIM
@@ -285,7 +491,7 @@ impl ChunkHeader {
     /// # Errors
     /// [`Error::Codestream`] on truncated or malformed headers.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
-        let (ndim, xy_levels, flags) = Self::parse_fixed(bytes)?;
+        let (ndim, xy_levels, flags, stored) = Self::parse_fixed(bytes)?;
         let fixed = Self::fixed_len(ndim);
         if bytes.len() < fixed {
             return Err(err(bytes.len(), "truncated chunk header"));
@@ -338,6 +544,7 @@ impl ChunkHeader {
             dims,
             xy_levels,
             planes,
+            stored,
         })
     }
 }
@@ -360,6 +567,7 @@ mod tests {
                     })
                     .collect(),
             ),
+            stored: false,
         }
     }
 
@@ -389,6 +597,106 @@ mod tests {
     }
 
     #[test]
+    fn stored_flag_selects_version_two() {
+        let h = ChunkHeader {
+            stored: true,
+            ..sample()
+        };
+        let bytes = h.to_bytes();
+        assert_eq!(bytes[4], VERSION_STORED);
+        assert_eq!(ChunkHeader::parse(&bytes).unwrap(), h);
+        assert_eq!(sample().to_bytes()[4], VERSION);
+    }
+
+    #[test]
+    fn stored_planes_parse_only_in_version_two() {
+        let mut plane = Vec::new();
+        StoredPlane::write_header(&mut plane, 2, true);
+        plane.extend((0..16 * 32).flat_map(|i: i16| (i - 256).to_le_bytes()));
+        let v1 = sample();
+        assert_eq!(v1.stored_plane(&plane).unwrap(), None);
+        let v2 = ChunkHeader {
+            stored: true,
+            ..sample()
+        };
+        let stored = v2.stored_plane(&plane).unwrap().unwrap();
+        assert_eq!(
+            (stored.size, stored.signed, stored.total_len()),
+            (2, true, plane.len())
+        );
+        assert_eq!(stored.widen().unwrap()[..3], [-256, -255, -254]);
+        // Truncated samples and bad widths err.
+        assert!(v2.stored_plane(&plane[..plane.len() - 1]).is_err());
+        let mut bad = plane.clone();
+        bad[3] = 3;
+        assert!(v2.stored_plane(&bad).is_err());
+        // A codestream is never mistaken for a stored plane.
+        assert_eq!(v2.stored_plane(&[0xFF, 0x4F, 0xFF, 0x51]).unwrap(), None);
+    }
+
+    /// Hashed samples in `lo..=hi`, noise HT coding cannot shrink.
+    fn noise(n: usize, lo: i32, hi: i32) -> Vec<i32> {
+        let span = u32::try_from(i64::from(hi) - i64::from(lo) + 1).unwrap();
+        (0..n)
+            .map(|i| {
+                let mut h = u32::try_from(i + 1).unwrap().wrapping_mul(0x9E37_79B1);
+                h ^= h >> 16;
+                h = h.wrapping_mul(0x85EB_CA6B);
+                h ^= h >> 13;
+                lo + i32::try_from(h % span).unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn stored_thumbnails_match_the_coded_plane() {
+        use ndic_core::{CoeffPlane, EncodeParams};
+        // Odd extents, tiny extents, and ranges that make the 5/3 low-pass overshoot the clamp.
+        let cases: [(usize, usize, usize, bool, i32, i32); 6] = [
+            (37, 53, 1, false, 0, 255),
+            (64, 64, 1, true, -128, 127),
+            (33, 17, 2, false, 0, 65535),
+            (40, 24, 2, true, -32768, 32767),
+            (5, 3, 4, true, -1_000_000, 1_000_000),
+            (1, 9, 2, false, 0, 1023),
+        ];
+        for (width, height, size, signed, lo, hi) in cases {
+            let samples = noise(width * height, lo, hi);
+            let mut bytes = Vec::new();
+            StoredPlane::write_header(&mut bytes, size, signed);
+            for &v in &samples {
+                bytes.extend_from_slice(&v.to_le_bytes()[..size]);
+            }
+            let stored = StoredPlane::parse(&bytes, width * height).unwrap();
+            assert_eq!(stored.widen().unwrap(), samples);
+            let depth = crate::writer::sample_depth(&samples, signed);
+            let levels = 3;
+            let params = EncodeParams {
+                xy_levels: levels,
+                ..EncodeParams::default()
+            };
+            let plane = CoeffPlane::new(&samples, width, height).unwrap();
+            let stream =
+                crate::writer::encode_image_with_depth(&[plane], depth, signed, &params).unwrap();
+            let cs = crate::reader::Codestream::parse(&stream).unwrap();
+            for r in 0..=levels + 1 {
+                let coded = cs.decode_to_resolution(r).unwrap();
+                let (synth, synth_depth) = stored
+                    .decode_to_resolution(width, height, levels, r)
+                    .unwrap();
+                let case = (width, height, size, signed, r);
+                assert_eq!(synth_depth, depth, "{case:?}");
+                assert_eq!(
+                    (synth.width, synth.height),
+                    (coded.width, coded.height),
+                    "{case:?}"
+                );
+                assert_eq!(synth.comps, coded.comps, "{case:?}");
+            }
+        }
+    }
+
+    #[test]
     fn rejects_hostile_headers() {
         let good = sample().to_bytes();
         // Bad magic.
@@ -397,7 +705,7 @@ mod tests {
         assert!(ChunkHeader::parse(&b).is_err());
         // Future version.
         let mut b = good.clone();
-        b[4] = 2;
+        b[4] = 3;
         assert!(ChunkHeader::parse(&b).is_err());
         // Unknown flags.
         let mut b = good.clone();
@@ -453,6 +761,7 @@ mod tests {
             dims: alloc::vec![u32::MAX, u32::MAX, 16, 32],
             xy_levels: 2,
             planes: None,
+            stored: false,
         };
         let mut bytes = h.to_bytes();
         bytes[5] = FLAG_INDEX; // pretend an index follows

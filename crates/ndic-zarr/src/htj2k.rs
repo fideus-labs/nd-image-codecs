@@ -15,7 +15,7 @@
 
 use ndic_core::{CoeffPlane, EncodeParams, Error, ProgressionOrder, Result, SampleType};
 
-use ndic_codestream::container::{ChunkHeader, PlaneEntry};
+use ndic_codestream::container::{ChunkHeader, PlaneEntry, StoredPlane};
 use ndic_codestream::reader::Codestream;
 use ndic_codestream::writer::{encode_image_with_depth, sample_depth};
 
@@ -285,9 +285,14 @@ pub fn encode_chunk(
     let plane_bytes = height * width * dtype.size_bytes();
     let signed = dtype.is_signed();
 
-    let mut codestreams = Vec::with_capacity(num_planes);
+    let stored_len = StoredPlane::stored_len(height * width, dtype.size_bytes())
+        .ok_or_else(|| invalid("chunk byte length overflows".into()))?;
+    // Each plane is a codestream, or its raw samples when coding does not shrink it.
+    let mut planes = Vec::with_capacity(num_planes);
+    let mut any_stored = false;
     for p in 0..num_planes {
-        let samples = widen_plane(&bytes[p * plane_bytes..(p + 1) * plane_bytes], dtype)?;
+        let raw = &bytes[p * plane_bytes..(p + 1) * plane_bytes];
+        let samples = widen_plane(raw, dtype)?;
         let depth = sample_depth(&samples, signed);
         let plane = CoeffPlane::new(&samples, width, height)?;
         let stream =
@@ -297,7 +302,12 @@ pub fn encode_chunk(
                 },
                 other => other,
             })?;
-        codestreams.push(stream);
+        if stream.len() >= stored_len {
+            planes.push((store_plane(raw, dtype), true));
+            any_stored = true;
+        } else {
+            planes.push((stream, false));
+        }
     }
 
     let dims = shape
@@ -308,15 +318,22 @@ pub fn encode_chunk(
         dims,
         xy_levels: config.xy_levels,
         planes: None,
+        stored: any_stored,
     };
     if config.index {
         // Offsets need the index size, which needs the plane count only.
         let mut offset = ChunkHeader::fixed_len(shape.len()) as u64
             + (num_planes * ChunkHeader::entry_len(config.xy_levels)) as u64;
         let mut entries = Vec::with_capacity(num_planes);
-        for stream in &codestreams {
-            let cs = Codestream::parse(stream)?;
-            let entry = PlaneEntry::from_codestream(&cs, offset)?;
+        for (plane, stored) in &planes {
+            let entry = if *stored {
+                let len = u32::try_from(plane.len()).map_err(|_| Error::Unsupported {
+                    message: "stored plane exceeds the 4 GiB plane index bound".into(),
+                })?;
+                PlaneEntry::stored(offset, len, config.xy_levels)
+            } else {
+                PlaneEntry::from_codestream(&Codestream::parse(plane)?, offset)?
+            };
             offset += u64::from(entry.len);
             entries.push(entry);
         }
@@ -324,15 +341,28 @@ pub fn encode_chunk(
     }
 
     let mut out = header.to_bytes();
-    for stream in &codestreams {
-        out.extend_from_slice(stream);
+    for (plane, _) in &planes {
+        out.extend_from_slice(plane);
     }
     Ok(out)
 }
 
+/// A stored plane of one plane's native-endian `dtype` elements.
+fn store_plane(raw: &[u8], dtype: SampleType) -> Vec<u8> {
+    let size = dtype.size_bytes();
+    let mut out = Vec::with_capacity(StoredPlane::HEADER_LEN + raw.len());
+    StoredPlane::write_header(&mut out, size, dtype.is_signed());
+    if cfg!(target_endian = "little") {
+        out.extend_from_slice(raw);
+    } else {
+        out.extend(raw.chunks_exact(size).flat_map(|c| c.iter().rev()));
+    }
+    out
+}
+
 /// Parses a chunk's header and returns each plane's `(offset, len)` within
 /// `chunk` — from the index when present, else by walking the concatenated
-/// codestreams.
+/// planes.
 ///
 /// # Errors
 /// [`Error::Codestream`] on malformed containers.
@@ -360,7 +390,10 @@ pub fn plane_ranges(chunk: &[u8]) -> Result<(ChunkHeader, Vec<(usize, usize)>)> 
                 offset,
                 message: "chunk ends before all planes".into(),
             })?;
-            let len = Codestream::parse(rest)?.total_len();
+            let len = match header.stored_plane(rest)? {
+                Some(stored) => stored.total_len(),
+                None => Codestream::parse(rest)?.total_len(),
+            };
             ranges.push((offset, len));
             offset += len;
         }
@@ -368,12 +401,15 @@ pub fn plane_ranges(chunk: &[u8]) -> Result<(ChunkHeader, Vec<(usize, usize)>)> 
     Ok((header, ranges))
 }
 
-/// Decodes one plane's codestream to `i32` samples, checking geometry
+/// Decodes one plane, a codestream or a stored plane, to `i32` samples, checking geometry
 /// against the chunk header.
 ///
 /// # Errors
 /// [`Error::Codestream`] on malformed planes or geometry drift.
 pub fn decode_plane(header: &ChunkHeader, plane_bytes: &[u8]) -> Result<Vec<i32>> {
+    if let Some(stored) = header.stored_plane(plane_bytes)? {
+        return stored.widen();
+    }
     let decoded = Codestream::parse(plane_bytes)?.decode()?;
     if decoded.width != header.plane_width() as usize
         || decoded.height != header.plane_height() as usize
@@ -419,7 +455,17 @@ pub fn decode_chunk(chunk: &[u8], shape: &[usize], dtype: SampleType) -> Result<
     let elements = shape.iter().product::<usize>();
     let mut out = Vec::with_capacity(elements * dtype.size_bytes());
     for &(offset, len) in &ranges {
-        let samples = decode_plane(&header, &chunk[offset..offset + len])?;
+        let plane = &chunk[offset..offset + len];
+        // A stored plane already holds the dtype's little-endian elements.
+        if let Some(stored) = header.stored_plane(plane)?
+            && stored.size == dtype.size_bytes()
+            && stored.signed == dtype.is_signed()
+            && cfg!(target_endian = "little")
+        {
+            out.extend_from_slice(stored.samples);
+            continue;
+        }
+        let samples = decode_plane(&header, plane)?;
         narrow_samples(&samples, dtype, &mut out)?;
     }
     Ok(out)
@@ -446,6 +492,8 @@ mod tests {
         };
         let chunk = encode_chunk(&bytes, &shape, SampleType::U16, &config).unwrap();
         assert!(ChunkHeader::is_container(&chunk));
+        // Every plane shrinks, so the chunk keeps the version-1 layout.
+        assert_eq!(chunk[4], ndic_codestream::container::VERSION);
         let back = decode_chunk(&chunk, &shape, SampleType::U16).unwrap();
         assert_eq!(back, bytes);
     }
@@ -465,6 +513,77 @@ mod tests {
         assert_eq!(ranges.len(), 3);
         let back = decode_chunk(&chunk, &shape, SampleType::U16).unwrap();
         assert_eq!(back, bytes);
+    }
+
+    /// Hashed noise bytes, which HT coding cannot shrink.
+    fn noise_bytes(n: usize) -> Vec<u8> {
+        (0..n)
+            .map(|i| {
+                let mut h = u32::try_from(i + 1).unwrap().wrapping_mul(0x9E37_79B1);
+                h ^= h >> 16;
+                h = h.wrapping_mul(0x85EB_CA6B);
+                h ^= h >> 13;
+                h.to_le_bytes()[0]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn incompressible_planes_are_stored() {
+        let (h, w) = (48, 40);
+        for (dtype, index) in [
+            (SampleType::U8, true),
+            (SampleType::I16, true),
+            (SampleType::I16, false),
+        ] {
+            let size = dtype.size_bytes();
+            let plane = h * w * size;
+            // Plane 0 is smooth, planes 1 and 2 are noise.
+            let mut bytes: Vec<u8> = (0..h * w)
+                .flat_map(|i| {
+                    let v = u16::try_from(i % 97).unwrap();
+                    v.to_ne_bytes().into_iter().take(size)
+                })
+                .collect();
+            bytes.extend(noise_bytes(2 * plane));
+            let shape = [3, h, w];
+            let config = Htj2kConfig {
+                xy_levels: 3,
+                index,
+                ..Htj2kConfig::default()
+            };
+            let chunk = encode_chunk(&bytes, &shape, dtype, &config).unwrap();
+            assert_eq!(chunk[4], ndic_codestream::container::VERSION_STORED);
+            let (header, ranges) = plane_ranges(&chunk).unwrap();
+            let stored: Vec<bool> = ranges
+                .iter()
+                .map(|&(o, _)| StoredPlane::is_stored(&chunk[o..]))
+                .collect();
+            assert_eq!(stored, [false, true, true], "{dtype:?}");
+            assert_eq!(ranges[1].1, StoredPlane::HEADER_LEN + plane);
+            if let Some(entries) = &header.planes {
+                assert_eq!(entries[2].prefix, [entries[2].len; 4]);
+            }
+            // The copy fast path and the widening plane decoder agree.
+            assert_eq!(decode_chunk(&chunk, &shape, dtype).unwrap(), bytes);
+            let (o, l) = ranges[2];
+            let samples = decode_plane(&header, &chunk[o..o + l]).unwrap();
+            assert_eq!(samples, widen_plane(&bytes[2 * plane..], dtype).unwrap());
+            // A version-1 chunk may not hold a stored plane.
+            let mut v1 = chunk.clone();
+            v1[4] = ndic_codestream::container::VERSION;
+            assert!(decode_chunk(&v1, &shape, dtype).is_err());
+        }
+    }
+
+    #[test]
+    fn stored_planes_range_check_a_mismatched_dtype() {
+        // uint8 noise stored, then read as int8: values above 127 must err, not wrap.
+        let shape = [1, 32, 32];
+        let bytes = noise_bytes(32 * 32);
+        let chunk = encode_chunk(&bytes, &shape, SampleType::U8, &Htj2kConfig::default()).unwrap();
+        assert_eq!(chunk[4], ndic_codestream::container::VERSION_STORED);
+        assert!(decode_chunk(&chunk, &shape, SampleType::I8).is_err());
     }
 
     #[test]

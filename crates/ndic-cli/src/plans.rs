@@ -420,6 +420,12 @@ pub fn thumbnail(args: &ThumbnailArgs) -> anyhow::Result<()> {
         Kind::Codestream { box_offset } => box_offset,
     };
 
+    // A chunk may hold stored planes, which only its header permits.
+    let header = match probed.kind {
+        Kind::Chunk => Some(ChunkHeader::parse(&probed.prefix)?),
+        Kind::Codestream { .. } => None,
+    };
+
     // Decode each planned plane's prefix.
     let mut planes = Vec::with_capacity(plan.planes.len());
     let mut siz: Option<(u8, bool)> = None;
@@ -428,12 +434,27 @@ pub fn thumbnail(args: &ThumbnailArgs) -> anyhow::Result<()> {
         let prefix_len =
             u64::from(entry.prefix[usize::from(plan.max_res.min(probed.index.xy_levels()))]);
         let bytes = fetched.slice(shift + entry.offset, prefix_len)?;
-        let cs = Codestream::parse_prefix(bytes)?;
-        let decoded = cs.decode_to_resolution(plan.max_res)?;
         // Each plane declares its own `Ssiz` depth (the encoder sizes it
         // from that plane's actual range), so the volume element must hold
         // the widest of them, not plane 0's.
-        let (depth, signed) = (cs.siz.comps[0].depth, cs.siz.comps[0].signed);
+        let stored = match &header {
+            Some(h) => h.stored_plane(bytes)?.map(|stored| (h, stored)),
+            None => None,
+        };
+        let (decoded, depth, signed) = if let Some((h, stored)) = stored {
+            // A stored plane synthesizes the resolution the codestream would have decoded.
+            let (decoded, depth) = stored.decode_to_resolution(
+                h.plane_width() as usize,
+                h.plane_height() as usize,
+                h.xy_levels,
+                plan.max_res,
+            )?;
+            (decoded, depth, stored.signed)
+        } else {
+            let cs = Codestream::parse_prefix(bytes)?;
+            let decoded = cs.decode_to_resolution(plan.max_res)?;
+            (decoded, cs.siz.comps[0].depth, cs.siz.comps[0].signed)
+        };
         siz = Some(match siz {
             Some((d, s)) => (d.max(depth), s || signed),
             None => (depth, signed),

@@ -69,6 +69,11 @@ the byte range of each plane's codestream within the chunk. This is what lets
 to gather each group's low-pass plane (see
 [byte-range access](./range-access.md)).
 
+A plane that HT coding would not shrink, such as noise, is kept as a **stored
+plane** of raw little-endian samples, and the chunk declares container
+version 2. Its thumbnails are synthesized with the forward 5/3 transform, so
+they match what its codestream would have decoded.
+
 ## Reader design
 
 The reader is a pull parser over any `Read + Seek` (or async range-fetch)
