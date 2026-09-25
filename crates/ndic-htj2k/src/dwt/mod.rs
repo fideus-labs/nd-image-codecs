@@ -40,11 +40,9 @@
 //!   It still produced **no measurable speedup**: the loop is bound by the
 //!   symmetric-extension index clamps and bounds checks, not by float
 //!   throughput.
-//! - Neither form vectorizes. The `.min()` / `.saturating_sub()` boundary
-//!   clamps on the load indices are what prevent it, and no amount of
-//!   arithmetic permission addresses that. Peeling the first and last
-//!   iterations so the interior is unconditionally stride-1 is the change that
-//!   would actually vectorize this loop.
+//! - The strict form vectorizes. Each lifting loop peels its mirrored
+//!   boundary samples, so the interior is clamp-free and stride-1, which is
+//!   what vectorization needs. Arithmetic permission plays no part in it.
 //!
 //! The **reversible 5/3 kernel above is integer lifting** and is out of scope
 //! for any of this: its bit-exactness is a correctness requirement, not a
@@ -151,19 +149,27 @@ const DELTA: f32 = 0.443_506_85;
 fn lift_97(low: &mut [f32], high: &mut [f32], n: usize, coeff: f32, high_from_low: bool) {
     let nl = n.div_ceil(2);
     let nh = n / 2;
+    // The mirrored boundary samples are peeled off, as in `ana_53`, so the interiors carry no
+    // clamps.
+    let (low, high) = (&mut low[..nl], &mut high[..nh]);
     if high_from_low {
-        // high[i] += coeff * (low[i] + low[i+1]) with symmetric extension.
-        for i in 0..nh {
-            let l = low[i];
-            let r = low[(i + 1).min(nl - 1)];
-            high[i] += coeff * (l + r);
+        // high[i] += coeff * (low[i] + low[i+1]) with symmetric extension. Only an even-length
+        // signal's last high sample lacks `low[i+1]`, and it mirrors `low[nh - 1]`.
+        for i in 0..nl - 1 {
+            high[i] += coeff * (low[i] + low[i + 1]);
+        }
+        if nh == nl {
+            high[nh - 1] += coeff * (low[nh - 1] + low[nh - 1]);
         }
     } else {
-        // low[i] += coeff * (high[i-1] + high[i]) with symmetric extension.
-        for i in 0..nl {
-            let l = high[i.saturating_sub(1).min(nh - 1)];
-            let r = high[i.min(nh - 1)];
-            low[i] += coeff * (l + r);
+        // low[i] += coeff * (high[i-1] + high[i]) with symmetric extension. The first mirrors
+        // `high[0]`, and an odd-length signal's last mirrors `high[nh - 1]`.
+        low[0] += coeff * (high[0] + high[0]);
+        for i in 1..nh {
+            low[i] += coeff * (high[i - 1] + high[i]);
+        }
+        if nl > nh {
+            low[nh] += coeff * (high[nh - 1] + high[nh - 1]);
         }
     }
 }
