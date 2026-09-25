@@ -62,17 +62,16 @@ impl Quad {
     /// EMB pattern: which samples attain the quad's maximum exponent
     /// (communicated only when a `u` value is coded).
     fn eps(&self, u_q: u32) -> u32 {
-        if u_q == 0 {
-            return 0;
-        }
         // A coded `u` means `e_qmax` exceeds kappa >= 1, and insignificant samples have a zero
         // exponent, so matching `e_qmax` alone implies significance.
-        debug_assert!(self.e_qmax >= 2);
+        debug_assert!(u_q == 0 || self.e_qmax >= 2);
         let mut eps = 0;
         for n in 0..4 {
             eps |= u32::from(self.e_q[n] == self.e_qmax) << n;
         }
-        eps
+        // Whether `u` is coded varies quad to quad, so the pattern is masked rather than
+        // skipped behind a branch.
+        eps & u32::from(u_q != 0).wrapping_neg()
     }
 }
 
