@@ -88,12 +88,8 @@ impl<'a> RevReader<'a> {
         let mut val = 0u32;
         if self.size > 3 && self.pos >= 3 {
             let p = usize::try_from(self.pos).unwrap_or(0);
-            val = u32::from_le_bytes([
-                self.data[p - 3],
-                self.data[p - 2],
-                self.data[p - 1],
-                self.data[p],
-            ]);
+            // One range check and one unaligned load rather than four indexed byte loads.
+            val = u32::from_le_bytes(self.data[p - 3..=p].try_into().expect("4 bytes"));
             self.pos -= 4;
             self.size -= 4;
         } else if self.size > 0 {
@@ -196,12 +192,12 @@ impl<'a, const FILL: u8> FwdReader<'a, FILL> {
         }
         let fill = if FILL == 0 { 0u32 } else { 0xFFFF_FFFFu32 };
         let val = if self.size > 3 {
-            let v = u32::from_le_bytes([
-                self.data[self.pos],
-                self.data[self.pos + 1],
-                self.data[self.pos + 2],
-                self.data[self.pos + 3],
-            ]);
+            // One range check and one unaligned load rather than four indexed byte loads.
+            let v = u32::from_le_bytes(
+                self.data[self.pos..self.pos + 4]
+                    .try_into()
+                    .expect("4 bytes"),
+            );
             self.pos += 4;
             self.size -= 4;
             v

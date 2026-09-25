@@ -68,12 +68,12 @@ impl<'a> MelDecoder<'a> {
         // Feed 0xFF once the buffer is exhausted (T.814 §7.3.4).
         let mut val = 0xFFFF_FFFFu32;
         if self.size > 4 {
-            val = u32::from_le_bytes([
-                self.data[self.pos],
-                self.data[self.pos + 1],
-                self.data[self.pos + 2],
-                self.data[self.pos + 3],
-            ]);
+            // One range check and one unaligned load rather than four indexed byte loads.
+            val = u32::from_le_bytes(
+                self.data[self.pos..self.pos + 4]
+                    .try_into()
+                    .expect("4 bytes"),
+            );
             self.pos += 4;
             self.size -= 4;
         } else if self.size > 0 {
