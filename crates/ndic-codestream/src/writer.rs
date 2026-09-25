@@ -358,10 +358,13 @@ fn code_band(
     let mut blocks = Vec::with_capacity(nx * ny);
     let k_max = quant.k_max(band.res, band.band);
     let shift = 31 - u32::from(k_max);
+    // One block buffer for the whole band. The copy below writes every sample, so a reused
+    // buffer needs no zeroing between blocks.
+    let mut buf: Vec<u32> = Vec::new();
     for by in 0..ny {
         for bx in 0..nx {
             let r = band.block_rect(bx, by, cbw, cbh);
-            let mut buf = alloc::vec![0u32; r.w * r.h];
+            buf.resize(r.w * r.h, 0);
             let mut mv = 0u32;
             for y in 0..r.h {
                 // Row slices hoist the index math and bounds checks out of the sample loop.
