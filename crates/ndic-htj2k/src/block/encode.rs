@@ -66,9 +66,12 @@ impl Quad {
         if u_q == 0 {
             return 0;
         }
+        // A coded `u` means `e_qmax` exceeds kappa >= 1, and insignificant samples have a zero
+        // exponent, so matching `e_qmax` alone implies significance.
+        debug_assert!(self.e_qmax >= 2);
         let mut eps = 0;
         for n in 0..4 {
-            eps |= u32::from(self.rho & (1 << n) != 0 && self.e_q[n] == self.e_qmax) << n;
+            eps |= u32::from(self.e_q[n] == self.e_qmax) << n;
         }
         eps
     }
