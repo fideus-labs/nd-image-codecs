@@ -217,7 +217,10 @@ fn encode_with(
     let rows = quad_rows(buf, stride, width, height, 0);
     let mut x = 0usize;
     while x < width {
+        // Both quads load up front, so the second's loads overlap the first's coding. A missing
+        // second quad loads as insignificant.
         let q0 = Quad::load(rows, x, p);
+        let q1 = Quad::load(rows, x + 2, p);
         let uq0 = q0.e_qmax.max(1); // kappa = 1
         let u_q0 = uq0 - 1;
         let mut u_q1 = 0;
@@ -238,7 +241,6 @@ fn encode_with(
         emit_magsgn(&mut ms, &q0, tuple0, uq0);
 
         if x + 2 < width {
-            let q1 = Quad::load(rows, x + 2, p);
             let c_q1 = (q0.rho >> 1) | (q0.rho & 1);
             let uq1 = q1.e_qmax.max(1); // kappa = 1
             u_q1 = uq1 - 1;
@@ -299,7 +301,10 @@ fn encode_with(
         let rows = quad_rows(buf, stride, width, height, y);
         let mut x = 0usize;
         while x < width {
+            // Both quads load up front, so the second's loads overlap the first's coding. A
+            // missing second quad loads as insignificant.
             let q0 = Quad::load(rows, x, p);
+            let q1 = Quad::load(rows, x + 2, p);
             let kappa = if q0.rho & (q0.rho.wrapping_sub(1)) != 0 {
                 to_u32_clamped(max_e.max(1))
             } else {
@@ -327,7 +332,6 @@ fn encode_with(
             emit_magsgn(&mut ms, &q0, tuple0, uq0);
 
             if x + 2 < width {
-                let q1 = Quad::load(rows, x + 2, p);
                 let kappa = if q1.rho & (q1.rho.wrapping_sub(1)) != 0 {
                     to_u32_clamped(max_e.max(1))
                 } else {
