@@ -521,6 +521,9 @@ impl<'a> Codestream<'a> {
         let last_needed = sequence.iter().rposition(|&(_, res, _, _)| res <= max_res);
 
         let mut cursor = 0usize;
+        // One block buffer for the whole decode. `decode_block` fully overwrites its
+        // `width x height` region, so a reused buffer needs no zeroing between blocks.
+        let mut out: Vec<u32> = Vec::new();
         for (i, (comp, res, ppx_i, ppy_i)) in sequence.into_iter().enumerate() {
             if last_needed.is_none_or(|last| i > last) {
                 break;
@@ -578,7 +581,7 @@ impl<'a> Codestream<'a> {
                     continue;
                 }
 
-                let mut out = alloc::vec![0u32; rect.w * rect.h];
+                out.resize(rect.w * rect.h, 0);
                 ndic_htj2k::decode_block(
                     seg,
                     &mut out,
