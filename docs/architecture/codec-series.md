@@ -91,6 +91,13 @@ dimension index**, the lift **kind**, the number of **levels**, and a **group**
 size. If the decorrelation set is empty, the `nd_lift` codec is omitted and the
 series is just the `htj2k` plane codec.
 
+`xy_levels` is a maximum. The builder lowers it for a small chunk plane to
+`floor(log2(y × x) / 2) − 3` levels, so the lowest resolution keeps about 64
+samples: 3 levels for a 64×64 plane, 4 for 128×128, and the requested 5 from
+256×256. Deeper levels leave bands so small that their fixed costs outweigh
+their bits, and the plane codes slower and larger. A 64×64 plane codes 7%
+faster and decodes 9% faster at 3 levels than at 5, and slightly smaller.
+
 **nd-zfp**:
 
 ```text

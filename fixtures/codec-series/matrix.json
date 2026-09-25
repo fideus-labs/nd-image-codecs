@@ -1087,7 +1087,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -1151,7 +1151,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -1215,7 +1215,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -2997,7 +2997,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 3,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -3038,7 +3038,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 3,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -3079,7 +3079,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 3,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -3914,7 +3914,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 3,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -3965,7 +3965,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 3,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -4016,7 +4016,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 3,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -4884,7 +4884,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -4936,7 +4936,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -4988,7 +4988,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -5299,7 +5299,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -5351,7 +5351,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -5403,7 +5403,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -5602,7 +5602,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -5645,7 +5645,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true
@@ -5688,7 +5688,7 @@
         {
           "name": "htj2k",
           "configuration": {
-            "xy_levels": 5,
+            "xy_levels": 4,
             "reversible": true,
             "progression": "RPCL",
             "index": true

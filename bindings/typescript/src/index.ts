@@ -527,6 +527,7 @@ export interface CodecSeriesOptions {
   addDecorrelate?: number[];
   removeDecorrelate?: number[];
   lift?: "delta" | "haar" | "lift53";
+  /** In-plane levels at most, lowered for a small chunk plane (see `xyLevelCap`). */
   xyLevels?: number;
   reversible?: boolean;
   deltaBackend?: "zstd" | "lz4";
@@ -683,7 +684,12 @@ export function codecSeries(
     }
     codecs.push({
       name: "htj2k",
-      configuration: { xy_levels: xyLevels, reversible, progression: "RPCL", index: true },
+      configuration: {
+        xy_levels: Math.min(xyLevels, xyLevelCap(chunkShape[y], chunkShape[x])),
+        reversible,
+        progression: "RPCL",
+        index: true,
+      },
     });
   } else {
     const nonsingleton = chunkShape.filter((c) => c > 1).length;
@@ -708,4 +714,20 @@ export function codecSeries(
   }
 
   return codecs;
+}
+
+/**
+ * The most in-plane levels worth coding in a `height x width` chunk plane,
+ * `floor(log2(area) / 2) - 3`: few enough that the lowest resolution keeps
+ * about 64 samples. Deeper levels leave bands so small that their fixed costs
+ * outweigh their bits.
+ */
+function xyLevelCap(height: number, width: number): number {
+  let area = Math.max(height * width, 1);
+  let bits = 0;
+  while (area >= 2) {
+    area = Math.floor(area / 2);
+    bits += 1;
+  }
+  return Math.max(Math.floor(bits / 2) - 3, 0);
 }
