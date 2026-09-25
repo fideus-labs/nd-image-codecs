@@ -104,6 +104,15 @@ fn emit_magsgn(ms: &mut MagSgnEncoder, q: &Quad, tuple: u32, uq: u32) {
             ms.merge(cwd, len);
         }
         ms.flush();
+    } else if uq <= 28 {
+        // Two codewords of at most 28 bits fit, so the quad flushes twice.
+        for n in 0..4 {
+            let (cwd, len) = word(n);
+            ms.merge(cwd, len);
+            if n % 2 == 1 {
+                ms.flush();
+            }
+        }
     } else {
         for n in 0..4 {
             let (cwd, len) = word(n);
