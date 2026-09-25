@@ -596,11 +596,15 @@ impl<'a> Codestream<'a> {
 
                 let k_max = self.quant.k_max(band.res, band.band);
                 let shift = 31 - u32::from(k_max);
-                let plane = &mut planes[comp];
+                // A slice, not the `Vec`, so its pointer and length stay in registers across the
+                // stores. Row slices hoist the index math and bounds checks out of the sample loop.
+                let plane = planes[comp].as_mut_slice();
                 for y in 0..rect.h {
-                    for x in 0..rect.w {
-                        plane[(band.y0 + rect.y + y) * width + band.x0 + rect.x + x] =
-                            ndic_htj2k::sign_magnitude_to_coeff(out[y * rect.w + x], shift);
+                    let dst_start = (band.y0 + rect.y + y) * width + band.x0 + rect.x;
+                    let dst = &mut plane[dst_start..dst_start + rect.w];
+                    let src = &out[y * rect.w..(y + 1) * rect.w];
+                    for (d, &s) in dst.iter_mut().zip(src) {
+                        *d = ndic_htj2k::sign_magnitude_to_coeff(s, shift);
                     }
                 }
             }
