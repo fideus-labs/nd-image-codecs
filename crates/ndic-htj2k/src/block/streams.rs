@@ -323,33 +323,32 @@ impl VlcEncoder {
     pub fn encode_all(&mut self, words: &[(u32, u32)]) {
         // State lives in locals for the whole run and is written back once. The `push` may call
         // the allocator, which otherwise forces every field through memory on each iteration.
-        let mut tmp = self.tmp;
+        // A 64-bit accumulator takes each codeword whole, as in `MagSgnEncoder::encode_all`.
+        let mut acc = u64::from(self.tmp);
         let mut used_bits = self.used_bits;
         let mut last_greater_than_8f = self.last_greater_than_8f;
-        for &(mut cwd, mut cwd_len) in words {
-            while cwd_len > 0 {
-                let mut avail_bits = 8 - u32::from(last_greater_than_8f) - used_bits;
-                let t = avail_bits.min(cwd_len);
-                tmp |= (cwd & ((1 << t) - 1)) << used_bits;
-                used_bits += t;
-                avail_bits -= t;
-                cwd_len -= t;
-                cwd >>= t;
-                if avail_bits == 0 {
-                    if last_greater_than_8f && tmp != 0x7F {
-                        // The stuffed bit is unnecessary: reclaim it.
-                        last_greater_than_8f = false;
-                        continue;
-                    }
-                    #[allow(clippy::cast_possible_truncation)]
-                    self.buf.push(tmp as u8);
-                    last_greater_than_8f = tmp > 0x8F;
-                    tmp = 0;
-                    used_bits = 0;
+        for &(cwd, cwd_len) in words {
+            acc |= (u64::from(cwd) & ((1u64 << cwd_len.min(32)) - 1)) << used_bits;
+            used_bits += cwd_len;
+            loop {
+                // After a byte above 0x8F the next one keeps its MSB stuffed only when its low 7
+                // bits are 0x7F. Otherwise the stuffed bit is unnecessary and is reclaimed.
+                let n = 8 - u32::from(last_greater_than_8f && acc & 0x7F == 0x7F);
+                if used_bits < n {
+                    break;
                 }
+                let byte = acc & ((1 << n) - 1);
+                #[allow(clippy::cast_possible_truncation)]
+                self.buf.push(byte as u8);
+                acc >>= n;
+                used_bits -= n;
+                last_greater_than_8f = byte > 0x8F;
             }
         }
-        self.tmp = tmp;
+        #[allow(clippy::cast_possible_truncation)] // fewer than 8 bits remain
+        {
+            self.tmp = acc as u32;
+        }
         self.used_bits = used_bits;
         self.last_greater_than_8f = last_greater_than_8f;
     }
