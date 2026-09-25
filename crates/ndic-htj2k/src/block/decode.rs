@@ -273,22 +273,23 @@ pub fn decode_block(
         let mut v_n_scratch = vec![0u32; width / 2 + 4];
         let mut magsgn = FwdReader::<0xFF>::new(&coded[..lcup - scup]);
 
-        // Decode one sample if its rho bit is set; returns (value, v_n).
+        // Decode one sample; returns (value, v_n), both zero when its rho bit is clear.
         // Bits are always consumed, but the caller guards the store.
         let decode_sample =
             |magsgn: &mut FwdReader<'_, 0xFF>, inf: u32, bit: u32, u_q: u32| -> (u32, u32) {
-                if inf & (1 << (4 + bit)) == 0 {
-                    return (0, 0);
-                }
+                // Significance is data-dependent and mispredicts, so an insignificant sample
+                // reads zero bits and is masked to zero instead of branching away.
+                let keep = ((inf >> (4 + bit)) & 1).wrapping_neg();
                 let ms_val = magsgn.fetch();
-                let m_n = u_q - ((inf >> (12 + bit)) & 1);
+                let m_n = u_q.wrapping_sub((inf >> (12 + bit)) & 1) & keep;
                 magsgn.advance(m_n);
                 let mut v_n = ms_val & ((1u32 << m_n) - 1);
                 v_n |= ((inf >> (8 + bit)) & 1) << m_n;
                 v_n |= 1; // half the bin, for mid-point reconstruction
+                let v_n = v_n & keep;
                 // Wrapping like the reference's u32 arithmetic: a malformed
                 // stream may produce out-of-range v_n, never a panic.
-                let val = (ms_val << 31) | v_n.wrapping_add(2).wrapping_shl(p - 1);
+                let val = ((ms_val << 31) | v_n.wrapping_add(2).wrapping_shl(p - 1)) & keep;
                 (val, v_n)
             };
 
