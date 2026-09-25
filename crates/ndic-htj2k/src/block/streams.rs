@@ -396,6 +396,7 @@ impl VlcEncoder {
 pub struct MagSgnEncoder {
     /// Completed bytes.
     buf: Vec<u8>,
+    /// Pending bits, LSB-first. Up to 31 wait here, so completed bytes can leave four at a time.
     tmp: u32,
     used_bits: u32,
     /// 7 after an `0xFF` byte, else 8.
@@ -429,24 +430,37 @@ impl MagSgnEncoder {
     /// [`Self::encode`] calls would.
     pub fn encode_all(&mut self, words: &[(u32, u32)]) {
         // State lives in locals for the whole run and is written back once, as in `VlcEncoder`.
-        // A 64-bit accumulator takes each codeword whole, since at most 7 pending bits plus 32
-        // new ones fit, so the loop runs once per completed byte rather than once per chunk.
+        // A 64-bit accumulator takes each codeword whole, since at most 31 pending bits plus 32
+        // new ones fit.
         let mut acc = u64::from(self.tmp);
         let mut used_bits = self.used_bits;
         let mut max_bits = self.max_bits;
         for &(cwd, cwd_len) in words {
             acc |= (u64::from(cwd) & ((1u64 << cwd_len.min(32)) - 1)) << used_bits;
             used_bits += cwd_len;
-            while used_bits >= max_bits {
-                let byte = acc & ((1 << max_bits) - 1);
+            // Once four bytes are complete, a SWAR zero-byte test on the inverted word looks for
+            // an 0xFF among the first three. With none, all four keep 8 bits and leave as one
+            // 32-bit store. Otherwise a single byte leaves and the test repeats.
+            while used_bits >= 32 {
                 #[allow(clippy::cast_possible_truncation)]
-                self.buf.push(byte as u8);
-                acc >>= max_bits;
-                used_bits -= max_bits;
-                max_bits = if byte == 0xFF { 7 } else { 8 };
+                let word = acc as u32;
+                let inv = !word | 0xFF00_0000;
+                if max_bits == 8 && inv.wrapping_sub(0x0101_0101) & word & 0x0080_8080 == 0 {
+                    self.buf.extend_from_slice(&word.to_le_bytes());
+                    acc >>= 32;
+                    used_bits -= 32;
+                    max_bits = if word >> 24 == 0xFF { 7 } else { 8 };
+                } else {
+                    let byte = acc & ((1 << max_bits) - 1);
+                    #[allow(clippy::cast_possible_truncation)]
+                    self.buf.push(byte as u8);
+                    acc >>= max_bits;
+                    used_bits -= max_bits;
+                    max_bits = if byte == 0xFF { 7 } else { 8 };
+                }
             }
         }
-        #[allow(clippy::cast_possible_truncation)] // fewer than 8 bits remain
+        #[allow(clippy::cast_possible_truncation)] // fewer than 32 bits remain
         {
             self.tmp = acc as u32;
         }
@@ -458,6 +472,15 @@ impl MagSgnEncoder {
     /// decoder regenerates) and returns the bytes.
     #[must_use]
     pub fn terminate(mut self) -> Vec<u8> {
+        // Flush the completed bytes still waiting in the accumulator.
+        while self.used_bits >= self.max_bits {
+            let byte = self.tmp & ((1 << self.max_bits) - 1);
+            #[allow(clippy::cast_possible_truncation)]
+            self.buf.push(byte as u8);
+            self.tmp >>= self.max_bits;
+            self.used_bits -= self.max_bits;
+            self.max_bits = if byte == 0xFF { 7 } else { 8 };
+        }
         if self.used_bits > 0 {
             let t = self.max_bits - self.used_bits;
             self.tmp |= (0xFF & ((1u32 << t) - 1)) << self.used_bits;
