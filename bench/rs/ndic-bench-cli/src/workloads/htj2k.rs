@@ -28,6 +28,30 @@ fn synthetic_plane(w: usize, h: usize) -> Vec<i32> {
         .collect()
 }
 
+/// Deterministic segmentation-style label map: irregular piecewise-constant
+/// cells about 40 samples across, each a hashed ID below `ids`. Flat interiors
+/// and sharp edges are the opposite of a camera image. Integer-only, so the
+/// fixture is identical on every platform.
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // small index/hash math
+fn label_plane(w: usize, h: usize, ids: u64) -> Vec<i32> {
+    // A triangle wave in -13..=13 bends the cell edges.
+    let wobble = |t: i64| {
+        let p = t % 52;
+        p.min(52 - p) - 13
+    };
+    (0..w * h)
+        .map(|i| {
+            let x = (i % w) as i64;
+            let y = (i / w) as i64;
+            let cx = (x + wobble(y)).div_euclid(40);
+            let cy = (y + wobble(x + 17)).div_euclid(40);
+            let hash =
+                (cx.wrapping_mul(0x9E37_79B9) ^ cy.wrapping_mul(0x85EB_CA6B)).cast_unsigned();
+            ((hash.wrapping_mul(0xFF51_AFD7_ED55_8CCD) >> 17) % ids) as i32
+        })
+        .collect()
+}
+
 /// Time `iters` runs of `f`, in nanoseconds each.
 fn time_samples(iters: usize, mut f: impl FnMut()) -> Vec<u64> {
     (0..iters)
@@ -80,34 +104,42 @@ fn dwt97_fwd(_config: &BenchConfig) -> BenchOutput {
     raw_ns.into()
 }
 
-fn ht_encode(config: &BenchConfig) -> BenchOutput {
+/// Times `iters` encodes of one plane. Byte counts are compression-direction.
+fn encode_lane(
+    config: &BenchConfig,
+    samples: &[i32],
+    (w, h): (usize, usize),
+    dtype: SampleType,
+) -> BenchOutput {
     if config.irreversible {
         return BenchOutput::default(); // 9/7 encode is not implemented yet
     }
-    let (w, h) = (1024usize, 1024usize);
-    let samples = synthetic_plane(w, h);
-    let plane = CoeffPlane::new(&samples, w, h).expect("plane");
+    let plane = CoeffPlane::new(samples, w, h).expect("plane");
     let params = EncodeParams::default();
     let mut out = Vec::new();
     let raw_ns = time_samples(10, || {
-        out = ndic_codestream::encode_image(&[plane], SampleType::U16, &params).expect("encode");
+        out = ndic_codestream::encode_image(&[plane], dtype, &params).expect("encode");
     });
     BenchOutput {
         raw_ns,
-        bytes_in: Some((w * h * 2) as u64),
+        bytes_in: Some((w * h * dtype.size_bytes()) as u64),
         bytes_out: Some(out.len() as u64),
     }
 }
 
-fn ht_decode(config: &BenchConfig) -> BenchOutput {
+/// Times `iters` decodes of one plane's codestream.
+fn decode_lane(
+    config: &BenchConfig,
+    samples: &[i32],
+    (w, h): (usize, usize),
+    dtype: SampleType,
+) -> BenchOutput {
     if config.irreversible {
         return BenchOutput::default();
     }
-    let (w, h) = (1024usize, 1024usize);
-    let samples = synthetic_plane(w, h);
-    let plane = CoeffPlane::new(&samples, w, h).expect("plane");
-    let stream = ndic_codestream::encode_image(&[plane], SampleType::U16, &EncodeParams::default())
-        .expect("encode");
+    let plane = CoeffPlane::new(samples, w, h).expect("plane");
+    let stream =
+        ndic_codestream::encode_image(&[plane], dtype, &EncodeParams::default()).expect("encode");
     let raw_ns = time_samples(10, || {
         let cs = ndic_codestream::Codestream::parse(&stream).expect("parse");
         let dec = cs.decode().expect("decode");
@@ -120,12 +152,91 @@ fn ht_decode(config: &BenchConfig) -> BenchOutput {
     // records too instead of flagging it as a regression.
     BenchOutput {
         raw_ns,
-        bytes_in: Some((w * h * 2) as u64),
+        bytes_in: Some((w * h * dtype.size_bytes()) as u64),
         bytes_out: Some(stream.len() as u64),
     }
+}
+
+fn ht_encode(config: &BenchConfig) -> BenchOutput {
+    encode_lane(
+        config,
+        &synthetic_plane(1024, 1024),
+        (1024, 1024),
+        SampleType::U16,
+    )
+}
+
+fn ht_decode(config: &BenchConfig) -> BenchOutput {
+    decode_lane(
+        config,
+        &synthetic_plane(1024, 1024),
+        (1024, 1024),
+        SampleType::U16,
+    )
+}
+
+// Planes unlike the camera-style fixture. A label map and a binary mask are
+// piecewise constant, where the wavelet spreads every edge across the detail
+// bands. A 16-wide plane leaves most of each code-block row empty.
+
+fn ht_encode_labels(config: &BenchConfig) -> BenchOutput {
+    encode_lane(
+        config,
+        &label_plane(1024, 1024, 1 << 16),
+        (1024, 1024),
+        SampleType::U16,
+    )
+}
+
+fn ht_decode_labels(config: &BenchConfig) -> BenchOutput {
+    decode_lane(
+        config,
+        &label_plane(1024, 1024, 1 << 16),
+        (1024, 1024),
+        SampleType::U16,
+    )
+}
+
+fn mask_plane() -> Vec<i32> {
+    label_plane(1024, 1024, 2)
+        .iter()
+        .map(|&v| v * 255)
+        .collect()
+}
+
+fn ht_encode_mask(config: &BenchConfig) -> BenchOutput {
+    encode_lane(config, &mask_plane(), (1024, 1024), SampleType::U8)
+}
+
+fn ht_decode_mask(config: &BenchConfig) -> BenchOutput {
+    decode_lane(config, &mask_plane(), (1024, 1024), SampleType::U8)
+}
+
+fn ht_encode_narrow(config: &BenchConfig) -> BenchOutput {
+    encode_lane(
+        config,
+        &synthetic_plane(16, 32_768),
+        (16, 32_768),
+        SampleType::U16,
+    )
+}
+
+fn ht_decode_narrow(config: &BenchConfig) -> BenchOutput {
+    decode_lane(
+        config,
+        &synthetic_plane(16, 32_768),
+        (16, 32_768),
+        SampleType::U16,
+    )
 }
 
 inventory::submit! { BenchEntry::new("transform", "dwt53_fwd_2048", dwt53_fwd) }
 inventory::submit! { BenchEntry::new("transform", "dwt97_fwd_2048", dwt97_fwd) }
 inventory::submit! { BenchEntry::new("htj2k", "plane_encode_1024", ht_encode) }
 inventory::submit! { BenchEntry::new("htj2k", "plane_decode_1024", ht_decode) }
+inventory::submit! { BenchEntry::new("htj2k", "labels_encode_1024", ht_encode_labels) }
+inventory::submit! { BenchEntry::new("htj2k", "labels_decode_1024", ht_decode_labels) }
+inventory::submit! { BenchEntry::new("htj2k", "mask_encode_1024", ht_encode_mask) }
+inventory::submit! { BenchEntry::new("htj2k", "mask_decode_1024", ht_decode_mask) }
+inventory::submit! { BenchEntry::new("htj2k", "narrow_encode_16x32768", ht_encode_narrow) }
+inventory::submit! { BenchEntry::new("htj2k", "narrow_decode_16x32768", ht_decode_narrow) }

@@ -105,8 +105,8 @@ fn narrow_error(lo: i128, hi: i128, dtype: &str) -> Error {
 /// Little-endian byte I/O for the plane types (`to_le_bytes` widths differ,
 /// so the generic code goes through this trait).
 trait PlaneLe: Copy {
-    /// Append the value's little-endian bytes to `out`.
-    fn extend_le(self, out: &mut Vec<u8>);
+    /// Emit a plane slice as little-endian bytes.
+    fn plane_bytes_le(plane: &[Self]) -> Vec<u8>;
     /// Read one value from a little-endian slice of the type's width.
     fn from_le_slice(bytes: &[u8]) -> Self;
 }
@@ -114,8 +114,10 @@ trait PlaneLe: Copy {
 macro_rules! plane_le {
     ($p:ty) => {
         impl PlaneLe for $p {
-            fn extend_le(self, out: &mut Vec<u8>) {
-                out.extend_from_slice(&self.to_le_bytes());
+            fn plane_bytes_le(plane: &[Self]) -> Vec<u8> {
+                // A `flat_map` over fixed-size arrays is `TrustedLen`, so `collect` sizes the
+                // buffer once and the loop carries no per-element capacity checks.
+                plane.iter().flat_map(|v| v.to_le_bytes()).collect()
             }
             fn from_le_slice(bytes: &[u8]) -> Self {
                 Self::from_le_bytes(bytes.try_into().unwrap())
@@ -125,15 +127,6 @@ macro_rules! plane_le {
 }
 plane_le!(i32);
 plane_le!(i64);
-
-/// Emit a plane slice as little-endian bytes.
-fn plane_bytes_le<P: PlaneLe>(plane: &[P]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(size_of_val(plane));
-    for &v in plane {
-        v.extend_le(&mut out);
-    }
-    out
-}
 
 /// Element types strictly narrower than the plane: widening cannot fail;
 /// narrowing range-checks via one min/max scan, then bulk-casts.
@@ -177,7 +170,7 @@ macro_rules! plane_convert_identity {
                     .collect())
             }
             fn narrow_le(plane: &[$t]) -> Result<Vec<u8>> {
-                Ok(plane_bytes_le(plane))
+                Ok(<$t>::plane_bytes_le(plane))
             }
         }
     };
@@ -273,7 +266,7 @@ where
         }
         let mut plane = In::widen_le(bytes)?;
         ndic_lift::forward(&mut plane, shape, &config.transforms)?;
-        Ok(plane_bytes_le(&plane))
+        Ok(P::plane_bytes_le(&plane))
     } else {
         if bytes.len() != n * size_of::<P>() {
             return Err(Error::InvalidArgument {

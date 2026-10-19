@@ -68,12 +68,38 @@ describe.skipIf(!wasmBuilt)("Htj2k WASM core", () => {
 
   it("encodes the committed micro-fixture byte-for-byte", async () => {
     // The Rust `zarrs` codec and the Python extension pin the same file
-    // (`fixtures/codestreams/tiny-chunk-4x8x8.ndht`), so this is the
-    // TypeScript corner of the cross-ecosystem byte-identity gate.
+    // (`fixtures/codestreams/tiny-chunk-2x16x16-mixed.ndht`), so this is the
+    // TypeScript corner of the cross-ecosystem byte-identity gate. Plane 0 is
+    // a ramp HT coding shrinks, plane 1 hashed noise it cannot.
+    const shape = [2, 16, 16];
+    const plane = 16 * 16;
+    const samples = new Uint16Array(2 * plane);
+    for (let i = 0; i < plane; i++) {
+      samples[i] = (i * 7) % 4096;
+      let h = Math.imul(i + 1, 0x9e3779b1);
+      h ^= h >>> 16;
+      h = Math.imul(h, 0x85ebca6b);
+      h ^= h >>> 13;
+      samples[plane + i] = h & 0xffff;
+    }
+    const bytes = new Uint8Array(samples.buffer.slice(0));
+    const codec = Htj2k.fromConfig(
+      { name: "htj2k", configuration: { xy_levels: 2 } },
+      { shape, dtype: "uint16" },
+    );
+    const committed = readFileSync(
+      fileURLToPath(
+        new URL("../../../fixtures/codestreams/tiny-chunk-2x16x16-mixed.ndht", import.meta.url),
+      ),
+    );
+    expect(await codec.encode(bytes)).toEqual(new Uint8Array(committed));
+    expect(await codec.decode(new Uint8Array(committed))).toEqual(bytes);
+  });
+
+  it("decodes version-1 chunks written before stored planes", async () => {
     const shape = [4, 8, 8];
     const n = shape.reduce((a, b) => a * b, 1);
     const samples = Uint16Array.from({ length: n }, (_, i) => (i * 7) % 4096);
-    const bytes = new Uint8Array(samples.buffer.slice(0));
     const codec = Htj2k.fromConfig(
       { name: "htj2k", configuration: { xy_levels: 2 } },
       { shape, dtype: "uint16" },
@@ -81,7 +107,6 @@ describe.skipIf(!wasmBuilt)("Htj2k WASM core", () => {
     const committed = readFileSync(
       fileURLToPath(new URL("../../../fixtures/codestreams/tiny-chunk-4x8x8.ndht", import.meta.url)),
     );
-    expect(await codec.encode(bytes)).toEqual(new Uint8Array(committed));
-    expect(await codec.decode(new Uint8Array(committed))).toEqual(bytes);
+    expect(await codec.decode(new Uint8Array(committed))).toEqual(new Uint8Array(samples.buffer));
   });
 });

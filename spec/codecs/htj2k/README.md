@@ -77,15 +77,16 @@ floating-point path would quantize before coding; it is not specified here.)
 
 ## Format and algorithm
 
-A chunk is `[header | coefficient-plane index | codestreams…]`. All integers
-are little-endian.
+A chunk is `[header | coefficient-plane index | planes…]`. All integers
+are little-endian. A plane is a codestream, or a stored plane of raw samples
+when coding would not shrink it.
 
 ### Header
 
 ```text
 offset  size    field
 0       4       magic, the ASCII bytes "ndht"
-4       1       version = 1
+4       1       version = 1, or 2 when any plane is stored
 5       1       flags   (bit 0: coefficient-plane index present)
 6       1       xy_levels
 7       1       ndim    (2..=32)
@@ -100,9 +101,8 @@ Present when flag bit 0 is set. One entry per plane, in plane order
 
 ```text
 size            field
-8               offset — the plane codestream's byte offset from the chunk's
-                first byte
-4               len — the plane codestream's byte length
+8               offset — the plane's byte offset from the chunk's first byte
+4               len — the plane's byte length
 4*(xy_levels+1) prefix[r] — bytes from the plane's first byte that suffice to
                 decode resolutions 0..=r
 ```
@@ -115,6 +115,8 @@ fetch.
 
 An implementation MUST bound `ndim` (≤ 32) and the plane count before sizing
 the entry table, so a malformed header cannot induce a large allocation.
+
+A stored plane's `prefix[r]` is its whole `len` at every resolution.
 
 ### Codestreams
 
@@ -137,6 +139,31 @@ Encoding one plane:
 Decoding reverses these steps. Decoding a *prefix* stops at the last complete
 packet the bytes contain, which — in `RPCL` — is a complete lower resolution.
 
+### Stored planes
+
+An encoder MAY store a plane whose codestream would be at least as long as the
+stored plane, the way deflate falls back to a stored block. Noise and other
+incompressible planes then cost 4 bytes over their raw size, and decode as a
+copy. A chunk holding any stored plane MUST declare version 2. A version-1
+chunk holds only codestreams.
+
+```text
+offset  size    field
+0       3       magic, the ASCII bytes "ndr"
+3       1       kind: sample width in bytes (1, 2, or 4) in bits 0..6,
+                bit 7 set for signed samples
+4       w*h*n   samples, little-endian, C order over (y, x)
+```
+
+A codestream opens with `SOC` (`FF 4F`), so the magic distinguishes the two.
+
+Resolution `r` of a stored plane is what resolution `r` of its reversible
+codestream would decode. It is the LL band left by
+`xy_levels − r` levels of the forward 5/3 wavelet over the samples. For
+unsigned samples it is then clamped to `[0, 2^depth − 1]`, where `depth` is
+the narrowest bit depth covering the plane's samples. A reader that wants a
+thumbnail of a stored plane fetches the whole plane and computes it.
+
 No JPEG 2000 Part 2 syntax is emitted or parsed. In particular, cross-component
 or cross-axis decorrelation is never expressed as an MCT: it belongs to a
 separate array-to-array codec upstream (see [`nd_lift`](../nd_lift/README.md)).
@@ -144,7 +171,8 @@ separate array-to-array codec upstream (see [`nd_lift`](../nd_lift/README.md)).
 ## Interoperability and compatibility
 
 Each plane codestream is conforming Part 1 / Part 15, so any JPEG 2000
-implementation that reads HT codestreams can decode it. What the reference
+implementation that reads HT codestreams can decode it. A stored plane is not
+a codestream, but it is raw samples a reader copies out. What the reference
 implementation's CI actually pins is bit-exact plane decode through
 `imagecodecs.jpeg2k_decode` (OpenJPEG); OpenJPH interop is exercised by
 opt-in corpus and differential suites that fetch and build OpenJPH locally.
@@ -163,6 +191,8 @@ layers. These are permitted by the format and are additive.
 ## Changelog
 
 - **1** (container version) — initial version.
+- **2** (container version) — stored planes. Encoders write version 1 when
+  every plane is a codestream, so version-1 readers still read those chunks.
 
 ## Maintainers
 

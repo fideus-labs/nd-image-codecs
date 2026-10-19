@@ -4,8 +4,10 @@
 //! **bit-identical** to it (differential tests enforce) but restructures the
 //! vertical pass to operate on whole rows — contiguous memory the lifting
 //! kernels stream through with NEON on aarch64, AVX2 on x86-64 (runtime
-//! detected), or an autovectorizable portable loop elsewhere. The horizontal
-//! pass reuses the scalar per-row routine, which is already cache-friendly.
+//! detected), or an autovectorizable portable loop elsewhere. Each level runs
+//! vertical and horizontal lifting as one pass down the rows, so every row is
+//! read once while it is in cache instead of once per lifting step. The
+//! horizontal step reuses the scalar per-row routine.
 //!
 //! Mirrors `OpenJPH`'s per-ISA `ojph_transform_*` translation units; lane
 //! selection happens once per transform call, never in inner loops.
@@ -21,7 +23,7 @@ use alloc::vec;
 
 use ndic_core::Result;
 
-use super::{Scratch, ana_53, check_geometry, level_dims, syn_53};
+use super::{ana_53, check_geometry, level_dims, syn_53};
 
 /// A row-lifting kernel: combines two neighbor rows into a destination row.
 type RowKernel = fn(dst: &mut [i32], a: &[i32], b: &[i32]);
@@ -306,47 +308,135 @@ pub fn lane_name() -> &'static str {
     }
 }
 
-/// Vertical forward lifting over rows 0..h of the region, in place, then
-/// de-interleave even/odd rows into the top/bottom halves.
-fn vertical_forward(plane: &mut [i32], width: usize, w: usize, h: usize, kern: &Kernels) {
+/// One forward level over the `w x h` region at the plane's top left, vertical then horizontal,
+/// in one pass down the rows. Pair `j` predicts detail row `2j + 1` from the original even rows
+/// around it, updates even row `2j` from the now-final details around it, and each finished row
+/// leaves at once through the horizontal analysis while it is still in cache. Low row `j` lands in
+/// place, on a row the pass has already read past. High rows wait in `high`, since their home in
+/// the bottom half is still unread input.
+fn forward_level(
+    plane: &mut [i32],
+    width: usize,
+    (w, h): (usize, usize),
+    kern: &Kernels,
+    high: &mut [i32],
+    row0: &mut [i32],
+) {
+    let row = |r: usize| r * width;
+    let wl = w.div_ceil(2);
+    // Horizontal analysis of `src` into `dst` as [low | high].
+    let analyze = |src: &[i32], dst: &mut [i32]| {
+        let (lo, hi) = dst.split_at_mut(wl);
+        ana_53(src, lo, hi);
+    };
+    if h == 1 {
+        if w > 1 {
+            analyze(&plane[..w], &mut row0[..w]);
+            plane[..w].copy_from_slice(&row0[..w]);
+        }
+        return;
+    }
     let nl = h.div_ceil(2);
     let nh = h / 2;
-    let row = |r: usize| r * width;
-
-    // Predict all odd rows: d(2i+1) -= (row(2i) + row(2i+2 | mirror)) >> 1.
-    for i in 0..nh {
-        let up = 2 * i;
-        let down = if 2 * i + 2 < h { 2 * i + 2 } else { 2 * i };
-        let (above, dst, below) = split_three(plane, row(up), row(2 * i + 1), row(down), w, width);
-        (kern.predict_sub)(dst, above, below);
-    }
-    // Update all even rows: s(2i) += (d(2i-1 | mirror) + d(2i+1 | mirror) + 2) >> 2.
-    for i in 0..nl {
-        let dl = if i == 0 { 1 } else { 2 * i - 1 };
-        let dr = if 2 * i + 1 < h { 2 * i + 1 } else { 2 * nh - 1 };
-        let (above, dst, below) = split_three(plane, row(dl), row(2 * i), row(dr), w, width);
+    for j in 0..nl {
+        // Predict: d(2j+1) -= (row(2j) + row(2j+2 | mirror)) >> 1, before row 2j is updated.
+        if 2 * j + 1 < h {
+            let down = if 2 * j + 2 < h { 2 * j + 2 } else { 2 * j };
+            let (above, dst, below) =
+                split_three(plane, row(2 * j), row(2 * j + 1), row(down), w, width);
+            (kern.predict_sub)(dst, above, below);
+        }
+        // Update: s(2j) += (d(2j-1 | mirror) + d(2j+1 | mirror) + 2) >> 2.
+        let dl = if j == 0 { 1 } else { 2 * j - 1 };
+        let dr = if 2 * j + 1 < h { 2 * j + 1 } else { 2 * nh - 1 };
+        let (above, dst, below) = split_three(plane, row(dl), row(2 * j), row(dr), w, width);
         (kern.update_add)(dst, above, below);
+        // Detail row 2j - 1 has served its last update.
+        if j > 0 {
+            analyze(
+                &plane[row(2 * j - 1)..row(2 * j - 1) + w],
+                &mut high[(j - 1) * w..j * w],
+            );
+        }
+        if j == 0 {
+            analyze(&plane[..w], &mut row0[..w]);
+            plane[..w].copy_from_slice(&row0[..w]);
+        } else {
+            let (head, tail) = plane.split_at_mut(row(2 * j));
+            analyze(&tail[..w], &mut head[row(j)..row(j) + w]);
+        }
     }
-    deinterleave_rows(plane, width, w, h);
+    if nh == nl {
+        analyze(
+            &plane[row(2 * nh - 1)..row(2 * nh - 1) + w],
+            &mut high[(nh - 1) * w..nh * w],
+        );
+    }
+    for i in 0..nh {
+        plane[row(nl + i)..row(nl + i) + w].copy_from_slice(&high[i * w..(i + 1) * w]);
+    }
 }
 
-/// Inverse of [`vertical_forward`].
-fn vertical_inverse(plane: &mut [i32], width: usize, w: usize, h: usize, kern: &Kernels) {
-    interleave_rows(plane, width, w, h);
+/// Inverse of [`forward_level`], also one pass. High rows go through the horizontal synthesis
+/// into `high` first. Pairs then run from the bottom up, so output rows `2j` and `2j + 1` only
+/// overwrite low rows already consumed: even row `2j` is synthesized from low row `j` and the
+/// update undone from the details around it, then odd row `2j + 1` is predicted back from the
+/// finished even rows around it.
+fn inverse_level(
+    plane: &mut [i32],
+    width: usize,
+    (w, h): (usize, usize),
+    kern: &Kernels,
+    high: &mut [i32],
+    row0: &mut [i32],
+) {
+    let row = |r: usize| r * width;
+    let wl = w.div_ceil(2);
+    // Horizontal synthesis of `src`, split as [low | high] and lifted in place, into `dst`.
+    let synthesize = |src: &mut [i32], dst: &mut [i32]| {
+        let (lo, hi) = src.split_at_mut(wl);
+        syn_53(lo, hi, dst);
+    };
+    if h == 1 {
+        if w > 1 {
+            synthesize(&mut plane[..w], &mut row0[..w]);
+            plane[..w].copy_from_slice(&row0[..w]);
+        }
+        return;
+    }
     let nl = h.div_ceil(2);
     let nh = h / 2;
-    let row = |r: usize| r * width;
-    for i in 0..nl {
-        let dl = if i == 0 { 1 } else { 2 * i - 1 };
-        let dr = if 2 * i + 1 < h { 2 * i + 1 } else { 2 * nh - 1 };
-        let (above, dst, below) = split_three(plane, row(dl), row(2 * i), row(dr), w, width);
-        (kern.update_sub)(dst, above, below);
-    }
     for i in 0..nh {
-        let up = 2 * i;
-        let down = if 2 * i + 2 < h { 2 * i + 2 } else { 2 * i };
-        let (above, dst, below) = split_three(plane, row(up), row(2 * i + 1), row(down), w, width);
-        (kern.predict_add)(dst, above, below);
+        synthesize(
+            &mut plane[row(nl + i)..row(nl + i) + w],
+            &mut high[i * w..(i + 1) * w],
+        );
+    }
+    for j in (0..nl).rev() {
+        if j == 0 {
+            synthesize(&mut plane[..w], &mut row0[..w]);
+            plane[..w].copy_from_slice(&row0[..w]);
+        } else {
+            let (head, tail) = plane.split_at_mut(row(2 * j));
+            synthesize(&mut head[row(j)..row(j) + w], &mut tail[..w]);
+        }
+        // Undo update: s(2j) -= (d(2j-1 | mirror) + d(2j+1 | mirror) + 2) >> 2, where detail row
+        // 2i + 1 waits in `high` row i.
+        let dl = j.saturating_sub(1);
+        let dr = if 2 * j + 1 < h { j } else { nh - 1 };
+        (kern.update_sub)(
+            &mut plane[row(2 * j)..row(2 * j) + w],
+            &high[dl * w..(dl + 1) * w],
+            &high[dr * w..(dr + 1) * w],
+        );
+        // Undo predict: d(2j+1) += (row(2j) + row(2j+2 | mirror)) >> 1, once both are final.
+        if 2 * j + 1 < h {
+            let down = if 2 * j + 2 < h { 2 * j + 2 } else { 2 * j };
+            plane[row(2 * j + 1)..row(2 * j + 1) + w].copy_from_slice(&high[j * w..(j + 1) * w]);
+            let (above, dst, below) =
+                split_three(plane, row(2 * j), row(2 * j + 1), row(down), w, width);
+            (kern.predict_add)(dst, above, below);
+        }
     }
 }
 
@@ -385,40 +475,6 @@ fn split_three(
     (a, dst, b)
 }
 
-/// Moves even rows to the top half and odd rows to the bottom half.
-fn deinterleave_rows(plane: &mut [i32], width: usize, w: usize, h: usize) {
-    let nl = h.div_ceil(2);
-    let nh = h / 2;
-    let mut odd = vec![0i32; nh * w];
-    for i in 0..nh {
-        odd[i * w..(i + 1) * w]
-            .copy_from_slice(&plane[(2 * i + 1) * width..(2 * i + 1) * width + w]);
-    }
-    for i in 1..nl {
-        plane.copy_within(2 * i * width..2 * i * width + w, i * width);
-    }
-    for i in 0..nh {
-        plane[(nl + i) * width..(nl + i) * width + w].copy_from_slice(&odd[i * w..(i + 1) * w]);
-    }
-}
-
-/// Inverse of [`deinterleave_rows`].
-fn interleave_rows(plane: &mut [i32], width: usize, w: usize, h: usize) {
-    let nl = h.div_ceil(2);
-    let nh = h / 2;
-    let mut odd = vec![0i32; nh * w];
-    for i in 0..nh {
-        odd[i * w..(i + 1) * w].copy_from_slice(&plane[(nl + i) * width..(nl + i) * width + w]);
-    }
-    for i in (1..nl).rev() {
-        plane.copy_within(i * width..i * width + w, 2 * i * width);
-    }
-    for i in 0..nh {
-        plane[(2 * i + 1) * width..(2 * i + 1) * width + w]
-            .copy_from_slice(&odd[i * w..(i + 1) * w]);
-    }
-}
-
 /// SIMD-lane forward 5/3, bit-identical to [`super::forward_53`].
 ///
 /// # Errors
@@ -426,23 +482,15 @@ fn interleave_rows(plane: &mut [i32], width: usize, w: usize, h: usize) {
 pub fn forward_53(plane: &mut [i32], width: usize, height: usize, levels: u8) -> Result<()> {
     check_geometry(plane.len(), width, height)?;
     let k = kernels();
-    let mut scratch = Scratch::new(width, height);
+    // The largest level's high rows, reused by every level below it.
+    let mut high = vec![0i32; (height / 2) * width];
+    let mut row0 = vec![0i32; width];
     for l in 0..levels {
         let (w, h) = level_dims(width, height, l);
         if w == 1 && h == 1 {
             break;
         }
-        if h > 1 {
-            vertical_forward(plane, width, w, h, &k);
-        }
-        if w > 1 {
-            for y in 0..h {
-                scratch.gather_row(plane, width, y, w);
-                let (sig, low, high) = scratch.split(w);
-                ana_53(sig, low, high);
-                scratch.scatter_row_split(plane, width, y, w);
-            }
-        }
+        forward_level(plane, width, (w, h), &k, &mut high, &mut row0);
     }
     Ok(())
 }
@@ -454,23 +502,14 @@ pub fn forward_53(plane: &mut [i32], width: usize, height: usize, levels: u8) ->
 pub fn inverse_53(plane: &mut [i32], width: usize, height: usize, levels: u8) -> Result<()> {
     check_geometry(plane.len(), width, height)?;
     let k = kernels();
-    let mut scratch = Scratch::new(width, height);
+    let mut high = vec![0i32; (height / 2) * width];
+    let mut row0 = vec![0i32; width];
     for l in (0..levels).rev() {
         let (w, h) = level_dims(width, height, l);
         if w == 1 && h == 1 {
             continue;
         }
-        if w > 1 {
-            for y in 0..h {
-                scratch.gather_row_split(plane, width, y, w);
-                let (sig, low, high) = scratch.split(w);
-                syn_53(low, high, sig);
-                scratch.scatter_row(plane, width, y, w);
-            }
-        }
-        if h > 1 {
-            vertical_inverse(plane, width, w, h, &k);
-        }
+        inverse_level(plane, width, (w, h), &k, &mut high, &mut row0);
     }
     Ok(())
 }

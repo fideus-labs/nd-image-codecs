@@ -13,7 +13,9 @@ use alloc::vec::Vec;
 use ndic_core::{Error, Result};
 use ndic_htj2k::{BlockPasses, dwt};
 
-use crate::geometry::{bands_of_resolution, effective_cb};
+use crate::geometry::{
+    bands_of_resolution, effective_cb, packet_sequence, precinct_block_range, precinct_grid,
+};
 use crate::markers::{self, Cap, Cod, Siz, Sot, parse_com, parse_plt, parse_tlm};
 use crate::packet::{ParseBand, parse_packet_header};
 use crate::quant::Quant;
@@ -357,64 +359,27 @@ impl<'a> Codestream<'a> {
 
     /// Precinct grid of resolution `r`: `(npx, npy)`.
     fn precinct_grid(&self, r: u8) -> (usize, usize) {
-        let levels = self.cod.decomps;
-        let (rw, rh) = dwt::level_dims(self.siz.xsiz as usize, self.siz.ysiz as usize, levels - r);
         let (ppx, ppy) = self.cod.precinct_exp(r);
-        if rw == 0 || rh == 0 {
-            (0, 0)
-        } else {
-            (rw.div_ceil(1 << ppx.min(31)), rh.div_ceil(1 << ppy.min(31)))
-        }
+        precinct_grid(
+            self.siz.xsiz as usize,
+            self.siz.ysiz as usize,
+            self.cod.decomps,
+            r,
+            ppx,
+            ppy,
+        )
     }
 
     /// The packet visit order: `(comp, res, px, py)` per the progression
     /// (T.800 §B.12, single tile, one layer).
     fn packet_sequence(&self) -> Vec<(usize, u8, usize, usize)> {
-        let comps = self.siz.comps.len();
-        let mut order = Vec::new();
-        match self.cod.progression {
-            // RPCL: resolution, position raster, component.
-            2 => {
-                for r in 0..=self.cod.decomps {
-                    let (npx, npy) = self.precinct_grid(r);
-                    for py in 0..npy {
-                        for px in 0..npx {
-                            for c in 0..comps {
-                                order.push((c, r, px, py));
-                            }
-                        }
-                    }
-                }
-            }
-            // PCRL/CPRL: only reachable with maximal precincts (one per
-            // resolution), where they reduce to component-major order.
-            3 | 4 => {
-                for c in 0..comps {
-                    for r in 0..=self.cod.decomps {
-                        let (npx, npy) = self.precinct_grid(r);
-                        for py in 0..npy {
-                            for px in 0..npx {
-                                order.push((c, r, px, py));
-                            }
-                        }
-                    }
-                }
-            }
-            // LRCP/RLCP: resolution, component, position raster.
-            _ => {
-                for r in 0..=self.cod.decomps {
-                    for c in 0..comps {
-                        let (npx, npy) = self.precinct_grid(r);
-                        for py in 0..npy {
-                            for px in 0..npx {
-                                order.push((c, r, px, py));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        order
+        packet_sequence(
+            self.cod.progression,
+            self.siz.comps.len(),
+            self.cod.decomps,
+            |r| self.precinct_grid(r),
+            |r| self.cod.precinct_exp(r),
+        )
     }
 
     /// Reconstructs the packet index purely from `TLM`/`PLT` — no packet
@@ -521,6 +486,10 @@ impl<'a> Codestream<'a> {
         let last_needed = sequence.iter().rposition(|&(_, res, _, _)| res <= max_res);
 
         let mut cursor = 0usize;
+        // One block buffer for the whole decode. `decode_block` fully overwrites its
+        // `width x height` region, so a reused buffer needs no zeroing between blocks.
+        let mut out: Vec<u32> = Vec::new();
+        let mut block_decoder = ndic_htj2k::BlockDecoder::new();
         for (i, (comp, res, ppx_i, ppy_i)) in sequence.into_iter().enumerate() {
             if last_needed.is_none_or(|last| i > last) {
                 break;
@@ -578,8 +547,8 @@ impl<'a> Codestream<'a> {
                     continue;
                 }
 
-                let mut out = alloc::vec![0u32; rect.w * rect.h];
-                ndic_htj2k::decode_block(
+                out.resize(rect.w * rect.h, 0);
+                block_decoder.decode(
                     seg,
                     &mut out,
                     rect.w,
@@ -596,11 +565,15 @@ impl<'a> Codestream<'a> {
 
                 let k_max = self.quant.k_max(band.res, band.band);
                 let shift = 31 - u32::from(k_max);
-                let plane = &mut planes[comp];
+                // A slice, not the `Vec`, so its pointer and length stay in registers across the
+                // stores. Row slices hoist the index math and bounds checks out of the sample loop.
+                let plane = planes[comp].as_mut_slice();
                 for y in 0..rect.h {
-                    for x in 0..rect.w {
-                        plane[(band.y0 + rect.y + y) * width + band.x0 + rect.x + x] =
-                            ndic_htj2k::sign_magnitude_to_coeff(out[y * rect.w + x], shift);
+                    let dst_start = (band.y0 + rect.y + y) * width + band.x0 + rect.x;
+                    let dst = &mut plane[dst_start..dst_start + rect.w];
+                    let src = &out[y * rect.w..(y + 1) * rect.w];
+                    for (d, &s) in dst.iter_mut().zip(src) {
+                        *d = ndic_htj2k::sign_magnitude_to_coeff(s, shift);
                     }
                 }
             }
@@ -611,11 +584,20 @@ impl<'a> Codestream<'a> {
         let (out_w, out_h) = dwt::level_dims(width, height, levels - max_res);
         let mut comps_out = Vec::with_capacity(ncomps);
         for plane in &mut planes {
-            let mut region = alloc::vec![0i32; out_w * out_h];
-            for y in 0..out_h {
-                region[y * out_w..(y + 1) * out_w]
-                    .copy_from_slice(&plane[y * width..y * width + out_w]);
-            }
+            // At full width the region is the plane's leading rows, so it is taken in place
+            // rather than copied into a fresh buffer.
+            let mut region = if out_w == width {
+                let mut region = core::mem::take(plane);
+                region.truncate(out_w * out_h);
+                region
+            } else {
+                let mut region = alloc::vec![0i32; out_w * out_h];
+                for y in 0..out_h {
+                    region[y * out_w..(y + 1) * out_w]
+                        .copy_from_slice(&plane[y * width..y * width + out_w]);
+                }
+                region
+            };
             dwt::simd::inverse_53(&mut region, out_w, out_h, max_res)?;
             comps_out.push(region);
         }
@@ -641,12 +623,11 @@ impl<'a> Codestream<'a> {
             let cs = self.siz.comps[ci.min(self.siz.comps.len() - 1)];
             if !cs.signed {
                 let half = 1i32 << (cs.depth - 1);
-                let max = (1i64 << cs.depth) - 1;
+                // An i32 sample never exceeds a wider depth's maximum, so the bound saturates at
+                // i32::MAX and the clamp runs in 32-bit lanes, four samples per vector.
+                let max = i32::try_from((1i64 << cs.depth) - 1).unwrap_or(i32::MAX);
                 for v in plane.iter_mut() {
-                    #[allow(clippy::cast_possible_truncation)]
-                    {
-                        *v = i64::from(*v + half).clamp(0, max) as i32;
-                    }
+                    *v = (*v + half).clamp(0, max);
                 }
             }
         }
@@ -657,40 +638,6 @@ impl<'a> Codestream<'a> {
             comps: comps_out,
         })
     }
-}
-
-#[allow(clippy::too_many_arguments, clippy::similar_names)]
-/// The aligned code-block sub-grid a precinct covers within a band:
-/// `(bx0, by0, nx, ny)` in the band's global block grid.
-///
-/// `pp_log` are the precinct exponents in *band* coordinates (already
-/// reduced by one for resolutions above 0); block sizes divide precinct
-/// sizes, so precinct edges align with block boundaries.
-fn precinct_block_range(
-    bw: usize,
-    bh: usize,
-    ppx_log: u8,
-    ppy_log: u8,
-    px: usize,
-    py: usize,
-    cbw: usize,
-    cbh: usize,
-) -> (usize, usize, usize, usize) {
-    if bw == 0 || bh == 0 {
-        return (0, 0, 0, 0);
-    }
-    let ppw = 1usize << ppx_log.min(31);
-    let pph = 1usize << ppy_log.min(31);
-    let x0 = px * ppw;
-    let y0 = py * pph;
-    if x0 >= bw || y0 >= bh {
-        return (0, 0, 0, 0);
-    }
-    let x1 = (x0 + ppw).min(bw);
-    let y1 = (y0 + pph).min(bh);
-    let bx0 = x0 / cbw;
-    let by0 = y0 / cbh;
-    (bx0, by0, x1.div_ceil(cbw) - bx0, y1.div_ceil(cbh) - by0)
 }
 
 #[cfg(test)]

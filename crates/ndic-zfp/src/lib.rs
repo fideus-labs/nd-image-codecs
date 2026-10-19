@@ -328,9 +328,12 @@ fn padded_stream(
     }
     let nwords = max.div_ceil(8);
     let mut words = Vec::with_capacity(nwords);
-    for chunk in bytes.chunks(8) {
+    // Whole words go through one `extend`, which checks capacity once rather than per word.
+    let (chunks, tail) = bytes.as_chunks::<8>();
+    words.extend(chunks.iter().map(|&c| u64::from_le_bytes(c)));
+    if !tail.is_empty() {
         let mut word = [0u8; 8];
-        word[..chunk.len()].copy_from_slice(chunk);
+        word[..tail.len()].copy_from_slice(tail);
         words.push(u64::from_le_bytes(word));
     }
     words.resize(nwords, 0);

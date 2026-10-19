@@ -4,7 +4,7 @@
 //! TLM/PLT packet index, and partial (by-resolution) decode.
 
 use ndic_codestream::{Codestream, encode_image};
-use ndic_core::{CoeffPlane, EncodeParams, SampleType};
+use ndic_core::{CoeffPlane, EncodeParams, ProgressionOrder, SampleType};
 use proptest::prelude::*;
 
 fn params(levels: u8) -> EncodeParams {
@@ -144,6 +144,44 @@ fn multi_component_roundtrip() {
     let dec = cs.decode().expect("decode");
     for (c, want) in planes_data.iter().enumerate() {
         assert_eq!(&dec.comps[c], want, "component {c}");
+    }
+}
+
+#[test]
+fn planes_wider_than_a_precinct_roundtrip() {
+    // A resolution past 2^15 samples splits into several maximal precincts, one packet each.
+    // At 140000 wide three resolutions split, into five, three and two precincts.
+    for (width, height) in [(140_000usize, 2usize), (2, 140_000), (40_000, 3)] {
+        let planes_data: Vec<Vec<i32>> = (0..2u64)
+            .map(|c| synthetic(width, height, 7 + c, SampleType::U8))
+            .collect();
+        let planes: Vec<CoeffPlane> = planes_data
+            .iter()
+            .map(|d| CoeffPlane::new(d, width, height).unwrap())
+            .collect();
+        for progression in [
+            ProgressionOrder::Lrcp,
+            ProgressionOrder::Rlcp,
+            ProgressionOrder::Rpcl,
+            ProgressionOrder::Pcrl,
+            ProgressionOrder::Cprl,
+        ] {
+            let params = EncodeParams {
+                progression,
+                ..EncodeParams::default()
+            };
+            let stream = encode_image(&planes, SampleType::U8, &params).expect("encode");
+            let dec = Codestream::parse(&stream)
+                .expect("parse")
+                .decode()
+                .expect("decode");
+            for (c, want) in planes_data.iter().enumerate() {
+                assert_eq!(
+                    &dec.comps[c], want,
+                    "{width}x{height} {progression:?} component {c}"
+                );
+            }
+        }
     }
 }
 

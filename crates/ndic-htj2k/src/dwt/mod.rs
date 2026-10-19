@@ -40,11 +40,9 @@
 //!   It still produced **no measurable speedup**: the loop is bound by the
 //!   symmetric-extension index clamps and bounds checks, not by float
 //!   throughput.
-//! - Neither form vectorizes. The `.min()` / `.saturating_sub()` boundary
-//!   clamps on the load indices are what prevent it, and no amount of
-//!   arithmetic permission addresses that. Peeling the first and last
-//!   iterations so the interior is unconditionally stride-1 is the change that
-//!   would actually vectorize this loop.
+//! - The strict form vectorizes. Each lifting loop peels its mirrored
+//!   boundary samples, so the interior is clamp-free and stride-1, which is
+//!   what vectorization needs. Arithmetic permission plays no part in it.
 //!
 //! The **reversible 5/3 kernel above is integer lifting** and is out of scope
 //! for any of this: its bit-exactness is a correctness requirement, not a
@@ -88,25 +86,30 @@ pub(crate) fn ana_53(x: &[i32], low: &mut [i32], high: &mut [i32]) {
     }
     let nl = n.div_ceil(2);
     let nh = n / 2;
-    // Predict: odd samples become the high band.
-    for i in 0..nh {
-        let right = if 2 * i + 2 < n {
-            x[2 * i + 2]
-        } else {
-            x[n - 2]
-        };
-        high[i] = x[2 * i + 1] - ((x[2 * i] + right) >> 1);
+    // The mirrored boundary samples are peeled off both loops, so the interiors carry no clamps.
+    let (low, high) = (&mut low[..nl], &mut high[..nh]);
+    // Predict: odd samples become the high band. Only an even-length signal's last odd sample
+    // lacks a right neighbor, and it mirrors `x[n - 2]`.
+    for i in 0..(n - 1) / 2 {
+        high[i] = x[2 * i + 1] - ((x[2 * i] + x[2 * i + 2]) >> 1);
     }
-    // Update: even samples become the low band.
-    for i in 0..nl {
-        let dl = high[i.saturating_sub(1).min(nh - 1)];
-        let dr = high[i.min(nh - 1)];
-        low[i] = x[2 * i] + ((dl + dr + 2) >> 2);
+    if nh == nl {
+        high[nh - 1] = x[n - 1] - ((x[n - 2] + x[n - 2]) >> 1);
+    }
+    // Update: even samples become the low band. The first mirrors `d[0]`, and an odd-length
+    // signal's last mirrors `d[nh - 1]`.
+    low[0] = x[0] + ((high[0] + high[0] + 2) >> 2);
+    for i in 1..nh {
+        low[i] = x[2 * i] + ((high[i - 1] + high[i] + 2) >> 2);
+    }
+    if nl > nh {
+        low[nh] = x[2 * nh] + ((high[nh - 1] + high[nh - 1] + 2) >> 2);
     }
 }
 
-/// Inverse of [`ana_53`].
-pub(crate) fn syn_53(low: &[i32], high: &[i32], x: &mut [i32]) {
+/// Inverse of [`ana_53`]. Lifts in place, leaving the reconstructed even and
+/// odd samples in `low` and `high`.
+pub(crate) fn syn_53(low: &mut [i32], high: &mut [i32], x: &mut [i32]) {
     let n = x.len();
     if n == 1 {
         x[0] = low[0];
@@ -114,20 +117,30 @@ pub(crate) fn syn_53(low: &[i32], high: &[i32], x: &mut [i32]) {
     }
     let nl = n.div_ceil(2);
     let nh = n / 2;
+    // Boundary samples are peeled as in `ana_53`, and both steps are undone in place on the
+    // contiguous bands before a single interleave.
+    let (low, high) = (&mut low[..nl], &mut high[..nh]);
     // Undo update.
-    for i in 0..nl {
-        let dl = high[i.saturating_sub(1).min(nh - 1)];
-        let dr = high[i.min(nh - 1)];
-        x[2 * i] = low[i] - ((dl + dr + 2) >> 2);
+    low[0] -= (high[0] + high[0] + 2) >> 2;
+    for i in 1..nh {
+        low[i] -= (high[i - 1] + high[i] + 2) >> 2;
+    }
+    if nl > nh {
+        low[nh] -= (high[nh - 1] + high[nh - 1] + 2) >> 2;
     }
     // Undo predict.
-    for i in 0..nh {
-        let right = if 2 * i + 2 < n {
-            x[2 * i + 2]
-        } else {
-            x[n - 2]
-        };
-        x[2 * i + 1] = high[i] + ((x[2 * i] + right) >> 1);
+    for i in 0..nl - 1 {
+        high[i] += (low[i] + low[i + 1]) >> 1;
+    }
+    if nh == nl {
+        high[nh - 1] += (low[nh - 1] + low[nh - 1]) >> 1;
+    }
+    let (pairs, _) = x.as_chunks_mut::<2>();
+    for ((pair, &l), &h) in pairs.iter_mut().zip(low.iter()).zip(high.iter()) {
+        *pair = [l, h];
+    }
+    if nl > nh {
+        x[n - 1] = low[nh];
     }
 }
 
@@ -145,19 +158,27 @@ const DELTA: f32 = 0.443_506_85;
 fn lift_97(low: &mut [f32], high: &mut [f32], n: usize, coeff: f32, high_from_low: bool) {
     let nl = n.div_ceil(2);
     let nh = n / 2;
+    // The mirrored boundary samples are peeled off, as in `ana_53`, so the interiors carry no
+    // clamps.
+    let (low, high) = (&mut low[..nl], &mut high[..nh]);
     if high_from_low {
-        // high[i] += coeff * (low[i] + low[i+1]) with symmetric extension.
-        for i in 0..nh {
-            let l = low[i];
-            let r = low[(i + 1).min(nl - 1)];
-            high[i] += coeff * (l + r);
+        // high[i] += coeff * (low[i] + low[i+1]) with symmetric extension. Only an even-length
+        // signal's last high sample lacks `low[i+1]`, and it mirrors `low[nh - 1]`.
+        for i in 0..nl - 1 {
+            high[i] += coeff * (low[i] + low[i + 1]);
+        }
+        if nh == nl {
+            high[nh - 1] += coeff * (low[nh - 1] + low[nh - 1]);
         }
     } else {
-        // low[i] += coeff * (high[i-1] + high[i]) with symmetric extension.
-        for i in 0..nl {
-            let l = high[i.saturating_sub(1).min(nh - 1)];
-            let r = high[i.min(nh - 1)];
-            low[i] += coeff * (l + r);
+        // low[i] += coeff * (high[i-1] + high[i]) with symmetric extension. The first mirrors
+        // `high[0]`, and an odd-length signal's last mirrors `high[nh - 1]`.
+        low[0] += coeff * (high[0] + high[0]);
+        for i in 1..nh {
+            low[i] += coeff * (high[i - 1] + high[i]);
+        }
+        if nl > nh {
+            low[nh] += coeff * (high[nh - 1] + high[nh - 1]);
         }
     }
 }

@@ -13,7 +13,9 @@ use alloc::vec::Vec;
 use ndic_core::{CoeffPlane, EncodeParams, Error, ProgressionOrder, Result, SampleType};
 use ndic_htj2k::dwt;
 
-use crate::geometry::{Band, bands_of_resolution, effective_cb};
+use crate::geometry::{
+    Band, bands_of_resolution, effective_cb, packet_sequence, precinct_block_range, precinct_grid,
+};
 use crate::markers::{
     self, Cap, Cod, ComponentSiz, Siz, com_payload, plt_payload, push_segment, tlm_payload,
 };
@@ -117,11 +119,14 @@ pub fn encode_image_with_depth(
         (0, (1i64 << bit_depth) - 1)
     };
     for comp in comps {
-        if comp
+        // A min/max reduction vectorizes, where an early-exit scan loads one sample at a time.
+        let (min, max) = comp
             .samples
             .iter()
-            .any(|&v| i64::from(v) < lo || i64::from(v) > hi)
-        {
+            .fold((i32::MAX, i32::MIN), |(min, max), &v| {
+                (min.min(v), max.max(v))
+            });
+        if !comp.samples.is_empty() && (i64::from(min) < lo || i64::from(max) > hi) {
             return Err(Error::InvalidArgument {
                 message: "sample outside the declared dtype range".into(),
             });
@@ -129,21 +134,11 @@ pub fn encode_image_with_depth(
     }
 
     let levels = params.xy_levels;
-    let quant = Quant::reversible(levels, bit_depth, false)?;
-    // The scalar HT coder uses a 32-bit datapath: K_max <= 30.
-    let k_max_max = (0..=levels)
-        .flat_map(|r| (u8::from(r > 0)..=if r > 0 { 3 } else { 0 }).map(move |b| (r, b)))
-        .map(|(r, b)| quant.k_max(r, b))
-        .max()
-        .unwrap_or(0);
-    if k_max_max > 30 {
-        return Err(Error::Unsupported {
-            message: "bit depth exceeds the 32-bit HT datapath (K_max > 30)".into(),
-        });
-    }
+    let quant = check_datapath(levels, bit_depth)?;
 
     // ---- per-component wavelet transform + block coding ---------------
     let mut resolutions: Vec<Vec<Vec<BandBlocks>>> = Vec::new(); // [comp][res][band]
+    let mut coder = ndic_htj2k::BlockEncoder::new();
     for comp in comps {
         let mut plane = level_shifted(comp, bit_depth, signed);
         // The SIMD lane is bit-identical to the scalar reference
@@ -155,7 +150,9 @@ pub fn encode_image_with_depth(
             let (ecbw, ecbh) = effective_cb(cbw, cbh, 15, 15, r);
             let mut band_blocks = Vec::with_capacity(bands.len());
             for band in &bands {
-                band_blocks.push(code_band(&plane, width, band, ecbw, ecbh, &quant)?);
+                band_blocks.push(code_band(
+                    &mut coder, &plane, width, band, ecbw, ecbh, &quant,
+                )?);
             }
             per_res.push(band_blocks);
         }
@@ -163,32 +160,37 @@ pub fn encode_image_with_depth(
     }
 
     // ---- packets in progression order ---------------------------------
-    // With one layer and one precinct per resolution, every progression
-    // reduces to resolution-major (LRCP/RLCP/RPCL) or component-major
-    // (PCRL/CPRL) order.
-    let comp_major = matches!(
-        params.progression,
-        ProgressionOrder::Pcrl | ProgressionOrder::Cprl
+    // A maximal precinct spans 2^15 samples of its resolution, so a larger resolution splits into
+    // several precincts, each a packet holding its share of every band's code-blocks.
+    let packet_order = packet_sequence(
+        progression_code(params.progression),
+        comps.len(),
+        levels,
+        |r| precinct_grid(width, height, levels, r, 15, 15),
+        |_| (15, 15),
     );
-    let mut packet_order = Vec::new();
-    if comp_major {
-        for c in 0..comps.len() {
-            for r in 0..=levels {
-                packet_order.push((c, r));
-            }
-        }
-    } else {
-        for r in 0..=levels {
-            for c in 0..comps.len() {
-                packet_order.push((c, r));
-            }
-        }
-    }
-
     let mut body = Vec::new();
     let mut packet_lengths = Vec::with_capacity(packet_order.len());
-    for &(c, r) in &packet_order {
-        let bytes = write_packet(&resolutions[c][usize::from(r)]);
+    for (c, r, px, py) in packet_order {
+        let (ecbw, ecbh) = effective_cb(cbw, cbh, 15, 15, r);
+        // Precinct exponents in band coordinates.
+        let pp = 15 - u8::from(r > 0);
+        let bands = bands_of_resolution(width, height, levels, r);
+        let precinct: Vec<BandBlocks> = bands
+            .iter()
+            .zip(&mut resolutions[c][usize::from(r)])
+            .map(|(band, coded)| {
+                let (bx0, by0, nx, ny) =
+                    precinct_block_range(band.w, band.h, pp, pp, px, py, ecbw, ecbh);
+                // Each block belongs to one precinct, so it moves out rather than being copied.
+                let blocks = (by0..by0 + ny)
+                    .flat_map(|by| (bx0..bx0 + nx).map(move |bx| (bx, by)))
+                    .map(|(bx, by)| coded.blocks[by * coded.nx + bx].take())
+                    .collect();
+                BandBlocks { nx, ny, blocks }
+            })
+            .collect();
+        let bytes = write_packet(&precinct);
         #[allow(clippy::cast_possible_truncation)]
         packet_lengths.push(bytes.len() as u32);
         body.extend_from_slice(&bytes);
@@ -227,15 +229,18 @@ pub fn encode_image_with_depth(
             })?;
         }
     }
-    let psot = 12 + plt.len() + 2 + body.len(); // SOT seg + PLT + SOD + body
-    let mut tile_part = Vec::with_capacity(psot);
-    #[allow(clippy::cast_possible_truncation)]
+    let tile_part_len = 12 + plt.len() + 2 + body.len(); // SOT seg + PLT + SOD + body
+    // `Psot` and the `TLM` entry are 32-bit, so a single tile-part holds at most 4 GiB.
+    let psot = u32::try_from(tile_part_len).map_err(|_| Error::Unsupported {
+        message: "tile-part exceeds the 4 GiB a 32-bit Psot can declare".into(),
+    })?;
+    let mut tile_part = Vec::with_capacity(tile_part_len);
     push_segment(
         &mut tile_part,
         markers::SOT,
         &markers::Sot {
             isot: 0,
-            psot: psot as u32,
+            psot,
             tpsot: 0,
             tnsot: 1,
         }
@@ -310,12 +315,7 @@ pub fn encode_image_with_depth(
         &com_payload("nd-image-codecs ndic-codestream"),
     )?;
     if params.emit_tlm_plt {
-        #[allow(clippy::cast_possible_truncation)]
-        push_segment(
-            &mut out,
-            markers::TLM,
-            &tlm_payload(&[tile_part.len() as u32]),
-        )?;
+        push_segment(&mut out, markers::TLM, &tlm_payload(&[psot]))?;
     }
     out.extend_from_slice(&tile_part);
     out.extend_from_slice(&markers::EOC.to_be_bytes());
@@ -333,6 +333,47 @@ fn progression_code(p: ProgressionOrder) -> u8 {
     }
 }
 
+/// The reversible quantization for `levels` decompositions of `bit_depth` samples, refused when
+/// a subband would exceed the 32-bit HT datapath.
+///
+/// # Errors
+/// [`Error::Unsupported`] when `K_max` exceeds 30.
+pub(crate) fn check_datapath(levels: u8, bit_depth: u8) -> Result<Quant> {
+    let quant = Quant::reversible(levels, bit_depth, false)?;
+    // The scalar HT coder uses a 32-bit datapath: K_max <= 30.
+    let k_max_max = (0..=levels)
+        .flat_map(|r| (u8::from(r > 0)..=if r > 0 { 3 } else { 0 }).map(move |b| (r, b)))
+        .map(|(r, b)| quant.k_max(r, b))
+        .max()
+        .unwrap_or(0);
+    if k_max_max > 30 {
+        return Err(Error::Unsupported {
+            message: "bit depth exceeds the 32-bit HT datapath (K_max > 30)".into(),
+        });
+    }
+    Ok(quant)
+}
+
+/// The narrowest `Ssiz` depth covering the samples' actual range.
+#[must_use]
+pub fn sample_depth(samples: &[i32], signed: bool) -> u8 {
+    let (lo, hi) = samples
+        .iter()
+        .fold((0i32, 0i32), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+    // Both bounds are non-negative here, so a bit length is `32 - leading_zeros`. The signed
+    // range also needs a sign bit and must hold `!lo = -lo - 1`, the largest magnitude below zero.
+    let bit_len = |v: i32| 32 - v.leading_zeros();
+    let depth = if signed {
+        bit_len(hi.max(!lo)) + 1
+    } else {
+        bit_len(hi)
+    };
+    #[allow(clippy::cast_possible_truncation)] // clamped to 1..=32
+    {
+        depth.clamp(1, 32) as u8
+    }
+}
+
 /// Applies the DC level shift and returns an owned working plane.
 fn level_shifted(comp: &CoeffPlane<'_>, bit_depth: u8, signed: bool) -> Vec<i32> {
     let mut v = comp.samples.to_vec();
@@ -347,6 +388,7 @@ fn level_shifted(comp: &CoeffPlane<'_>, bit_depth: u8, signed: bool) -> Vec<i32>
 
 /// Codes every code-block of one band from the Mallat plane.
 fn code_band(
+    coder: &mut ndic_htj2k::BlockEncoder,
     plane: &[i32],
     plane_width: usize,
     band: &Band,
@@ -358,24 +400,30 @@ fn code_band(
     let mut blocks = Vec::with_capacity(nx * ny);
     let k_max = quant.k_max(band.res, band.band);
     let shift = 31 - u32::from(k_max);
+    // One block buffer for the whole band. The copy below writes every sample, so a reused
+    // buffer needs no zeroing between blocks.
+    let mut buf: Vec<u32> = Vec::new();
     for by in 0..ny {
         for bx in 0..nx {
             let r = band.block_rect(bx, by, cbw, cbh);
-            let mut buf = alloc::vec![0u32; r.w * r.h];
+            buf.resize(r.w * r.h, 0);
             let mut mv = 0u32;
             for y in 0..r.h {
-                for x in 0..r.w {
-                    let src = plane[(band.y0 + r.y + y) * plane_width + band.x0 + r.x + x];
-                    let sm = ndic_htj2k::coeff_to_sign_magnitude(src, shift);
+                // Row slices hoist the index math and bounds checks out of the sample loop.
+                let src_start = (band.y0 + r.y + y) * plane_width + band.x0 + r.x;
+                let src = &plane[src_start..src_start + r.w];
+                let dst = &mut buf[y * r.w..(y + 1) * r.w];
+                for (d, &s) in dst.iter_mut().zip(src) {
+                    let sm = ndic_htj2k::coeff_to_sign_magnitude(s, shift);
                     mv |= sm & 0x7FFF_FFFF;
-                    buf[y * r.w + x] = sm;
+                    *d = sm;
                 }
             }
             if mv < (1 << shift) {
                 blocks.push(None); // nothing significant at any coded bitplane
                 continue;
             }
-            let data = ndic_htj2k::encode_block(&buf, r.w, r.h, r.w, u32::from(k_max) - 1)?;
+            let data = coder.encode(&buf, r.w, r.h, r.w, u32::from(k_max) - 1)?;
             #[allow(clippy::cast_possible_truncation)]
             blocks.push(Some(CodedBlock {
                 missing_msbs: k_max - 1,

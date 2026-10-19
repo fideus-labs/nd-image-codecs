@@ -6,15 +6,22 @@ extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
 
+/// Room for every level a `usize` grid can have, plus the end offset.
+const MAX_OFFSETS: usize = usize::BITS as usize + 3;
+
 /// A quad tag tree over a `w x h` grid of code-blocks, with per-node
 /// values and sent/received flags. Level 0 holds the leaves; each higher
 /// level halves the grid (ceil). One extra root level always reads 0.
 #[derive(Debug)]
 pub struct TagTree {
-    /// Node values per level (level 0 = leaves).
-    vals: Vec<Vec<u8>>,
-    /// Sent/received flags per level.
-    flags: Vec<Vec<u8>>,
+    /// `[value, sent/received flag]` per node, every level back to back
+    /// (level 0 = leaves), so a tree is one allocation however many levels
+    /// it has.
+    nodes: Vec<[u8; 2]>,
+    /// Start of each level in [`Self::nodes`], then the end of the last.
+    offsets: [usize; MAX_OFFSETS],
+    /// Number of levels above the leaves.
+    levels: usize,
     w: usize,
 }
 
@@ -37,27 +44,44 @@ impl TagTree {
     /// encoder-side min reduction; 0 for the parse side).
     #[must_use]
     pub fn new(w: usize, h: usize, init: u8) -> Self {
-        let num_levels = Self::num_levels(w, h) as usize;
-        let mut vals = Vec::with_capacity(num_levels + 1);
-        let mut flags = Vec::with_capacity(num_levels + 1);
-        for lev in 0..=num_levels {
+        let levels = Self::num_levels(w, h) as usize;
+        let mut offsets = [0; MAX_OFFSETS];
+        let mut total = 0;
+        for (lev, offset) in offsets.iter_mut().enumerate().take(levels + 1) {
+            *offset = total;
             let lw = w.div_ceil(1 << lev);
             let lh = h.div_ceil(1 << lev);
-            vals.push(vec![if lev == 0 { init } else { 0 }; lw.max(1) * lh.max(1)]);
-            flags.push(vec![0u8; lw.max(1) * lh.max(1)]);
+            total += lw.max(1) * lh.max(1);
         }
-        Self { vals, flags, w }
+        offsets[levels + 1] = total;
+        let mut nodes = vec![[0u8; 2]; total];
+        for node in &mut nodes[..offsets[1]] {
+            node[0] = init;
+        }
+        Self {
+            nodes,
+            offsets,
+            levels,
+            w,
+        }
     }
 
     /// Number of levels above the leaves.
     #[must_use]
     pub fn levels(&self) -> usize {
-        self.vals.len() - 1
+        self.levels
+    }
+
+    /// Number of nodes on `lev`.
+    fn level_len(&self, lev: usize) -> usize {
+        self.offsets[lev + 1] - self.offsets[lev]
     }
 
     fn idx(&self, x: usize, y: usize, lev: usize) -> usize {
         let lw = self.w.div_ceil(1 << lev).max(1);
-        y * lw + x
+        let i = y * lw + x;
+        assert!(i < self.level_len(lev), "tag tree node outside its level");
+        self.offsets[lev] + i
     }
 
     /// Reads the node value at (`x`, `y`) of `lev` (leaf coordinates are
@@ -65,26 +89,26 @@ impl TagTree {
     #[must_use]
     pub fn val(&self, x: usize, y: usize, lev: usize) -> u8 {
         let i = self.idx(x, y, lev);
-        self.vals[lev][i]
+        self.nodes[i][0]
     }
 
     /// Writes the node value.
     pub fn set_val(&mut self, x: usize, y: usize, lev: usize, v: u8) {
         let i = self.idx(x, y, lev);
-        self.vals[lev][i] = v;
+        self.nodes[i][0] = v;
     }
 
     /// Reads the sent/received flag.
     #[must_use]
     pub fn flag(&self, x: usize, y: usize, lev: usize) -> u8 {
         let i = self.idx(x, y, lev);
-        self.flags[lev][i]
+        self.nodes[i][1]
     }
 
     /// Sets the sent/received flag.
     pub fn set_flag(&mut self, x: usize, y: usize, lev: usize) {
         let i = self.idx(x, y, lev);
-        self.flags[lev][i] = 1;
+        self.nodes[i][1] = 1;
     }
 
     /// Encoder-side: min-reduces leaf values up the tree (leaves must be
@@ -92,7 +116,8 @@ impl TagTree {
     pub fn reduce(&mut self) {
         for lev in 1..=self.levels() {
             let lw = self.w.div_ceil(1 << lev).max(1);
-            let n = self.vals[lev].len();
+            let (below, here) = (self.offsets[lev - 1], self.offsets[lev]);
+            let n = self.level_len(lev);
             for i in 0..n {
                 let x = i % lw;
                 let y = i / lw;
@@ -101,22 +126,24 @@ impl TagTree {
                     let cx = 2 * x + dx;
                     let cy = 2 * y + dy;
                     let clw = self.w.div_ceil(1 << (lev - 1)).max(1);
-                    let ch = self.vals[lev - 1].len().div_ceil(clw);
+                    let ch = self.level_len(lev - 1).div_ceil(clw);
                     if cx < clw && cy < ch {
-                        m = m.min(self.vals[lev - 1][cy * clw + cx]);
+                        m = m.min(self.nodes[below + cy * clw + cx][0]);
                     }
                 }
                 if lev == self.levels() {
                     // The synthetic root above the top level always reads 0.
-                    self.vals[lev][i] = 0;
+                    self.nodes[here + i][0] = 0;
                 } else {
-                    self.vals[lev][i] = m;
+                    self.nodes[here + i][0] = m;
                 }
             }
         }
         // Root value is 0 by construction (single entry at the top).
         let top = self.levels();
-        self.vals[top].fill(0);
+        for node in &mut self.nodes[self.offsets[top]..self.offsets[top + 1]] {
+            node[0] = 0;
+        }
     }
 }
 

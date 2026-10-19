@@ -234,6 +234,82 @@ fn chunk_plans_select_low_pass_planes_and_decode_3d() {
     assert!(plan["ranges"].as_array().unwrap().len() <= 2);
 }
 
+/// Stored planes, kept raw because HT coding cannot shrink noise, serve the
+/// same thumbnails their codestreams would.
+#[test]
+fn stored_planes_synthesize_the_coded_thumbnail() {
+    let (h, w, levels) = (64usize, 64usize, 3u8);
+    // Plane 0 is smooth and coded, planes 1 and 2 are hashed noise and stored.
+    let planes: Vec<Vec<i32>> = (0..3u32)
+        .map(|p| {
+            (0..u32::try_from(h * w).unwrap())
+                .map(|i| {
+                    if p == 0 {
+                        return i32::try_from(i % 97).unwrap();
+                    }
+                    let mut x = (i + 1 + p * 65536).wrapping_mul(0x9E37_79B1);
+                    x ^= x >> 16;
+                    x = x.wrapping_mul(0x85EB_CA6B);
+                    x ^= x >> 13;
+                    i32::try_from(x & 0xFFFF).unwrap()
+                })
+                .collect()
+        })
+        .collect();
+    let bytes: Vec<u8> = planes
+        .iter()
+        .flatten()
+        .flat_map(|&v| u16::try_from(v).unwrap().to_ne_bytes())
+        .collect();
+    let config = ndic_zarr::htj2k::Htj2kConfig {
+        xy_levels: levels,
+        ..Default::default()
+    };
+    let chunk =
+        ndic_zarr::htj2k::encode_chunk(&bytes, &[3, h, w], ndic_core::SampleType::U16, &config)
+            .unwrap();
+    assert_eq!(chunk[4], ndic_codestream::container::VERSION_STORED);
+    let path = tmp("stored.ndht");
+    std::fs::write(&path, &chunk).unwrap();
+
+    let out = tmp("stored-thumb.raw");
+    let stdout = run(&[
+        "thumbnail",
+        path.to_str().unwrap(),
+        "--max",
+        "16",
+        "--three-d",
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    assert!(stdout.contains("3 plane(s) of 16x16"), "{stdout}");
+    assert!(stdout.contains("U16 LE"), "{stdout}");
+
+    // Each plane matches its own codestream decoded to the same resolution.
+    let mut expected = Vec::new();
+    for samples in &planes {
+        let depth = ndic_codestream::writer::sample_depth(samples, false);
+        let plane = ndic_core::CoeffPlane::new(samples, w, h).unwrap();
+        let params = ndic_core::EncodeParams {
+            xy_levels: levels,
+            ..Default::default()
+        };
+        let stream =
+            ndic_codestream::writer::encode_image_with_depth(&[plane], depth, false, &params)
+                .unwrap();
+        let decoded = ndic_codestream::Codestream::parse(&stream)
+            .unwrap()
+            .decode_to_resolution(1)
+            .unwrap();
+        expected.extend(
+            decoded.comps[0]
+                .iter()
+                .flat_map(|&v| u16::try_from(v).unwrap().to_le_bytes()),
+        );
+    }
+    assert_eq!(std::fs::read(&out).unwrap(), expected);
+}
+
 /// A minimal single-threaded HTTP server answering `Range:` requests over
 /// one fixed body — what any static file host does.
 fn serve_ranges(body: Vec<u8>) -> (String, std::thread::JoinHandle<()>) {

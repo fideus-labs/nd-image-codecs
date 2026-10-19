@@ -108,6 +108,9 @@ fn ojph_expand_decodes_our_streams() {
         (7, 5, 1, SampleType::U8),
         (128, 128, 5, SampleType::U16),
         (1024, 4, 5, SampleType::U8),
+        // Past 2^15 samples a resolution splits into several precincts.
+        (40_000, 3, 5, SampleType::U8),
+        (3, 40_000, 5, SampleType::U8),
     ] {
         let maxval = (1i64 << dtype.bit_depth()) - 1;
         let samples = synthetic(w, h, 42 + w as u64, maxval);
@@ -154,6 +157,8 @@ fn we_decode_ojph_compress_streams() {
         (7, 5, 1, 8),
         (100, 90, 5, 16),
         (4, 1024, 5, 8),
+        (40_000, 3, 5, 8),
+        (3, 40_000, 5, 8),
     ] {
         let maxval = (1i64 << bits) - 1;
         // Keep 16-bit values above 0 at 0 decomps to sidestep ojph's own

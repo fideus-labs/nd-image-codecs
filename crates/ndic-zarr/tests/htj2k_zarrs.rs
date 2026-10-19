@@ -365,21 +365,34 @@ fn stored_chunks_serve_thumbnail_plans() {
     assert_eq!(plan.decoded_size, vec![8, 8]);
 }
 
-/// The committed chunk-container micro-fixture: the version-1 byte layout
-/// is pinned — re-encoding the same data must reproduce the file
-/// byte-for-byte, and the committed bytes must decode to the same data
-/// (see `fixtures/codestreams/tiny-chunk-4x8x8.ndht.md`).
+/// The `(2, 16, 16)` uint16 data of the mixed fixture: plane 0 a ramp HT coding shrinks, plane 1
+/// hashed noise it cannot.
+fn mixed_fixture_data() -> Vec<u8> {
+    let ramp = (0..256u32).map(|i| u16::try_from(i * 7 % 4096).expect("< 4096"));
+    let noise = (0..256u32).map(|i| {
+        let mut h = (i + 1).wrapping_mul(0x9E37_79B1);
+        h ^= h >> 16;
+        h = h.wrapping_mul(0x85EB_CA6B);
+        h ^= h >> 13;
+        u16::try_from(h & 0xFFFF).expect("masked")
+    });
+    ramp.chain(noise).flat_map(u16::to_ne_bytes).collect()
+}
+
+/// The committed chunk-container micro-fixture: the version-2 byte layout,
+/// with a coded and a stored plane, is pinned — re-encoding the same data
+/// must reproduce the file byte-for-byte, and the committed bytes must
+/// decode to the same data (see
+/// `fixtures/codestreams/tiny-chunk-2x16x16-mixed.ndht.md`).
 #[test]
 fn chunk_fixture_is_byte_stable() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/codestreams/tiny-chunk-4x8x8.ndht"
+        "/../../fixtures/codestreams/tiny-chunk-2x16x16-mixed.ndht"
     );
     let committed = std::fs::read(path).expect("committed fixture");
-    let shape = [4usize, 8, 8];
-    let data: Vec<u8> = (0..shape.iter().product::<usize>())
-        .flat_map(|i| u16::try_from(i * 7 % 4096).expect("< 4096").to_ne_bytes())
-        .collect();
+    let shape = [2usize, 16, 16];
+    let data = mixed_fixture_data();
     let config = ndic_zarr::htj2k::Htj2kConfig {
         xy_levels: 2,
         ..Default::default()
@@ -392,6 +405,25 @@ fn chunk_fixture_is_byte_stable() {
         "the htj2k chunk container layout must stay byte-stable \
          (regenerate the fixture only on a deliberate format bump)"
     );
+    let decoded = ndic_zarr::htj2k::decode_chunk(&committed, &shape, ndic_core::SampleType::U16)
+        .expect("decode");
+    assert_eq!(decoded, data);
+}
+
+/// Chunks written before stored planes existed stay readable (see
+/// `fixtures/codestreams/tiny-chunk-4x8x8.ndht.md`).
+#[test]
+fn v1_chunk_fixture_still_decodes() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/codestreams/tiny-chunk-4x8x8.ndht"
+    );
+    let committed = std::fs::read(path).expect("committed fixture");
+    assert_eq!(committed[4], ndic_codestream::container::VERSION);
+    let shape = [4usize, 8, 8];
+    let data: Vec<u8> = (0..shape.iter().product::<usize>())
+        .flat_map(|i| u16::try_from(i * 7 % 4096).expect("< 4096").to_ne_bytes())
+        .collect();
     let decoded = ndic_zarr::htj2k::decode_chunk(&committed, &shape, ndic_core::SampleType::U16)
         .expect("decode");
     assert_eq!(decoded, data);

@@ -99,7 +99,8 @@ pub struct SeriesSpec {
     pub decorrelate: Decorrelate,
     /// Transform kind for decorrelation axes (nd-lift-ht).
     pub lift: LiftKind,
-    /// In-plane resolution levels for the htj2k plane codec.
+    /// In-plane resolution levels for the htj2k plane codec, at most. [`codec_series`] lowers
+    /// them for a small chunk plane so its lowest resolution keeps about 64 samples.
     pub xy_levels: u8,
     /// Reversible (lossless) coding.
     pub reversible: bool,
@@ -192,6 +193,15 @@ fn reshape_groups(shape: &[u64]) -> Vec<Vec<usize>> {
         }
     }
     groups
+}
+
+/// The most in-plane levels worth coding in a `height x width` chunk plane, few enough that the
+/// lowest resolution keeps about 64 samples, `floor(log2(area) / 2) - 3`. Deeper levels leave
+/// bands so small that their fixed costs outweigh their bits, and the plane codes both slower
+/// and larger.
+fn xy_level_cap(height: u64, width: u64) -> u8 {
+    let bits = height.saturating_mul(width).max(1).ilog2();
+    u8::try_from((bits / 2).saturating_sub(3)).unwrap_or(u8::MAX)
 }
 
 /// Build the codec pipeline for `spec`. Returns Zarr v3 codec metadata
@@ -369,7 +379,7 @@ pub fn codec_series(spec: &SeriesSpec) -> Result<Vec<Value>, SeriesError> {
             codecs.push(json!({
                 "name": "htj2k",
                 "configuration": {
-                    "xy_levels": spec.xy_levels,
+                    "xy_levels": spec.xy_levels.min(xy_level_cap(chunk(y), chunk(x))),
                     "reversible": spec.reversible,
                     "progression": "RPCL",
                     "index": true
@@ -406,6 +416,25 @@ pub fn codec_series(spec: &SeriesSpec) -> Result<Vec<Value>, SeriesError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xy_level_cap_follows_plane_area() {
+        // The lowest resolution keeps about 64 samples, by area rather than by the short side, so
+        // a narrow but long plane keeps its levels.
+        for ((h, w), cap) in [
+            ((1, 1), 0),
+            ((8, 8), 0),
+            ((16, 16), 1),
+            ((64, 64), 3),
+            ((128, 128), 4),
+            ((256, 256), 5),
+            ((16, 1024), 4),
+            ((1024, 32), 4),
+            ((u64::MAX, u64::MAX), 28),
+        ] {
+            assert_eq!(xy_level_cap(h, w), cap, "{h}x{w}");
+        }
+    }
 
     fn tczyx() -> Vec<Axis> {
         ["t", "c", "z", "y", "x"]

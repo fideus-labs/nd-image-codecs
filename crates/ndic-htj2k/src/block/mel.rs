@@ -68,12 +68,12 @@ impl<'a> MelDecoder<'a> {
         // Feed 0xFF once the buffer is exhausted (T.814 §7.3.4).
         let mut val = 0xFFFF_FFFFu32;
         if self.size > 4 {
-            val = u32::from_le_bytes([
-                self.data[self.pos],
-                self.data[self.pos + 1],
-                self.data[self.pos + 2],
-                self.data[self.pos + 3],
-            ]);
+            // One range check and one unaligned load rather than four indexed byte loads.
+            val = u32::from_le_bytes(
+                self.data[self.pos..self.pos + 4]
+                    .try_into()
+                    .expect("4 bytes"),
+            );
             self.pos += 4;
             self.size -= 4;
         } else if self.size > 0 {
@@ -202,8 +202,16 @@ impl MelEncoder {
     /// Creates an empty encoder.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_buffer(alloc::vec::Vec::new())
+    }
+
+    /// Creates an empty encoder that writes into `buf`, reusing its capacity.
+    #[must_use]
+    pub fn with_buffer(mut buf: alloc::vec::Vec<u8>) -> Self {
+        buf.clear();
+        buf.reserve(192);
         Self {
-            buf: alloc::vec::Vec::with_capacity(192),
+            buf,
             tmp: 0,
             remaining_bits: 8,
             run: 0,

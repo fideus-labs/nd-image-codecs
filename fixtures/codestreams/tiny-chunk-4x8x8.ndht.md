@@ -1,9 +1,12 @@
 # tiny-chunk-4x8x8.ndht
 
 A committed `htj2k` chunk-container micro-fixture pinning the version-1
-byte layout (`crates/ndic-codestream/src/container.rs`); regenerating it
-must be byte-identical (`chunk_fixture_is_byte_stable` in
-`crates/ndic-zarr/tests/htj2k_zarrs.rs`).
+byte layout (`crates/ndic-codestream/src/container.rs`). Current encoders
+store these 8×8 planes, since a 200-byte codestream exceeds the 132 bytes of
+a stored plane, so this file is a read-compatibility fixture. Decoding it
+must reproduce the data (`v1_chunk_fixture_still_decodes` in
+`crates/ndic-zarr/tests/htj2k_zarrs.rs`, plus the Python and TypeScript
+binding tests). `tiny-chunk-2x16x16-mixed.ndht` pins the encoder.
 
 ## Content
 

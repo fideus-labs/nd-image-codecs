@@ -257,6 +257,16 @@ _DTYPES: dict[str, tuple[str, int]] = {
 }
 
 
+def _xy_level_cap(height: int, width: int) -> int:
+    """The most in-plane levels worth coding in a chunk plane, ``floor(log2(area) / 2) - 3``.
+
+    Few enough that the lowest resolution keeps about 64 samples. Deeper levels leave bands so
+    small that their fixed costs outweigh their bits.
+    """
+    bits = max(height * width, 1).bit_length() - 1
+    return max(bits // 2 - 3, 0)
+
+
 def codec_series(
     axes: list[str],
     chunk_shape: list[int],
@@ -293,6 +303,10 @@ def codec_series(
         (``z``, and ``t`` when its chunk size is not 1).
     add_decorrelate, remove_decorrelate:
         Adjust the defaults instead of replacing them.
+    xy_levels:
+        In-plane resolution levels for the htj2k plane codec, at most. They are
+        lowered for a small chunk plane so its lowest resolution keeps about 64
+        samples.
     """
     ndim = len(axes)
     if len(chunk_shape) != ndim:
@@ -384,7 +398,7 @@ def codec_series(
             {
                 "name": "htj2k",
                 "configuration": {
-                    "xy_levels": xy_levels,
+                    "xy_levels": min(xy_levels, _xy_level_cap(chunk_shape[y], chunk_shape[x])),
                     "reversible": reversible,
                     "progression": "RPCL",
                     "index": True,

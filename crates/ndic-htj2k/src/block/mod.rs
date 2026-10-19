@@ -17,8 +17,8 @@ pub mod tables;
 #[allow(clippy::doc_markdown)] // generated file
 mod tables_data;
 
-pub use decode::decode_block;
-pub use encode::encode_block;
+pub use decode::{BlockDecoder, decode_block};
+pub use encode::{BlockEncoder, encode_block};
 
 /// Coding-pass structure of one code-block's codeword segment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
