@@ -37,13 +37,18 @@ impl Quad {
     /// Loads the 2x2 quad at column `x` from the sign-magnitude rows `rows`
     /// (top, bottom); columns past a row's end read as insignificant, and an
     /// empty bottom row stands in for the one beyond the block.
-    #[inline]
+    #[inline(always)]
+    #[allow(clippy::inline_always)] // out of line, the quad returns through memory
     fn load(rows: [&[u32]; 2], x: usize, p: u32) -> Self {
+        // A missing sample reads as zero, which codes exactly as an insignificant one. Away from
+        // a row's end both columns of each row load with one check, so the four lanes compute
+        // without branches.
+        let samples = match (rows[0].get(x..x + 2), rows[1].get(x..x + 2)) {
+            (Some(&[t0, t1]), Some(&[b0, b1])) => [t0, b0, t1, b1],
+            _ => core::array::from_fn(|n| rows[n % 2].get(x + n / 2).copied().unwrap_or(0)),
+        };
         let mut quad = Self::default();
-        for n in 0..4usize {
-            let Some(&raw) = rows[n % 2].get(x + n / 2) else {
-                continue;
-            };
+        for (n, &raw) in samples.iter().enumerate() {
             // (raw + raw) drops the sign bit; >> p aligns the coding LSB.
             let val = (raw.wrapping_add(raw) >> p) & !1; // 2 mu_p
             // Significance is data-dependent and mispredicts, so an insignificant sample is

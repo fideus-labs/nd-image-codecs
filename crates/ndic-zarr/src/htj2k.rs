@@ -212,9 +212,12 @@ fn widen_plane(bytes: &[u8], dtype: SampleType) -> Result<Vec<i32>> {
 /// `TrustedLen`, so the output grows once rather than once per sample.
 pub fn narrow_samples(samples: &[i32], dtype: SampleType, out: &mut Vec<u8>) -> Result<()> {
     fn check(lo: i64, hi: i64, samples: &[i32], dtype: SampleType) -> Result<()> {
-        let (min, max) = samples.iter().fold((i64::MAX, i64::MIN), |(lo, hi), &v| {
-            (lo.min(i64::from(v)), hi.max(i64::from(v)))
-        });
+        // The bounds of i32 samples are i32, so the reduction runs in 32-bit lanes and widens
+        // once, after the fold.
+        let (min, max) = samples
+            .iter()
+            .fold((i32::MAX, i32::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+        let (min, max) = (i64::from(min), i64::from(max));
         if !samples.is_empty() && (min < lo || max > hi) {
             return Err(Error::Codestream {
                 offset: 0,

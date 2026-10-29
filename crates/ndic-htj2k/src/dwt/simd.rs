@@ -7,7 +7,8 @@
 //! detected), or an autovectorizable portable loop elsewhere. Each level runs
 //! vertical and horizontal lifting as one pass down the rows, so every row is
 //! read once while it is in cache instead of once per lifting step. The
-//! horizontal step reuses the scalar per-row routine.
+//! horizontal step splits each row into its bands and lifts them in place,
+//! short bands through the same kernels.
 //!
 //! Mirrors `OpenJPH`'s per-ISA `ojph_transform_*` translation units; lane
 //! selection happens once per transform call, never in inner loops.
@@ -23,7 +24,7 @@ use alloc::vec;
 
 use ndic_core::Result;
 
-use super::{ana_53, check_geometry, level_dims, syn_53};
+use super::{check_geometry, level_dims};
 
 /// A row-lifting kernel: combines two neighbor rows into a destination row.
 type RowKernel = fn(dst: &mut [i32], a: &[i32], b: &[i32]);
@@ -308,6 +309,100 @@ pub fn lane_name() -> &'static str {
     }
 }
 
+/// Bands at least this long lift through plain indexed loops, which LLVM vectorizes 16 samples at
+/// a time while reusing each loaded vector for both neighbors. A shorter band would leave most of
+/// such a loop to its scalar remainder, so it lifts through the lane's 4-wide row kernel instead.
+const LONG_BAND: usize = 128;
+
+/// One lifting step along a band, `dst[i] = step(dst[i], src[i], src[i + 1])`, where `kernel`
+/// computes the same step on short bands.
+#[inline]
+fn lift_band(dst: &mut [i32], src: &[i32], kernel: RowKernel, step: impl Fn(i32, i32, i32) -> i32) {
+    let len = dst.len();
+    let src = &src[..=len];
+    if len >= LONG_BAND {
+        for i in 0..len {
+            dst[i] = step(dst[i], src[i], src[i + 1]);
+        }
+    } else {
+        kernel(dst, &src[..len], &src[1..]);
+    }
+}
+
+/// Horizontal 5/3 analysis of `src` into `dst` as `[low | high]`, bit-identical to
+/// [`super::ana_53`]. The samples split into their bands once, and both lifting steps then run on
+/// the contiguous bands, so no load is strided.
+fn analyze_row(kern: &Kernels, src: &[i32], dst: &mut [i32]) {
+    let n = src.len();
+    if n == 1 {
+        dst[0] = src[0];
+        return;
+    }
+    let nl = n.div_ceil(2);
+    let nh = n / 2;
+    let (low, high) = dst[..n].split_at_mut(nl);
+    let (pairs, odd) = src.as_chunks::<2>();
+    for ((l, h), &[even, odd]) in low.iter_mut().zip(high.iter_mut()).zip(pairs) {
+        *l = even;
+        *h = odd;
+    }
+    if let [last] = odd {
+        low[nh] = *last;
+    }
+    // Predict. Only an even-length signal's last high sample lacks a right neighbor, and it
+    // mirrors `low[nh - 1]`.
+    lift_band(&mut high[..nl - 1], low, kern.predict_sub, |d, a, b| {
+        d - ((a + b) >> 1)
+    });
+    if nh == nl {
+        high[nh - 1] -= (low[nh - 1] + low[nh - 1]) >> 1;
+    }
+    // Update. The first low sample mirrors `high[0]`, and an odd-length signal's last mirrors
+    // `high[nh - 1]`.
+    low[0] += (high[0] + high[0] + 2) >> 2;
+    lift_band(&mut low[1..nh], high, kern.update_add, |d, a, b| {
+        d + ((a + b + 2) >> 2)
+    });
+    if nl > nh {
+        low[nh] += (high[nh - 1] + high[nh - 1] + 2) >> 2;
+    }
+}
+
+/// Inverse of [`analyze_row`], bit-identical to [`super::syn_53`]. Both steps are undone in place
+/// on the `[low | high]` bands of `src`, then the bands interleave into `dst`.
+fn synthesize_row(kern: &Kernels, src: &mut [i32], dst: &mut [i32]) {
+    let n = dst.len();
+    if n == 1 {
+        dst[0] = src[0];
+        return;
+    }
+    let nl = n.div_ceil(2);
+    let nh = n / 2;
+    let (low, high) = src[..n].split_at_mut(nl);
+    // Undo update, mirroring as in `analyze_row`.
+    low[0] -= (high[0] + high[0] + 2) >> 2;
+    lift_band(&mut low[1..nh], high, kern.update_sub, |d, a, b| {
+        d - ((a + b + 2) >> 2)
+    });
+    if nl > nh {
+        low[nh] -= (high[nh - 1] + high[nh - 1] + 2) >> 2;
+    }
+    // Undo predict.
+    lift_band(&mut high[..nl - 1], low, kern.predict_add, |d, a, b| {
+        d + ((a + b) >> 1)
+    });
+    if nh == nl {
+        high[nh - 1] += (low[nh - 1] + low[nh - 1]) >> 1;
+    }
+    let (pairs, odd) = dst.as_chunks_mut::<2>();
+    for ((pair, &l), &h) in pairs.iter_mut().zip(low.iter()).zip(high.iter()) {
+        *pair = [l, h];
+    }
+    if let [last] = odd {
+        *last = low[nh];
+    }
+}
+
 /// One forward level over the `w x h` region at the plane's top left, vertical then horizontal,
 /// in one pass down the rows. Pair `j` predicts detail row `2j + 1` from the original even rows
 /// around it, updates even row `2j` from the now-final details around it, and each finished row
@@ -323,12 +418,8 @@ fn forward_level(
     row0: &mut [i32],
 ) {
     let row = |r: usize| r * width;
-    let wl = w.div_ceil(2);
     // Horizontal analysis of `src` into `dst` as [low | high].
-    let analyze = |src: &[i32], dst: &mut [i32]| {
-        let (lo, hi) = dst.split_at_mut(wl);
-        ana_53(src, lo, hi);
-    };
+    let analyze = |src: &[i32], dst: &mut [i32]| analyze_row(kern, src, dst);
     if h == 1 {
         if w > 1 {
             analyze(&plane[..w], &mut row0[..w]);
@@ -391,12 +482,8 @@ fn inverse_level(
     row0: &mut [i32],
 ) {
     let row = |r: usize| r * width;
-    let wl = w.div_ceil(2);
     // Horizontal synthesis of `src`, split as [low | high] and lifted in place, into `dst`.
-    let synthesize = |src: &mut [i32], dst: &mut [i32]| {
-        let (lo, hi) = src.split_at_mut(wl);
-        syn_53(lo, hi, dst);
-    };
+    let synthesize = |src: &mut [i32], dst: &mut [i32]| synthesize_row(kern, src, dst);
     if h == 1 {
         if w > 1 {
             synthesize(&mut plane[..w], &mut row0[..w]);
@@ -545,6 +632,8 @@ mod tests {
             (65, 33),
             (256, 100),
             (129, 77),
+            (300, 9),
+            (517, 6),
         ] {
             for levels in 0..=5u8 {
                 let plane = lcg_plane(w, h, (w * 31 + h) as u64);

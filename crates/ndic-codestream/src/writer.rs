@@ -19,7 +19,7 @@ use crate::geometry::{
 use crate::markers::{
     self, Cap, Cod, ComponentSiz, Siz, com_payload, plt_payload, push_segment, tlm_payload,
 };
-use crate::packet::{BandBlocks, CodedBlock, write_packet};
+use crate::packet::{BandBlocks, CodedBlock, packet_header};
 use crate::quant::Quant;
 
 /// Encodes one or more equally-sized component planes into a codestream.
@@ -169,8 +169,11 @@ pub fn encode_image_with_depth(
         |r| precinct_grid(width, height, levels, r, 15, 15),
         |_| (15, 15),
     );
-    let mut body = Vec::new();
+    // Headers come first, so the tile-part's length and its PLT are known before any block data
+    // is written, and the data moves once, straight into the codestream.
+    let mut packets = Vec::with_capacity(packet_order.len());
     let mut packet_lengths = Vec::with_capacity(packet_order.len());
+    let mut body_len = 0usize;
     for (c, r, px, py) in packet_order {
         let (ecbw, ecbh) = effective_cb(cbw, cbh, 15, 15, r);
         // Precinct exponents in band coordinates.
@@ -190,13 +193,15 @@ pub fn encode_image_with_depth(
                 BandBlocks { nx, ny, blocks }
             })
             .collect();
-        let bytes = write_packet(&precinct);
+        let header = packet_header(&precinct);
+        let len = header.len() + included(&precinct).map(|cb| cb.data.len()).sum::<usize>();
         #[allow(clippy::cast_possible_truncation)]
-        packet_lengths.push(bytes.len() as u32);
-        body.extend_from_slice(&bytes);
+        packet_lengths.push(len as u32);
+        body_len += len;
+        packets.push((header, precinct));
     }
 
-    // ---- tile-part ----------------------------------------------------
+    // ---- tile-part header ---------------------------------------------
     let mut plt = Vec::new();
     if params.emit_tlm_plt {
         // A PLT payload is bounded by the 16-bit segment length; split the
@@ -229,26 +234,11 @@ pub fn encode_image_with_depth(
             })?;
         }
     }
-    let tile_part_len = 12 + plt.len() + 2 + body.len(); // SOT seg + PLT + SOD + body
+    let tile_part_len = 12 + plt.len() + 2 + body_len; // SOT seg + PLT + SOD + body
     // `Psot` and the `TLM` entry are 32-bit, so a single tile-part holds at most 4 GiB.
     let psot = u32::try_from(tile_part_len).map_err(|_| Error::Unsupported {
         message: "tile-part exceeds the 4 GiB a 32-bit Psot can declare".into(),
     })?;
-    let mut tile_part = Vec::with_capacity(tile_part_len);
-    push_segment(
-        &mut tile_part,
-        markers::SOT,
-        &markers::Sot {
-            isot: 0,
-            psot,
-            tpsot: 0,
-            tnsot: 1,
-        }
-        .to_bytes(),
-    )?;
-    tile_part.extend_from_slice(&plt);
-    tile_part.extend_from_slice(&markers::SOD.to_be_bytes());
-    tile_part.extend_from_slice(&body);
 
     // ---- main header --------------------------------------------------
     let w32 = u32::try_from(width).map_err(|_| Error::InvalidArgument {
@@ -257,7 +247,7 @@ pub fn encode_image_with_depth(
     let h32 = u32::try_from(height).map_err(|_| Error::InvalidArgument {
         message: "height exceeds u32".into(),
     })?;
-    let mut out = Vec::with_capacity(tile_part.len() + 128);
+    let mut out = Vec::with_capacity(tile_part_len + 128);
     out.extend_from_slice(&markers::SOC.to_be_bytes());
     let siz = Siz {
         rsiz: 0x4000,
@@ -317,9 +307,35 @@ pub fn encode_image_with_depth(
     if params.emit_tlm_plt {
         push_segment(&mut out, markers::TLM, &tlm_payload(&[psot]))?;
     }
-    out.extend_from_slice(&tile_part);
+
+    // ---- tile-part ----------------------------------------------------
+    push_segment(
+        &mut out,
+        markers::SOT,
+        &markers::Sot {
+            isot: 0,
+            psot,
+            tpsot: 0,
+            tnsot: 1,
+        }
+        .to_bytes(),
+    )?;
+    out.extend_from_slice(&plt);
+    out.extend_from_slice(&markers::SOD.to_be_bytes());
+    for (header, precinct) in &packets {
+        out.extend_from_slice(header);
+        for cb in included(precinct) {
+            out.extend_from_slice(&cb.data);
+        }
+    }
     out.extend_from_slice(&markers::EOC.to_be_bytes());
     Ok(out)
+}
+
+/// The included code-blocks of a precinct's bands, in the order their data follows the packet
+/// header.
+fn included(bands: &[BandBlocks]) -> impl Iterator<Item = &CodedBlock> {
+    bands.iter().flat_map(|band| band.blocks.iter().flatten())
 }
 
 /// Progression order code for `SGcod`.

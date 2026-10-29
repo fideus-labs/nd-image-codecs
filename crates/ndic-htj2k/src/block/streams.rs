@@ -707,7 +707,8 @@ impl MagSgnEncoder {
     }
 
     /// Writes out the complete bytes, leaving fewer than 8 bits pending.
-    #[inline]
+    #[inline(always)]
+    #[allow(clippy::inline_always)] // every quad of the cleanup loop flushes
     pub(crate) fn flush(&mut self) {
         // Bits in complete bytes.
         let done = self.used_bits & !7;

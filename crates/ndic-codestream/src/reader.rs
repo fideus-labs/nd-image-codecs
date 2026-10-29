@@ -8,6 +8,7 @@
 
 extern crate alloc;
 
+use alloc::borrow::Cow;
 use alloc::vec::Vec;
 
 use ndic_core::{Error, Result};
@@ -463,13 +464,21 @@ impl<'a> Codestream<'a> {
         let ncomps = self.siz.comps.len();
 
         // Concatenated packet bodies across tile-parts, clamped to the bytes
-        // on hand (a parsed prefix declares more body than it carries).
-        let mut body = Vec::new();
-        for tp in &self.tile_parts {
-            let start = tp.body.start.min(self.data.len());
-            let end = tp.body.end.min(self.data.len());
-            body.extend_from_slice(&self.data[start..end]);
-        }
+        // on hand (a parsed prefix declares more body than it carries). A
+        // single tile-part's body is already contiguous, so it is borrowed.
+        let clamped = |tp: &TilePart| {
+            &self.data[tp.body.start.min(self.data.len())..tp.body.end.min(self.data.len())]
+        };
+        let body: Cow<'_, [u8]> = match self.tile_parts.as_slice() {
+            [tp] => Cow::Borrowed(clamped(tp)),
+            tps => {
+                let mut body = Vec::new();
+                for tp in tps {
+                    body.extend_from_slice(clamped(tp));
+                }
+                Cow::Owned(body)
+            }
+        };
 
         let mut planes = alloc::vec![alloc::vec![0i32; width * height]; ncomps];
         let (cbw_n, cbh_n) = self.cod.cb_size();

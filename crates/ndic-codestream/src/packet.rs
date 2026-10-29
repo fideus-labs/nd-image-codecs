@@ -67,6 +67,19 @@ pub struct ParsedBlock {
 /// quality layer. `bands` lists the precinct's bands in packet order.
 #[must_use]
 pub fn write_packet(bands: &[BandBlocks]) -> Vec<u8> {
+    let mut out = packet_header(bands);
+    for band in bands {
+        for cb in band.blocks.iter().flatten() {
+            out.extend_from_slice(&cb.data);
+        }
+    }
+    out
+}
+
+/// Writes the header of the packet [`write_packet`] writes for `bands`. The included blocks'
+/// `data` follow it in band order, then raster order within each band.
+#[must_use]
+pub fn packet_header(bands: &[BandBlocks]) -> Vec<u8> {
     let any_included = bands.iter().any(|b| b.blocks.iter().any(Option::is_some));
     if !any_included {
         return alloc::vec![0x00]; // empty packet: a single 0 bit
@@ -158,13 +171,7 @@ pub fn write_packet(bands: &[BandBlocks]) -> Vec<u8> {
         }
     }
 
-    let mut out = bb.terminate();
-    for band in bands {
-        for cb in band.blocks.iter().flatten() {
-            out.extend_from_slice(&cb.data);
-        }
-    }
-    out
+    bb.terminate()
 }
 
 /// Band description handed to the parser: grid plus the `K_max` bound.
